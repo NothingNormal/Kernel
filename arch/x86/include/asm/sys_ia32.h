@@ -45,6 +45,7 @@ asmlinkage long compat_sys_x86_pwrite(unsigned int, const char __user *, u32,
 
 asmlinkage long compat_sys_x86_fadvise64_64(int, __u32, __u32, __u32, __u32,
 					    int);
+long sys32_vm86_warning(void);
 
 asmlinkage ssize_t compat_sys_x86_readahead(int, unsigned int, unsigned int,
 					    size_t);
@@ -55,8 +56,6 @@ asmlinkage long compat_sys_x86_fadvise64(int, unsigned int, unsigned int,
 					 size_t, int);
 asmlinkage long compat_sys_x86_fallocate(int, int, unsigned int, unsigned int,
 					 unsigned int, unsigned int);
-asmlinkage long compat_sys_x86_clone(unsigned long, unsigned long, int __user *,
-				     unsigned long, int __user *);
 
 /* ia32/ia32_signal.c */
 asmlinkage long sys32_sigreturn(void);
