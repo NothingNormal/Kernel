@@ -2476,11 +2476,8 @@ noinline static int copy_clone_args_from_user(struct kernel_clone_args *kargs,
 
 static bool clone3_args_valid(const struct kernel_clone_args *kargs)
 {
-	/*
-	 * All lower bits of the flag word are taken.
-	 * Verify that no other unknown flags are passed along.
-	 */
-	if (kargs->flags & ~CLONE_LEGACY_FLAGS)
+	/* Verify that no unknown flags are passed along. */
+	if (kargs->flags & ~(CLONE_LEGACY_FLAGS | CLONE_CLEAR_SIGHAND))
 		return false;
 
 	/*
@@ -2488,6 +2485,10 @@ static bool clone3_args_valid(const struct kernel_clone_args *kargs)
 	 * - make the CSIGNAL bits reuseable for clone3
 	 */
 	if (kargs->flags & (CLONE_DETACHED | CSIGNAL))
+		return false;
+
+	if ((kargs->flags & (CLONE_SIGHAND | CLONE_CLEAR_SIGHAND)) ==
+	    (CLONE_SIGHAND | CLONE_CLEAR_SIGHAND))
 		return false;
 
 	if ((kargs->flags & (CLONE_THREAD | CLONE_PARENT)) &&
