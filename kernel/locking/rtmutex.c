@@ -1077,10 +1077,7 @@ static void remove_waiter(struct rt_mutex *lock,
 
 	lockdep_assert_held(&lock->wait_lock);
 
-	if (!waiter_task) /* never enqueued */
-		return;
-
-	raw_spin_lock(&waiter_task->pi_lock);
+	raw_spin_lock(&current->pi_lock);
 	rt_mutex_dequeue(lock, waiter);
 	waiter_task->pi_blocked_on = NULL;
 	raw_spin_unlock(&waiter_task->pi_lock);
@@ -1344,7 +1341,7 @@ static inline int rt_mutex_slowtrylock(struct rt_mutex *lock)
  *
  * Return whether the current task needs to call rt_mutex_postunlock().
  */
-static bool __sched rt_mutex_slowunlock(struct rt_mutex *lock,
+static bool __sched rt_mutex_slowunlock(struct rt_mutex *lock, 
 					struct wake_q_head *wake_q)
 {
 	unsigned long flags;
