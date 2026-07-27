@@ -1678,6 +1678,7 @@ static __latent_entropy struct task_struct *copy_process(
 {
 	int pidfd = -1, retval;
 	struct task_struct *p;
+	u64 clone_flags = args->flags;
 	struct file *pidfile = NULL;
 
 	if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS))
@@ -1728,8 +1729,7 @@ static __latent_entropy struct task_struct *copy_process(
 		 *   reuse it later for CLONE_PIDFD.
 		 * - CLONE_THREAD is blocked until someone really needs it.
 		 */
-		if (clone_flags &
-		    (CLONE_DETACHED | CLONE_PARENT_SETTID | CLONE_THREAD))
+		if (clone_flags & (CLONE_DETACHED | CLONE_THREAD))
 			return ERR_PTR(-EINVAL);
 	}
 
@@ -1943,7 +1943,7 @@ static __latent_entropy struct task_struct *copy_process(
 		}
 		get_pid(pid);	/* held by pidfile now */
 
-		retval = put_user(pidfd, parent_tidptr);
+		retval = put_user(pidfd, args->pidfd);
 		if (retval)
 			goto bad_fork_put_pidfd;
 	}
@@ -2217,8 +2217,6 @@ struct task_struct *fork_idle(int cpu)
 long _do_fork(struct kernel_clone_args *args)
 {
 	u64 clone_flags = args->flags;
-	struct completion vfork;
-	struct pid *pid;
 	struct task_struct *p;
 	int trace = 0;
 	long nr;
@@ -2265,10 +2263,29 @@ long _do_fork(struct kernel_clone_args *args)
 	if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, args->parent_tid);
 
-	if (clone_flags & CLONE_VFORK) {
-		p->vfork_done = &vfork;
-		init_completion(&vfork);
-		get_task_struct(p);
+		if (clone_flags & CLONE_PARENT_SETTID)
+			put_user(nr, args->parent_tid);
+
+		if (clone_flags & CLONE_VFORK) {
+			p->vfork_done = &vfork;
+			init_completion(&vfork);
+			get_task_struct(p);
+		}
+
+		wake_up_new_task(p);
+
+		/* forking complete and child started to run, tell ptracer */
+		if (unlikely(trace))
+			ptrace_event_pid(trace, pid);
+
+		if (clone_flags & CLONE_VFORK) {
+			if (!wait_for_vfork_done(p, &vfork))
+				ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+		}
+
+		put_pid(pid);
+	} else {
+		nr = PTR_ERR(p);
 	}
 
 	wake_up_new_task(p);
@@ -2307,16 +2324,12 @@ long do_fork(unsigned long clone_flags,
 {
 	struct kernel_clone_args args = {
 		.flags		= (clone_flags & ~CSIGNAL),
-		.pidfd		= parent_tidptr,
 		.child_tid	= child_tidptr,
 		.parent_tid	= parent_tidptr,
 		.exit_signal	= (clone_flags & CSIGNAL),
 		.stack		= stack_start,
 		.stack_size	= stack_size,
 	};
-
-	if (!legacy_clone_args_valid(&args))
-		return -EINVAL;
 
 	return _do_fork(&args);
 }
@@ -2399,20 +2412,18 @@ SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 		.tls		= tls,
 	};
 
-	if (!legacy_clone_args_valid(&args))
+	/* clone(CLONE_PIDFD) uses parent_tidptr to return a pidfd */
+	if ((clone_flags & CLONE_PIDFD) && (clone_flags & CLONE_PARENT_SETTID))
 		return -EINVAL;
 
 	return _do_fork(&args);
 }
-#endif
 
-#ifdef __ARCH_WANT_SYS_CLONE3
 noinline static int copy_clone_args_from_user(struct kernel_clone_args *kargs,
 					      struct clone_args __user *uargs,
 					      size_t size)
 {
 	struct clone_args args;
-	pid_t *kset_tid = kargs->set_tid;
 
 	if (unlikely(size > PAGE_SIZE))
 		return -E2BIG;
@@ -2423,22 +2434,26 @@ noinline static int copy_clone_args_from_user(struct kernel_clone_args *kargs,
 	if (unlikely(!access_ok(VERIFY_READ, uargs, size)))
 		return -EFAULT;
 
-	if (unlikely(args.set_tid_size > MAX_PID_NS_LEVEL))
-		return -EINVAL;
+	if (size > sizeof(struct clone_args)) {
+		unsigned char __user *addr;
+		unsigned char __user *end;
+		unsigned char val;
 
-	if (unlikely(!args.set_tid && args.set_tid_size > 0))
-		return -EINVAL;
+		addr = (void __user *)uargs + sizeof(struct clone_args);
+		end = (void __user *)uargs + size;
 
-	if (unlikely(args.set_tid && args.set_tid_size == 0))
-		return -EINVAL;
+		for (; addr < end; addr++) {
+			if (get_user(val, addr))
+				return -EFAULT;
+			if (val)
+				return -E2BIG;
+		}
 
-	/*
-	 * Verify that higher 32bits of exit_signal are unset and that
-	 * it is a valid signal
-	 */
-	if (unlikely((args.exit_signal & ~((u64)CSIGNAL)) ||
-		     !valid_signal(args.exit_signal)))
-		return -EINVAL;
+		size = sizeof(struct clone_args);
+	}
+
+	if (copy_from_user(&args, uargs, size))
+		return -EFAULT;
 
 	*kargs = (struct kernel_clone_args){
 		.flags		= args.flags,
@@ -2449,23 +2464,18 @@ noinline static int copy_clone_args_from_user(struct kernel_clone_args *kargs,
 		.stack		= args.stack,
 		.stack_size	= args.stack_size,
 		.tls		= args.tls,
-		.set_tid_size	= args.set_tid_size,
 	};
-
-	if (args.set_tid &&
-		copy_from_user(kset_tid, u64_to_user_ptr(args.set_tid),
-			(kargs->set_tid_size * sizeof(pid_t))))
-		return -EFAULT;
-
-	kargs->set_tid = kset_tid;
 
 	return 0;
 }
 
 static bool clone3_args_valid(const struct kernel_clone_args *kargs)
 {
-	/* Verify that no unknown flags are passed along. */
-	if (kargs->flags & ~(CLONE_LEGACY_FLAGS | CLONE_CLEAR_SIGHAND))
+	/*
+	 * All lower bits of the flag word are taken.
+	 * Verify that no other unknown flags are passed along.
+	 */
+	if (kargs->flags & ~CLONE_LEGACY_FLAGS)
 		return false;
 
 	/*
@@ -2473,10 +2483,6 @@ static bool clone3_args_valid(const struct kernel_clone_args *kargs)
 	 * - make the CSIGNAL bits reuseable for clone3
 	 */
 	if (kargs->flags & (CLONE_DETACHED | CSIGNAL))
-		return false;
-
-	if ((kargs->flags & (CLONE_SIGHAND | CLONE_CLEAR_SIGHAND)) ==
-	    (CLONE_SIGHAND | CLONE_CLEAR_SIGHAND))
 		return false;
 
 	if ((kargs->flags & (CLONE_THREAD | CLONE_PARENT)) &&
@@ -2494,6 +2500,8 @@ SYSCALL_DEFINE2(clone3, struct clone_args __user *, uargs, size_t, size)
 	pid_t set_tid[MAX_PID_NS_LEVEL];
 
 	kargs.set_tid = set_tid;
+=======
+>>>>>>> 929183edf055 (BACKPORT: fork: add clone3)
 
 	err = copy_clone_args_from_user(&kargs, uargs, size);
 	if (err)

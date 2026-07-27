@@ -98,6 +98,20 @@ struct clone_args {
 #define CLONE_ARGS_SIZE_VER1 80 /* sizeof second published struct */
 
 /*
+ * Arguments for the clone3 syscall
+ */
+struct clone_args {
+	__aligned_u64 flags;
+	__aligned_u64 pidfd;
+	__aligned_u64 child_tid;
+	__aligned_u64 parent_tid;
+	__aligned_u64 exit_signal;
+	__aligned_u64 stack;
+	__aligned_u64 stack_size;
+	__aligned_u64 tls;
+};
+
+/*
  * Scheduling policies
  */
 #define SCHED_NORMAL		0
