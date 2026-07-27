@@ -2324,12 +2324,16 @@ long do_fork(unsigned long clone_flags,
 {
 	struct kernel_clone_args args = {
 		.flags		= (clone_flags & ~CSIGNAL),
+		.pidfd		= parent_tidptr,
 		.child_tid	= child_tidptr,
 		.parent_tid	= parent_tidptr,
 		.exit_signal	= (clone_flags & CSIGNAL),
 		.stack		= stack_start,
 		.stack_size	= stack_size,
 	};
+
+	if (!legacy_clone_args_valid(&args))
+		return -EINVAL;
 
 	return _do_fork(&args);
 }
@@ -2412,8 +2416,7 @@ SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 		.tls		= tls,
 	};
 
-	/* clone(CLONE_PIDFD) uses parent_tidptr to return a pidfd */
-	if ((clone_flags & CLONE_PIDFD) && (clone_flags & CLONE_PARENT_SETTID))
+	if (!legacy_clone_args_valid(&args))
 		return -EINVAL;
 
 	return _do_fork(&args);
