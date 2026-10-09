@@ -19,18 +19,18 @@ if ! [ -a $gcc32bin ]; then git clone --depth=1 https://github.com/LineageOS/and
 fi
 rm -rf AnyKernel
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig
-PATH="${PWD}/clang/bin:${PATH}:${PWD}/gcc32/bin:${PATH}:${PWD}/gcc64/bin:${PATH}" \
+export PATH="/usr/bin:/bin:${PWD}/clang/bin:${PWD}/gcc64/bin:${PWD}/gcc32/bin:$PATH"
 make -j$(nproc --all) O=out \
                       ARCH=arm64 \
-                      LLVM=1 \
+                      LLVM="/usr/bin/" \
                       LLVM_IAS=1 \
-                      CC="clang" \
+                      CC="/usr/bin/clang" \
                       CLANG_TRIPLE=aarch64-linux-gnu- \
                       CROSS_COMPILE="${PWD}/gcc64/bin/aarch64-linux-android-" \
                       CROSS_COMPILE_ARM32="${PWD}/gcc32/bin/arm-linux-androideabi-" \
-                      LD=ld.lld \
-                      NM=llvm-nm \
-                      OBJCOPY=llvm-objcopy \
+                      LD="/usr/bin/ld.lld" \
+                      NM="/usr/bin/llvm-nm" \
+                      OBJCOPY="/usr/bin/llvm-objcopy" \
                       CONFIG_NO_ERROR_ON_MISMATCH=y
 }
 function zupload()
