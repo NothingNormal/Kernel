@@ -37,10 +37,19 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            clang lld llvm zip bc bison flex libssl-dev libelf-dev lz4 lzop
+            clang lld llvm zip ccache bc bison flex libssl-dev libelf-dev lz4 lzop
           echo "--- versions ---"
           clang --version | head -2
           ld.lld --version | head -1
+
+      - name: Compiler cache (ccache)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-
 
       - name: Build kernel
         id: build
