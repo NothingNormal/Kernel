@@ -48,6 +48,8 @@ modules.builtin
 /tags
 /TAGS
 /linux
+/AnyKernel/
+/out/
 /vmlinux
 /vmlinux.32
 /vmlinux-gdb.py
