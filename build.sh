@@ -9,8 +9,15 @@ export ARCH=arm64
 export KBUILD_BUILD_HOST=android-build
 export KBUILD_BUILD_USER="unknown"
 
-# Toolchain: prefer system clang (CI / apt.llvm.org installs), fall back to
-# the Neutron prebuilt clone for local builds without a system toolchain.
+# LLVM-only toolchain: NO GNU GCC / binutils anywhere in the target
+# toolchain. Every binutils role (ar/nm/objcopy/objdump/readelf/strip/
+# size/ld) is served by its llvm-* twin; assembly goes through clang's
+# integrated assembler (LLVM_IAS=1). This tree has no 32-bit compat
+# vDSO (vdso32 removed), so no arm32 GCC cross is needed either.
+# CROSS_COMPILE is kept ONLY so kbuild derives the clang --target
+# triple; no $(CROSS_COMPILE)* binary is ever invoked.
+# Prefer system clang (CI / apt.llvm.org); fall back to the Neutron
+# prebuilt clone for local builds without a system toolchain.
 if [ -x /usr/bin/clang ] && [ -x /usr/bin/ld.lld ]; then
 TOOLCHAIN_BIN=/usr/bin
 else
@@ -22,28 +29,38 @@ fi
 echo "Using LLVM toolchain at: ${TOOLCHAIN_BIN}"
 "${TOOLCHAIN_BIN}/clang" --version | head -2
 
-gcc64bin=gcc64/bin/aarch64-linux-android-as
-if ! [ -a $gcc64bin ]; then git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+# ccache compiler cache (no-op when ccache is not installed)
+CCACHE_BIN=""
+if command -v ccache >/dev/null 2>&1; then
+CCACHE_BIN="ccache "
+export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+ccache -M "${CCACHE_MAXSIZE:-8G}" >/dev/null 2>&1
+echo "ccache enabled: $(ccache --version 2>/dev/null | head -1)"
 fi
-gcc32bin=gcc32/bin/arm-linux-androideabi-as
-if ! [ -a $gcc32bin ]; then git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
-fi
+
 rm -rf AnyKernel
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig || { echo " Failed to generate .config"; exit 1; }
-export PATH="${TOOLCHAIN_BIN}:/usr/bin:/bin:${PWD}/gcc64/bin:${PWD}/gcc32/bin:$PATH"
+export PATH="${TOOLCHAIN_BIN}:/usr/bin:/bin:$PATH"
 make -j$(nproc --all) O=out \
                       ARCH=arm64 \
-                      LLVM="${TOOLCHAIN_BIN}/" \
+                      LLVM=1 \
                       LLVM_IAS=1 \
-                      CC="${TOOLCHAIN_BIN}/clang" \
+                      CC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
+                      HOSTCC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
+                      HOSTCXX="${TOOLCHAIN_BIN}/clang++" \
                       CLANG_TRIPLE=aarch64-linux-gnu- \
-                      CROSS_COMPILE="${PWD}/gcc64/bin/aarch64-linux-android-" \
-                      CROSS_COMPILE_ARM32="${PWD}/gcc32/bin/arm-linux-androideabi-" \
+                      CROSS_COMPILE=aarch64-linux-gnu- \
                       LD="${TOOLCHAIN_BIN}/ld.lld" \
+                      AR="${TOOLCHAIN_BIN}/llvm-ar" \
                       NM="${TOOLCHAIN_BIN}/llvm-nm" \
                       OBJCOPY="${TOOLCHAIN_BIN}/llvm-objcopy" \
+                      OBJDUMP="${TOOLCHAIN_BIN}/llvm-objdump" \
+                      READELF="${TOOLCHAIN_BIN}/llvm-readelf" \
+                      STRIP="${TOOLCHAIN_BIN}/llvm-strip" \
+                      OBJSIZE="${TOOLCHAIN_BIN}/llvm-size" \
                       CONFIG_NO_ERROR_ON_MISMATCH=y
 rc=$?
+if command -v ccache >/dev/null 2>&1; then ccache -s 2>/dev/null | head -15; fi
 if [ $rc -ne 0 ]; then
 echo " Kernel build failed (make exit code $rc)"
 exit $rc
