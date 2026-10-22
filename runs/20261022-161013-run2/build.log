@@ -1,0 +1,393 @@
+Using LLVM toolchain at: /usr/bin
+Ubuntu clang version 21.1.8 (6ubuntu1)
+Target: x86_64-pc-linux-gnu
+Cloning into 'gcc64'...
+Cloning into 'gcc32'...
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:165:warning: override: reassigning to symbol TCP_CONG_CUBIC
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:166:warning: override: reassigning to symbol TCP_CONG_BBR
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:759:warning: override: reassigning to symbol UTS_NS
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:761:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:762:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:763:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:764:warning: override: reassigning to symbol PSTORE_PMSG
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:767:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:768:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:769:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:770:warning: override: reassigning to symbol PSTORE_PMSG
+#
+# configuration written to .config
+#
+  GEN     ./Makefile
+scripts/kconfig/conf  --silentoldconfig Kconfig
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+../net/Makefile:24: CC cannot link executables. Skipping bpfilter.
+-- KDIR: 
+-- MDIR: /home/runner/work/Kernel/Kernel/KernelSU/kernel
+-- KernelSU Manager package name: me.weishu.kernelsu
+-- KernelSU Manager signature size: 0x033b
+-- KernelSU Manager signature hash: c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6
+-- KernelSU/compat: iterate_dir found!
+-- KernelSU/compat: f_op->read_iter found!
+  Using .. as source for kernel
+  WRAP    arch/arm64/include/generated/asm/bugs.h
+  WRAP    arch/arm64/include/generated/asm/clkdev.h
+  WRAP    arch/arm64/include/generated/asm/delay.h
+  WRAP    arch/arm64/include/generated/asm/div64.h
+  WRAP    arch/arm64/include/generated/asm/dma.h
+  WRAP    arch/arm64/include/generated/asm/dma-contiguous.h
+  WRAP    arch/arm64/include/generated/asm/early_ioremap.h
+  WRAP    arch/arm64/include/generated/asm/emergency-restart.h
+  WRAP    arch/arm64/include/generated/asm/hw_irq.h
+  WRAP    arch/arm64/include/generated/asm/irq_regs.h
+  WRAP    arch/arm64/include/generated/asm/kdebug.h
+  WRAP    arch/arm64/include/generated/asm/kmap_types.h
+  WRAP    arch/arm64/include/generated/asm/local.h
+  WRAP    arch/arm64/include/generated/asm/local64.h
+  WRAP    arch/arm64/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/arm64/include/generated/asm/mm-arch-hooks.h
+  WRAP    arch/arm64/include/generated/asm/msi.h
+  WRAP    arch/arm64/include/generated/asm/preempt.h
+  WRAP    arch/arm64/include/generated/asm/qrwlock.h
+  WRAP    arch/arm64/include/generated/asm/rwsem.h
+  WRAP    arch/arm64/include/generated/asm/segment.h
+  WRAP    arch/arm64/include/generated/asm/serial.h
+  WRAP    arch/arm64/include/generated/asm/set_memory.h
+  WRAP    arch/arm64/include/generated/asm/sizes.h
+  WRAP    arch/arm64/include/generated/asm/switch_to.h
+  WRAP    arch/arm64/include/generated/asm/trace_clock.h
+  WRAP    arch/arm64/include/generated/asm/unaligned.h
+  WRAP    arch/arm64/include/generated/asm/user.h
+  WRAP    arch/arm64/include/generated/asm/vga.h
+  WRAP    arch/arm64/include/generated/asm/xor.h
+  LDS     scripts/module-lto.lds
+  HOSTCC  scripts/dtc/dtc.o
+  HOSTCC  scripts/genksyms/genksyms.o
+  HOSTCC  scripts/dtc/flattree.o
+  CC      kernel/bounds.s
+  CHK     include/generated/timeconst.h
+  UPD     include/generated/timeconst.h
+  HOSTCC  scripts/dtc/fstree.o
+  HOSTCC  scripts/dtc/data.o
+  SHIPPED scripts/genksyms/parse.tab.c
+  HOSTCC  scripts/dtc/livetree.o
+  SHIPPED scripts/genksyms/lex.lex.c
+  SHIPPED scripts/genksyms/parse.tab.h
+  HOSTCC  scripts/genksyms/parse.tab.o
+  CC      scripts/mod/empty.o
+  HOSTCC  scripts/mod/mk_elfconfig
+  CHK     include/generated/bounds.h
+  UPD     include/generated/bounds.h
+  CC      arch/arm64/kernel/asm-offsets.s
+  CC      scripts/mod/devicetable-offsets.s
+  MKELF   scripts/mod/elfconfig.h
+  CHK     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/genksyms/lex.lex.o
+  UPD     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/mod/sumversion.o
+  HOSTCC  scripts/dtc/treesource.o
+  HOSTCC  scripts/mod/modpost.o
+../scripts/mod/modpost.c: In function ‘match’:
+../scripts/mod/modpost.c:811:30: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  811 |                         here = strstr(sym, bare);
+      |                              ^
+  CHK     include/generated/asm-offsets.h
+  UPD     include/generated/asm-offsets.h
+  CALL    ../scripts/checksyscalls.sh
+  HOSTCC  scripts/dtc/srcpos.o
+  HOSTCC  scripts/selinux/genheaders/genheaders
+  HOSTCC  scripts/dtc/checks.o
+  HOSTLD  scripts/genksyms/genksyms
+  HOSTCC  scripts/selinux/mdp/mdp
+  HOSTCC  scripts/mod/file2alias.o
+  LDS     arch/arm64/kernel/vdso/vdso.lds
+  VDSOA   arch/arm64/kernel/vdso/gettimeofday.o
+  VDSOA   arch/arm64/kernel/vdso/note.o
+  VDSOA   arch/arm64/kernel/vdso/sigreturn.o
+  HOSTCC  scripts/dtc/util.o
+  LD      arch/arm64/kernel/vdso/vdso.so.dbg
+  HOSTCC  scripts/kallsyms
+  HOSTLD  scripts/mod/modpost
+  SHIPPED scripts/dtc/dtc-lexer.lex.c
+  SHIPPED scripts/dtc/dtc-parser.tab.h
+  SHIPPED scripts/dtc/dtc-parser.tab.c
+  HOSTCC  scripts/pnmtologo
+  HOSTCC  scripts/dtc/dtc-lexer.lex.o
+  HOSTCC  scripts/conmakehash
+  HOSTCC  scripts/dtc/dtc-parser.tab.o
+  HOSTCC  scripts/sortextable
+  VDSOSYM include/generated/vdso-offsets.h
+  HOSTCC  scripts/asn1_compiler
+  HOSTCC  scripts/extract-cert
+  HOSTLD  scripts/dtc/dtc
+  CC      init/main.o
+  CHK     include/generated/compile.h
+  CC      init/do_mounts.o
+  UPD     include/generated/compile.h
+  CC      init/do_mounts_rd.o
+  HOSTCC  usr/gen_init_cpio
+  GEN     usr/initramfs_data.cpio
+  AS      usr/initramfs_data.o
+In file included from ../usr/initramfs_data.S:26:
+../include/asm-generic/vmlinux.lds.h:78:9: warning: 'SDATA_MAIN' macro redefined [-Wmacro-redefined]
+   78 | #define SDATA_MAIN .sdata .sdata.[0-9a-zA-Z_]* .sdata..compoundliteral* .sdata..L* .sdata..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:74:9: note: previous definition is here
+   74 | #define SDATA_MAIN .sdata .sdata.[0-9a-zA-Z_]*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:79:9: warning: 'RODATA_MAIN' macro redefined [-Wmacro-redefined]
+   79 | #define RODATA_MAIN .rodata .rodata.[0-9a-zA-Z_]* .rodata..compoundliteral* .rodata..L* .rodata..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:75:9: note: previous definition is here
+   75 | #define RODATA_MAIN .rodata .rodata.[0-9a-zA-Z_]*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:81:9: warning: 'SBSS_MAIN' macro redefined [-Wmacro-redefined]
+   81 | #define SBSS_MAIN .sbss .sbss.[0-9a-zA-Z_]* .sbss..compoundliteral* .sbss..L* .sbss..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:76:9: note: previous definition is here
+   76 | #define SBSS_MAIN .sbss .sbss.[0-9a-zA-Z_]*
+      |         ^
+3 warnings generated.
+  AR      usr/built-in.a
+  CC      init/do_mounts_initrd.o
+  CC      init/do_mounts_dm.o
+  CC      arch/arm64/kernel/debug-monitors.o
+  AS      arch/arm64/kernel/entry.o
+  CC      arch/arm64/mm/dma-mapping.o
+  CC      init/noinitramfs.o
+  CC      arch/arm64/kernel/irq.o
+  CC      arch/arm64/mm/extable.o
+  CC      arch/arm64/kernel/fpsimd.o
+  CC      arch/arm64/net/bpf_jit_comp.o
+  CC      init/initramfs.o
+  AS      arch/arm64/kernel/entry-fpsimd.o
+  CC      init/calibrate.o
+  CC      arch/arm64/mm/fault.o
+  CC      arch/arm64/kernel/process.o
+  AR      arch/arm64/net/built-in.a
+  CC      init/init_task.o
+  CC      arch/arm64/crypto/sha1-ce-glue.o
+  CC      arch/arm64/mm/init.o
+  AS      arch/arm64/crypto/sha1-ce-core.o
+  CC      init/version.o
+  CC      arch/arm64/crypto/sha2-ce-glue.o
+  CC      arch/arm64/kernel/ptrace.o
+  AR      init/mounts.o
+  AR      init/built-in.a
+  AS      arch/arm64/mm/cache.o
+  AS      arch/arm64/crypto/sha2-ce-core.o
+  CC      arch/arm64/mm/copypage.o
+  CC      arch/arm64/crypto/ghash-ce-glue.o
+  CC      kernel/fork.o
+  CC      arch/arm64/kernel/setup.o
+  CC      arch/arm64/mm/flush.o
+  AS      arch/arm64/crypto/ghash-ce-core.o
+  AS      arch/arm64/crypto/aes-ce-core.o
+  CC      arch/arm64/crypto/aes-ce-glue.o
+../kernel/fork.c:2260:2: error: must use 'struct' tag to refer to type 'pid'
+ 2260 |         pid = get_task_pid(p, PIDTYPE_PID);
+      |         ^
+      |         struct 
+../kernel/fork.c:2260:6: error: expected identifier or '('
+ 2260 |         pid = get_task_pid(p, PIDTYPE_PID);
+      |             ^
+../kernel/fork.c:2261:15: error: use of undeclared identifier 'pid'
+ 2261 |         nr = pid_vnr(pid);
+      |                      ^~~
+../kernel/fork.c:2270:21: error: implicitly declaring library function 'vfork' with type 'int (void)' [-Werror,-Wimplicit-function-declaration]
+ 2270 |                         p->vfork_done = &vfork;
+      |                                          ^
+../kernel/fork.c:2270:21: note: include the header <unistd.h> or explicitly provide a declaration for 'vfork'
+../kernel/fork.c:2270:18: error: incompatible pointer types assigning to 'struct completion *' from 'int (*)(void)' [-Werror,-Wincompatible-pointer-types]
+ 2270 |                         p->vfork_done = &vfork;
+      |                                       ^ ~~~~~~
+../kernel/fork.c:2271:20: error: incompatible pointer types passing 'int (*)(void)' to parameter of type 'struct completion *' [-Werror,-Wincompatible-pointer-types]
+ 2271 |                         init_completion(&vfork);
+      |                                         ^~~~~~
+../include/linux/completion.h:62:46: note: expanded from macro 'init_completion'
+   62 | #define init_completion(x) __init_completion(x)
+      |                                              ^
+../include/linux/completion.h:117:57: note: passing argument to parameter 'x' here
+  117 | static inline void __init_completion(struct completion *x)
+      |                                                         ^
+../kernel/fork.c:2279:28: error: use of undeclared identifier 'pid'
+ 2279 |                         ptrace_event_pid(trace, pid);
+      |                                                 ^~~
+../kernel/fork.c:2282:32: error: incompatible pointer types passing 'int (*)(void)' to parameter of type 'struct completion *' [-Werror,-Wincompatible-pointer-types]
+ 2282 |                         if (!wait_for_vfork_done(p, &vfork))
+      |                                                     ^~~~~~
+../kernel/fork.c:1129:24: note: passing argument to parameter 'vfork' here
+ 1129 |                                 struct completion *vfork)
+      |                                                    ^
+../kernel/fork.c:2283:47: error: use of undeclared identifier 'pid'
+ 2283 |                                 ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+      |                                                                           ^~~
+../kernel/fork.c:2286:11: error: use of undeclared identifier 'pid'
+ 2286 |                 put_pid(pid);
+      |                         ^~~
+../kernel/fork.c:2287:4: error: expected identifier or '('
+ 2287 |         } else {
+      |           ^
+../kernel/fork.c:2291:2: error: type specifier missing, defaults to 'int' [-Werror,-Wimplicit-int]
+ 2291 |         wake_up_new_task(p);
+      |         ^
+      |         int
+../kernel/fork.c:2291:19: error: a parameter list without types is only allowed in a function definition
+ 2291 |         wake_up_new_task(p);
+      |                          ^
+../kernel/fork.c:2294:2: error: expected identifier or '('
+ 2294 |         if (unlikely(trace))
+      |         ^
+../kernel/fork.c:2297:2: error: expected identifier or '('
+ 2297 |         if (clone_flags & CLONE_VFORK) {
+      |         ^
+../kernel/fork.c:2302:2: error: type specifier missing, defaults to 'int' [-Werror,-Wimplicit-int]
+ 2302 |         put_pid(pid);
+      |         ^
+      |         int
+../kernel/fork.c:2302:10: error: a parameter list without types is only allowed in a function definition
+ 2302 |         put_pid(pid);
+      |                 ^
+../kernel/fork.c:2303:2: error: expected identifier or '('
+ 2303 |         return nr;
+      |         ^
+../kernel/fork.c:2304:1: error: extraneous closing brace ('}')
+ 2304 | }
+      | ^
+19 errors generated.
+  CC      arch/arm64/mm/ioremap.o
+make[2]: *** [../scripts/Makefile.build:364: kernel/fork.o] Error 1
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1286: kernel] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  CC      arch/arm64/crypto/aes-ce-ccm-glue.o
+  CC      arch/arm64/kernel/signal.o
+  CC      arch/arm64/mm/mmap.o
+  AS      arch/arm64/crypto/aes-ce-ccm-core.o
+  CC      arch/arm64/kernel/sys.o
+  CC      arch/arm64/mm/pgd.o
+  CC      arch/arm64/crypto/aes-glue-ce.o
+  AS      arch/arm64/crypto/aes-ce.o
+  CC      arch/arm64/mm/mmu.o
+  CC      arch/arm64/kernel/stacktrace.o
+  CC      arch/arm64/crypto/aes-glue-neon.o
+  CC      arch/arm64/mm/context.o
+  CC      arch/arm64/kernel/time.o
+  AS      arch/arm64/crypto/aes-neon.o
+  AS      arch/arm64/mm/proc.o
+  CC      arch/arm64/mm/pageattr.o
+  CC      arch/arm64/crypto/sha256-glue.o
+  CC      arch/arm64/kernel/traps.o
+  SHIPPED arch/arm64/crypto/sha256-core.S
+  CC      arch/arm64/kernel/io.o
+  AR      arch/arm64/mm/built-in.a
+  AS      arch/arm64/crypto/aes-cipher-core.o
+  CC      arch/arm64/kernel/vdso.o
+  CC      arch/arm64/crypto/aes-cipher-glue.o
+  AS      arch/arm64/kernel/hyp-stub.o
+  CC      arch/arm64/kernel/psci.o
+  CC      arch/arm64/kernel/cpu_ops.o
+  AR      arch/arm64/crypto/sha1-ce.o
+  CC      arch/arm64/kernel/insn.o
+  AR      arch/arm64/crypto/sha2-ce.o
+  CC      arch/arm64/kernel/return_address.o
+  AR      arch/arm64/crypto/ghash-ce.o
+  AR      arch/arm64/crypto/aes-ce-cipher.o
+  AR      arch/arm64/crypto/aes-ce-ccm.o
+  AR      arch/arm64/crypto/aes-ce-blk.o
+  AR      arch/arm64/crypto/aes-neon-blk.o
+  AS      arch/arm64/crypto/sha256-core.o
+  AR      arch/arm64/crypto/aes-arm64.o
+  CC      arch/arm64/kernel/cpuinfo.o
+  AR      arch/arm64/crypto/sha256-arm64.o
+  AR      arch/arm64/crypto/built-in.a
+  CC      arch/arm64/kernel/cpu_errata.o
+  CC      arch/arm64/kernel/cpufeature.o
+  CC      arch/arm64/kernel/alternative.o
+  CC      arch/arm64/kernel/cacheinfo.o
+  CC      arch/arm64/kernel/smp.o
+  CC      arch/arm64/kernel/smp_spin_table.o
+  CC      arch/arm64/kernel/topology.o
+  AS      arch/arm64/kernel/smccc-call.o
+  CC      arch/arm64/kernel/sys32.o
+  AS      arch/arm64/kernel/kuser32.o
+  CC      arch/arm64/kernel/signal32.o
+  CC      arch/arm64/kernel/sys_compat.o
+  AS      arch/arm64/kernel/entry32.o
+  CC      arch/arm64/kernel/arm64ksyms.o
+  CC      arch/arm64/kernel/module.o
+  CC      arch/arm64/kernel/module-plts.o
+  CC      arch/arm64/kernel/perf_regs.o
+  CC      arch/arm64/kernel/perf_callchain.o
+  CC      arch/arm64/kernel/perf_event.o
+  CC      arch/arm64/kernel/hw_breakpoint.o
+  AS      arch/arm64/kernel/sleep.o
+  CC      arch/arm64/kernel/suspend.o
+  CC      arch/arm64/kernel/cpuidle.o
+  CC      arch/arm64/kernel/jump_label.o
+  CC      arch/arm64/kernel/armv8_deprecated.o
+  CC      arch/arm64/kernel/kaslr.o
+  CC      arch/arm64/kernel/ssbd.o
+  CC      arch/arm64/kernel/scs.o
+  CC      arch/arm64/kernel/probes/uprobes.o
+  OBJCOPY arch/arm64/kernel/vdso/vdso.so
+  AS      arch/arm64/kernel/head.o
+  AS      arch/arm64/kernel/vdso/vdso.o
+  LDS     arch/arm64/kernel/vmlinux.lds
+In file included from ../arch/arm64/kernel/vmlinux.lds.S:8:
+../include/asm-generic/vmlinux.lds.h:78:9: warning: 'SDATA_MAIN' macro redefined [-Wmacro-redefined]
+   78 | #define SDATA_MAIN .sdata .sdata.[0-9a-zA-Z_]* .sdata..compoundliteral* .sdata..L* .sdata..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:74:9: note: previous definition is here
+   74 | #define SDATA_MAIN .sdata .sdata.[0-9a-zA-Z_]*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:79:9: warning: 'RODATA_MAIN' macro redefined [-Wmacro-redefined]
+   79 | #define RODATA_MAIN .rodata .rodata.[0-9a-zA-Z_]* .rodata..compoundliteral* .rodata..L* .rodata..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:75:9: note: previous definition is here
+   75 | #define RODATA_MAIN .rodata .rodata.[0-9a-zA-Z_]*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:81:9: warning: 'SBSS_MAIN' macro redefined [-Wmacro-redefined]
+   81 | #define SBSS_MAIN .sbss .sbss.[0-9a-zA-Z_]* .sbss..compoundliteral* .sbss..L* .sbss..L_MergedGlobals*
+      |         ^
+../include/asm-generic/vmlinux.lds.h:76:9: note: previous definition is here
+   76 | #define SBSS_MAIN .sbss .sbss.[0-9a-zA-Z_]*
+      |         ^
+3 warnings generated.
+  CC      arch/arm64/kernel/probes/decode-insn.o
+  CC      arch/arm64/kernel/probes/simulate-insn.o
+  AR      arch/arm64/kernel/vdso/built-in.a
+  AR      arch/arm64/kernel/probes/built-in.a
+  AR      arch/arm64/kernel/built-in.a
+make: *** [Makefile:151: sub-make] Error 2
+ Kernel build failed (make exit code 2)
