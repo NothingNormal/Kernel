@@ -56,7 +56,12 @@ out:
 }
 #endif
 
+#if !defined(CONFIG_KSU_SUSFS) || !defined(CONFIG_KSU_SUSFS_TRY_UMOUNT)
 static inline void try_umount(const char *mnt, int flags)
+#else
+/* non-static so fs/susfs.c can drive the user-defined umount list */
+void try_umount(const char *mnt, int flags)
+#endif
 {
 	struct path path;
 	int err = kern_path(mnt, 0, &path);

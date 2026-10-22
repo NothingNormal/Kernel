@@ -36,7 +36,15 @@
 #include <linux/fsnotify.h>
 #include <linux/lockdep.h>
 #include <linux/user_namespace.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include <linux/susfs_def.h>
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include "internal.h"
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern bool susfs_is_current_ksu_domain(void);
+extern bool susfs_is_sdcard_android_data_decrypted;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
 
 static LIST_HEAD(super_blocks);
@@ -977,6 +985,29 @@ int get_anon_bdev(dev_t *p)
  retry:
 	if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)
 		return -ENOMEM;
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	/* mounts created by the KSU domain before /data decryption get a
+	 * high minor so susfs can fake contiguous mnt ids later on.
+	 * Legacy-ida (4.14) adaptation of the upstream ida_alloc_range()
+	 * variant; unnamed_dev_start is deliberately left untouched. */
+	if (!READ_ONCE(susfs_is_sdcard_android_data_decrypted) && susfs_is_current_ksu_domain()) {
+		spin_lock(&unnamed_dev_lock);
+		error = ida_get_new_above(&unnamed_dev_ida, DEFAULT_KSU_MNT_MINOR_DEV, &dev);
+		spin_unlock(&unnamed_dev_lock);
+		if (error == -EAGAIN)
+			goto retry;
+		else if (error)
+			return -EAGAIN;
+		if (dev >= (1 << MINORBITS)) {
+			spin_lock(&unnamed_dev_lock);
+			ida_remove(&unnamed_dev_ida, dev);
+			spin_unlock(&unnamed_dev_lock);
+			return -EMFILE;
+		}
+		*p = MKDEV(0, dev & MINORMASK);
+		return 0;
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	spin_lock(&unnamed_dev_lock);
 	error = ida_get_new_above(&unnamed_dev_ida, unnamed_dev_start, &dev);
 	if (!error)

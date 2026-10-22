@@ -20,3 +20,23 @@ KernelSU (kernel-side driver) — vendored snapshot
                                          sys_reboot; no kprobes, no manual
                                          fs/*.c hooks; upstream recommends
                                          this mode for 3.0 - 4.14)
+
+## SuSFS integration (added on top of vendor snapshot)
+
+- fs/susfs.c + include/linux/susfs{,_def}.h: SuSFS v2.3.0 ported from
+  crDroid xiaomi sm8150 (branch 16.0, susfs4ksu-next line) -- the only
+  live 4.14-class reference carrying v2.3.0 with backslashxx-style KSU.
+- 18 kernel hook sites wired (namei, readdir, open, namespace, statfs,
+  stat, super, proc/{base,cmdline,fd,task_mmu}, proc_namespace, shmem,
+  memory, kallsyms, sys, avc) adapted to CAF/MSM 4.14.357 divergences
+  (legacy mnt_id ida, task_mmu show_map_vma is_pid arg, MSM stat, etc).
+- KSU glue mirrors crDroid reference: ksu.c susfs_init, supercall
+  SUSFS_MAGIC routing (MEMFD double-return bug fixed), dispatch
+  boot monitor + MARK_GET variant, setuid_hook susfs umount gating
+  (adapted to cred-based ksu_handle_setresuid_cred; task_work leak in
+  crDroid's ksu_handle_extra_susfs_work fixed), kernel_umount
+  try_umount exported, selinux.{c,h} sid helpers, rules.c sid capture,
+  Kconfig "KernelSU - SUSFS" menu, Makefile SUSFS_VERSION banner.
+- defconfig: CONFIG_KSU_SUSFS=y + all features except SUS_MEMFD.
+- uapi/: backslashxx KernelSU root uapi headers (for custom manager
+  builds; stock APK v3.3.1+22 needs nothing from here).

@@ -72,6 +72,12 @@
 #include "selinux/selinux.h"
 #include "selinux/sepolicy.h"
 
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#include <linux/susfs_def.h>
+#include <linux/workqueue.h>
+#endif
+
 #ifdef CONFIG_KSU_DISABLE_32BIT_HOOKS
 #undef CONFIG_COMPAT
 #endif
@@ -285,6 +291,11 @@ static int __init kernelsu_init(void)
 
 	ksu_allowlist_init();
 	ksu_throne_tracker_init();
+
+#ifdef CONFIG_KSU_SUSFS
+	susfs_init();
+#endif // #ifdef CONFIG_KSU_SUSFS
+
 	ksu_ksud_init();
 	ksu_file_wrapper_init();
 	ksu_preinit_init();
