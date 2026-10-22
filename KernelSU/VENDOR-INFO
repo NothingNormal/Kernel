@@ -1,0 +1,22 @@
+KernelSU (kernel-side driver) — vendored snapshot
+
+  source   : https://github.com/backslashxx/KernelSU
+  branch   : master
+  commit   : 709711bd91f2c9098bd35dc9036291ba8863a276 ("KernelSU v3.3.1+")
+  upstream commit date : 2026-08-17
+  vendored on          : 2026-10-22
+
+  layout   : only KernelSU/kernel/ is vendored (the kernel driver);
+             manager/userspace are not needed to build the kernel.
+
+  wiring (mirrors upstream kernel/setup.sh):
+    drivers/kernelsu -> ../KernelSU/kernel        (symlink)
+    drivers/Makefile : obj-$(CONFIG_KSU) += kernelsu/
+    drivers/Kconfig  : source "drivers/kernelsu/Kconfig"
+
+  hook mode for this 4.14 non-GKI tree:
+    CONFIG_KSU=y
+    CONFIG_KSU_TAMPER_SYSCALL_TABLE=y   (sys_call_table hijack for sucompat +
+                                         sys_reboot; no kprobes, no manual
+                                         fs/*.c hooks; upstream recommends
+                                         this mode for 3.0 - 4.14)
