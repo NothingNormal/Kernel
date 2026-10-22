@@ -27,7 +27,7 @@ struct uts_namespace init_uts_ns = {
 	.name = {
 		.sysname	= UTS_SYSNAME,
 		.nodename	= UTS_NODENAME,
-		.release	= "5.10.362-SIXFACED-ABYSS",
+		.release	= "5.10.362-SIXFACED",
 		.version	= UTS_VERSION,
 		.machine	= UTS_MACHINE,
 		.domainname	= UTS_DOMAINNAME,
@@ -42,7 +42,7 @@ EXPORT_SYMBOL_GPL(init_uts_ns);
 
 /* FIXED STRINGS! Don't touch! */
 const char linux_banner[] =
-	"Linux version 5.10.362-SIXFACED-ABYSS  (" LINUX_COMPILE_BY "@"
+	"Linux version 5.10.362-SIXFACED  (" LINUX_COMPILE_BY "@"
 	LINUX_COMPILE_HOST ") (" LINUX_COMPILER ") " UTS_VERSION "\n";
 
 const char linux_proc_banner[] =
