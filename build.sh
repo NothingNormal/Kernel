@@ -16,17 +16,52 @@ export KBUILD_BUILD_USER="unknown"
 # vDSO (vdso32 removed), so no arm32 GCC cross is needed either.
 # CROSS_COMPILE is kept ONLY so kbuild derives the clang --target
 # triple; no $(CROSS_COMPILE)* binary is ever invoked.
-# Prefer system clang (CI / apt.llvm.org); fall back to the Neutron
-# prebuilt clone for local builds without a system toolchain.
-if [ -x /usr/bin/clang ] && [ -x /usr/bin/ld.lld ]; then
-TOOLCHAIN_BIN=/usr/bin
+#
+# Primary: Neutron Clang — LLVM built with PGO + BOLT + LTO + O3 and
+# Polly bundled, specifically tuned for kernel compilation (the
+# compiler binary itself is profile-optimized, so it also compiles
+# faster than a generic distro clang). Pinned release tag for
+# reproducible builds; override with NEUTRON_TAG / NEUTRON_DIR env.
+# Fallback: system LLVM (apt / apt.llvm.org) if the download or the
+# toolchain sanity check fails, so a Neutron outage can never break CI.
+NEUTRON_TAG="${NEUTRON_TAG:-06092026}"
+NEUTRON_DIR="${NEUTRON_DIR:-$HOME/neutron-clang}"
+TOOLCHAIN_BIN=""
+if [ -x "${NEUTRON_DIR}/bin/clang" ]; then
+    TOOLCHAIN_BIN="${NEUTRON_DIR}/bin"
 else
-clangbin=clang/bin/clang
-if ! [ -a $clangbin ]; then git clone --depth=1 https://bitbucket.org/nothinghere69/neutron.git clang
+    rm -rf "${NEUTRON_DIR}"; mkdir -p "${NEUTRON_DIR}"
+    NEUTRON_URL="https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/${NEUTRON_TAG}/neutron-clang-${NEUTRON_TAG}.tar.zst"
+    NEUTRON_TAR="/tmp/neutron-clang-${NEUTRON_TAG}.tar.zst"
+    echo "Downloading Neutron Clang ${NEUTRON_TAG} ..."
+    if { command -v curl >/dev/null 2>&1 && curl -fL --retry 3 --connect-timeout 20 -o "${NEUTRON_TAR}" "${NEUTRON_URL}"; } \
+       || wget -q --tries=3 -O "${NEUTRON_TAR}" "${NEUTRON_URL}"; then
+        if tar --use-compress-program=unzstd -xf "${NEUTRON_TAR}" -C "${NEUTRON_DIR}" 2>/dev/null \
+           || tar -I zstd -xf "${NEUTRON_TAR}" -C "${NEUTRON_DIR}"; then
+            rm -f "${NEUTRON_TAR}"
+            if [ -x "${NEUTRON_DIR}/bin/clang" ]; then
+                TOOLCHAIN_BIN="${NEUTRON_DIR}/bin"
+            else
+                # tarball may nest everything under a top-level dir
+                NEUTRON_CC=$(find "${NEUTRON_DIR}" -maxdepth 4 -type f -name clang -path '*/bin/*' 2>/dev/null | head -1)
+                [ -n "${NEUTRON_CC}" ] && TOOLCHAIN_BIN=$(dirname "${NEUTRON_CC}")
+            fi
+        else
+            echo "WARNING: failed to extract Neutron tarball"
+        fi
+    else
+        echo "WARNING: failed to download Neutron Clang"
+    fi
 fi
-TOOLCHAIN_BIN="${PWD}/clang/bin"
+if [ -n "${TOOLCHAIN_BIN}" ] && [ -x "${TOOLCHAIN_BIN}/clang" ] && [ -x "${TOOLCHAIN_BIN}/ld.lld" ] && [ -x "${TOOLCHAIN_BIN}/llvm-ar" ]; then
+    echo "Using Neutron Clang toolchain: ${TOOLCHAIN_BIN}"
+elif [ -x /usr/bin/clang ] && [ -x /usr/bin/ld.lld ]; then
+    TOOLCHAIN_BIN=/usr/bin
+    echo "Neutron unavailable - falling back to system LLVM: ${TOOLCHAIN_BIN}"
+else
+    echo "ERROR: no usable LLVM toolchain found" >&2
+    exit 1
 fi
-echo "Using LLVM toolchain at: ${TOOLCHAIN_BIN}"
 "${TOOLCHAIN_BIN}/clang" --version | head -2
 
 # ccache compiler cache (no-op when ccache is not installed)
