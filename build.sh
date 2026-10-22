@@ -44,7 +44,7 @@ echo -e " Kernel Compile Successful"
 git clone --depth=1 https://github.com/arshad-jamil33/AnyKernel3.git -b Black AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
-zip -r9 BlackHole-V5-ABYSS-NON-KSU-miatoll-${TANGGAL}.zip *
+zip -r9 Sixfaced-V5-ABYSS-NON-KSU-miatoll-${TANGGAL}.zip *
 cd ../
 fi
 }
