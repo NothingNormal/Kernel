@@ -41,7 +41,12 @@ fi
 rm -rf AnyKernel
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig || { echo " Failed to generate .config"; exit 1; }
 export PATH="${TOOLCHAIN_BIN}:/usr/bin:/bin:$PATH"
-make -j$(nproc --all) O=out \
+# multithreaded gzip for Image.gz when pigz is available
+KGZIP_BIN=gzip
+command -v pigz >/dev/null 2>&1 && KGZIP_BIN=pigz
+# slight overcommit: clang jobs stall on I/O; +2 keeps the vCPUs saturated
+make -j$(( $(nproc --all) + 2 )) O=out \
+                      KGZIP=${KGZIP_BIN} \
                       ARCH=arm64 \
                       LLVM=1 \
                       LLVM_IAS=1 \

@@ -37,7 +37,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            clang lld llvm zip ccache bc bison flex libssl-dev libelf-dev lz4 lzop
+            clang lld llvm zip ccache pigz bc bison flex libssl-dev libelf-dev lz4 lzop
           echo "--- versions ---"
           clang --version | head -2
           ld.lld --version | head -1
