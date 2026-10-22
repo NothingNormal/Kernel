@@ -41,7 +41,7 @@ then
 echo  " Failed To Compile Kernel"
 else
 echo -e " Kernel Compile Successful"
-git clone --depth=1 https://github.com/arshad-jamil33/AnyKernel3.git -b Black AnyKernel
+cp -a AnyKernel3 AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
 zip -r9 Sixfaced-V5-NON-KSU-miatoll-${TANGGAL}.zip *
