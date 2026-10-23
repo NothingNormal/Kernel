@@ -792,3 +792,7 @@ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
 # CONFIG_KSU_SUSFS_SUS_MEMFD is not set
+#
+# NoMount VFS path redirection subsystem (keyring-controlled, root-only)
+#
+CONFIG_NOMOUNT=y
