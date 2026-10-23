@@ -179,9 +179,15 @@ static int __sys_poll(struct pollfd *fds, nfds_t nfds, int timeout_ms)
 }
 #define poll __sys_poll
 
+#ifndef __NR_init_module
 #define __NR_init_module	SYS_init_module
+#endif
+#ifndef __NR_finit_module
 #define __NR_finit_module	SYS_finit_module
+#endif
+#ifndef __NR_execveat
 #define __NR_execveat		SYS_execveat
+#endif
 
 struct __linux_dirent64 {
 	uint64_t	d_ino;
@@ -194,6 +200,7 @@ struct __linux_dirent64 {
 
 /* stdlib */
 
+#define isdigit(x) ((x) >= '0' && (x) <= '9')
 static noinline long dumb_atol(const char *str)
 {
 	long res = 0;
@@ -214,17 +221,77 @@ start:
 }
 #define atol dumb_atol
 
-static noinline int __strcmp(const char *s1, const char *s2)
+static unsigned long __strlen(const char *str)
 {
-	while (*s1) {
-		if (*s1 != *s2)
+	const char *s = str;
+	while (*s)
+		s++;
+	return s - str;
+}
+#define strlen __strlen
+
+// string functions taken from
+// https://elixir.bootlin.com/linux/v7.3/source/lib/string.c
+static noinline int __strcmp(const char *cs, const char *ct)
+{
+	unsigned char c1, c2;
+	while (1) {
+		c1 = *cs++;
+		c2 = *ct++;
+		if (c1 != c2)
+			return c1 < c2 ? -1 : 1;
+		if (!c1)
 			break;
-		s1++;
-		s2++;	
 	}
-	return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+	return 0;
 }
 #define strcmp __strcmp
+
+static noinline char *__strchr(const char *s, int c)
+{
+	for (; *s != (char)c; ++s)
+		if (*s == '\0')
+			return NULL;
+	return (char *)s;
+}
+#define strchr __strchr
+
+static noinline char *__strcpy(char *dest, const char *src)
+{
+	char *tmp = dest;
+	while ((*dest++ = *src++) != '\0')
+		/* nothing */;
+	return tmp;
+}
+#define strcpy __strcpy
+
+static char *__strstr(const char *s1, const char *s2)
+{
+	size_t l1, l2;
+
+	l2 = strlen(s2);
+	if (!l2)
+		return (char *)s1;
+	l1 = strlen(s1);
+	while (l1 >= l2) {
+		l1--;
+		const char *a = s1;
+		const char *b = s2;
+		/* manual memcmp loop, needle always have null term, use it */
+		while (*a == *b && *b) {
+			a++;
+			b++;
+		}
+		if (!*b) // needle hit null, its a match.
+			return (char *)s1;
+		s1++;
+	}
+	return NULL;
+}
+#define strstr __strstr
+
+#define memcpy __builtin_memcpy
+#define memcmp __builtin_memcmp
 
 /* buildinfo */
 

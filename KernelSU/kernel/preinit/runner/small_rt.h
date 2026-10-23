@@ -130,7 +130,7 @@ static long __syscall_gate(long n, long a, long b, long c, long d, long e, long 
 // usage: __syscall(SYS_getuid), __syscall(SYS_newuname, &buf)
 #define __syscall(...) __syscall_exp(__syscall_, __syscall_count_args(__VA_ARGS__))(__VA_ARGS__)
 
-extern int main(int argc, char **argv, char **envp);
+static int main(int argc, char **argv, char **envp);
 __attribute__((used))
 void prep_main(long *sp)
 {
