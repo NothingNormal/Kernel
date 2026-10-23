@@ -24,9 +24,16 @@ struct susfs_handle_setuid_tw {
 static void susfs_handle_setuid_tw_func(struct callback_head *cb)
 {
 	struct susfs_handle_setuid_tw *tw = container_of(cb, struct susfs_handle_setuid_tw, cb);
-	const struct cred *saved = override_creds(ksu_cred);
 
-	revert_creds(saved);
+	/* ksu_cred must be non-NULL here (only set after KSU init, long before
+	 * zygote spawns), but override_creds(NULL) would poison current->cred,
+	 * so guard it anyway.
+	 */
+	if (ksu_cred) {
+		const struct cred *saved = override_creds(ksu_cred);
+
+		revert_creds(saved);
+	}
 	kfree(tw);
 }
 

@@ -197,8 +197,11 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
 	if (unlikely(tsid == susfs_ksu_sid && susfs_is_avc_log_spoofing_enabled)) {
 		if (rc)
 			audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
-		else
+		else {
 			audit_log_format(ab, " tcontext=%s", "u:r:priv_app:s0:c512,c768");
+			/* don't leak the real context string on the spoof path */
+			kfree(scontext);
+		}
 		goto bypass_orig_flow;
 	}
 #endif

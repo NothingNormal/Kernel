@@ -65,6 +65,9 @@ void susfs_add_sus_path(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
 	info.err = kern_path(info.target_pathname, LOOKUP_FOLLOW, &path);
 	if (info.err) {
 		SUSFS_LOGE("failed opening file '%s'\n", info.target_pathname);
@@ -114,6 +117,9 @@ void susfs_add_sus_path_loop(void __user **user_info) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 	if (*info.target_pathname == '\0') {
 		SUSFS_LOGE("target_pathname cannot be empty\n");
@@ -370,6 +376,9 @@ void susfs_add_sus_kstat(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
 	if (*info.target_pathname == '\0') {
 		info.err = -EINVAL;
 		goto out_copy_to_user;
@@ -481,6 +490,9 @@ void susfs_update_sus_kstat(void __user **user_info) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 	new_entry = kzalloc(sizeof(struct st_susfs_sus_kstat_hlist), GFP_KERNEL);
 	if (!new_entry) {
@@ -719,6 +731,9 @@ void susfs_add_try_umount(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
 	if (info.mnt_mode == TRY_UMOUNT_DEFAULT) {
 		info.mnt_mode = 0;
 	} else if (info.mnt_mode == TRY_UMOUNT_DETACH) {
@@ -754,10 +769,17 @@ void susfs_try_umount(uid_t uid) {
 	struct st_susfs_try_umount_list *cursor = NULL;
 
 	// We should umount in reversed order
+	/* - Entries are appended under susfs_mutex_lock_try_umount by root while
+	 *   this runs on every zygote-spawn setuid; iterate under the same lock
+	 *   so a concurrent list_add_tail() cannot corrupt the walk. Entries are
+	 *   never removed, so sleeping inside (try_umount -> path ops) is safe.
+	 */
+	mutex_lock(&susfs_mutex_lock_try_umount);
 	list_for_each_entry_reverse(cursor, &LH_TRY_UMOUNT_PATH, list) {
 		SUSFS_LOGI("umounting '%s' for uid: %u\n", cursor->info.target_pathname, uid);
 		try_umount(cursor->info.target_pathname, cursor->info.mnt_mode);
 	}
+	mutex_unlock(&susfs_mutex_lock_try_umount);
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 
@@ -923,6 +945,10 @@ void susfs_add_open_redirect(void __user **user_info) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+
+	/* ensure the userspace pathnames are NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+	info.redirected_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
         if (*info.target_pathname == '\0') {
                 info.err = -EINVAL;
@@ -1205,6 +1231,9 @@ void susfs_add_sus_map(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
 	info.err = kern_path(info.target_pathname, LOOKUP_FOLLOW, &path);
 	if (info.err) {
 		SUSFS_LOGE("Failed opening file '%s'\n", info.target_pathname);
@@ -1244,6 +1273,9 @@ int susfs_add_sus_memfd(void __user **user_info) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+
+	/* ensure the userspace pathname is NUL-terminated */
+	info.target_pathname[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 	mutex_lock(&susfs_mutex_lock_sus_memfd);
 	list_for_each_entry(cursor, &LH_SUS_MEMFD, list) {

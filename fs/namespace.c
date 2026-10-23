@@ -1387,6 +1387,13 @@ bypass_orig_flow:
 	return mnt;
 
  out_free:
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	/* ksu-unshared clones re-use old->mnt_id without going through the ida,
+	 * so removing it here would corrupt the ida and hand out duplicate
+	 * mnt_ids (the reused id still belongs to the live 'old' mount).
+	 */
+	if (!is_mnt_ksu_unshared)
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	mnt_free_id(mnt);
 	free_vfsmnt(mnt);
 	return ERR_PTR(err);
