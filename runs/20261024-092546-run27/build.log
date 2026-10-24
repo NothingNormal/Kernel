@@ -1,0 +1,81 @@
+Downloading Neutron Clang 06092026 ...
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100 74.16M 100 74.16M   0      0 142.3M      0                              0100 74.16M 100 74.16M   0      0 142.2M      0                              0100 74.16M 100 74.16M   0      0 142.2M      0                              0
+Using Neutron Clang toolchain: /home/runner/neutron-clang/bin
+Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+Target: x86_64-unknown-linux-gnu
+ccache enabled: ccache version 4.12.3
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:165:warning: override: reassigning to symbol TCP_CONG_CUBIC
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:166:warning: override: reassigning to symbol TCP_CONG_BBR
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:759:warning: override: reassigning to symbol UTS_NS
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:761:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:762:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:763:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:764:warning: override: reassigning to symbol PSTORE_PMSG
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:767:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:768:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:769:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:770:warning: override: reassigning to symbol PSTORE_PMSG
+#
+# configuration written to .config
+#
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+scripts/kconfig/conf  --silentoldconfig Kconfig
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+../scripts/Makefile.modbuiltin:26: ../techpack/data/Makefile: No such file or directory
+make[3]: *** No rule to make target '../techpack/data/Makefile'.  Stop.
+make[2]: *** [../scripts/Makefile.modbuiltin:55: techpack/data] Error 2
+make[2]: *** Waiting for unfinished jobs....
+../net/Makefile:24: CC cannot link executables. Skipping bpfilter.
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1543: techpack/modules.builtin] Error 2
+make[1]: *** Waiting for unfinished jobs....
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   113 / 500 (22.60%)
+  Hits:             18 / 113 (15.93%)
+    Direct:         16 /  18 (88.89%)
+    Preprocessed:    2 /  18 (11.11%)
+  Misses:           95 / 113 (84.07%)
+Uncacheable calls: 387 / 500 (77.40%)
+Local storage:
+  Cache size (GB): 0.0 / 8.0 ( 0.01%)
+  Hits:             18 / 113 (15.93%)
+  Misses:           95 / 113 (84.07%)
+ Kernel build failed (make exit code 2)
