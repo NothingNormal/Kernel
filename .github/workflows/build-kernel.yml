@@ -197,15 +197,32 @@ jobs:
           echo "-- build outputs"
           ls -l out/vmlinux out/arch/arm64/boot/Image out/arch/arm64/boot/Image.gz 2>&1 || true
 
+          # exactly the nine features the sibling branch ships
           for sym in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUSFS \
                      CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
-                     CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_OPEN_REDIRECT \
-                     CONFIG_KSU_SUSFS_SUS_MAP CONFIG_KSU_SUSFS_SUS_MEMFD; do
+                     CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_SPOOF_UNAME \
+                     CONFIG_KSU_SUSFS_ENABLE_LOG \
+                     CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+                     CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+                     CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+                     CONFIG_KSU_SUSFS_SUS_MAP; do
             if grep -qx "$sym=y" out/.config; then
               echo "  ok   $sym=y"
             else
               echo "::error::$sym is not enabled in out/.config"
               fail=1
+            fi
+          done
+
+          # and these stay off on purpose: TRY_UMOUNT's supercall command
+          # (0x55580) is deprecated and KSU-Next has its own; SUS_MEMFD is
+          # experimental and defaults to n upstream.
+          for sym in CONFIG_KSU_SUSFS_TRY_UMOUNT CONFIG_KSU_SUSFS_SUS_MEMFD; do
+            if grep -qx "$sym=y" out/.config; then
+              echo "::error::$sym must stay off"
+              fail=1
+            else
+              echo "  ok   $sym off"
             fi
           done
 
