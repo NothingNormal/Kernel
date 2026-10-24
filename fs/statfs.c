@@ -94,7 +94,8 @@ extern int susfs_sus_kstat_spoof_vfs_statfs(struct inode *inode, struct kstatfs 
  * pre-computed spoofed kstatfs of the underlying mount instead of calling
  * the real ->statfs().
  */
-static int susfs_statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf, bool *is_fuse)
+static int susfs_statfs_by_dentry(struct dentry *dentry, struct vfsmount *mnt,
+				 struct kstatfs *buf, bool *is_fuse)
 {
 	int retval;
 
@@ -105,12 +106,23 @@ static int susfs_statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf, bo
 	retval = security_sb_statfs(dentry);
 	if (retval)
 		return retval;
-	if (!susfs_sus_kstat_spoof_vfs_statfs(d_backing_inode(dentry), buf, is_fuse))
-		goto bypass_orig_flow;
+	if (!susfs_sus_kstat_spoof_vfs_statfs(d_backing_inode(dentry), buf, is_fuse)) {
+		/*
+		 * spoofed_kstatfs already carries f_flags (captured on the non-sus
+		 * mount with susfs_calculate_f_flags()). Recalculating it here from
+		 * the real mount would hand out the mount flags of the sus mount
+		 * that actually backs the path - upstream 769e31fbe.
+		 */
+		if (buf->f_frsize == 0)
+			buf->f_frsize = buf->f_bsize;
+		return retval;
+	}
 	retval = dentry->d_sb->s_op->statfs(dentry, buf);
-bypass_orig_flow:
-	if (retval == 0 && buf->f_frsize == 0)
-		buf->f_frsize = buf->f_bsize;
+	if (retval == 0) {
+		buf->f_flags = calculate_f_flags(mnt);
+		if (buf->f_frsize == 0)
+			buf->f_frsize = buf->f_bsize;
+	}
 	return retval;
 }
 #endif // CONFIG_KSU_SUSFS_SUS_KSTAT
@@ -130,14 +142,17 @@ int vfs_statfs(const struct path *path, struct kstatfs *buf)
 		bool is_fuse = false;
 
 		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
-			error = susfs_statfs_by_dentry(path->dentry, buf, &is_fuse);
-			goto bypass_orig_flow;
+			/*
+			 * Do NOT fall through to bypass_orig_flow: it recomputes f_flags
+			 * from path->mnt and would overwrite the spoofed value.
+			 */
+			return susfs_statfs_by_dentry(path->dentry, path->mnt, buf, &is_fuse);
 		}
 	}
 #endif // CONFIG_KSU_SUSFS_SUS_KSTAT
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (likely(susfs_is_current_proc_umounted())) {
+	if (likely(susfs_is_current_proc_umounted() && path->mnt)) {
 		struct vfsmount *no_sus_vfsmnt = NULL;
 
 		no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path->mnt);

@@ -22,8 +22,14 @@
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
+extern void susfs_show_map_vma_spoofer(struct inode *inode, dev_t *out_dev,
+				       unsigned long *out_ino);
 extern void susfs_sus_kstat_spoof_inotify_fdinfo(unsigned long *out_target_ino, dev_t *out_target_dev);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
 #if defined(CONFIG_PROC_FS)
 
@@ -194,20 +200,40 @@ static void fanotify_fdinfo(struct seq_file *m, struct fsnotify_mark *mark)
 		mflags |= FAN_MARK_IGNORED_SURV_MODIFY;
 
 	if (mark->connector->flags & FSNOTIFY_OBJ_TYPE_INODE) {
+		unsigned long ino;
+		dev_t dev;
+		bool metadata_spoofed = false;
+
 		inode = igrab(mark->connector->inode);
 		if (!inode)
 			return;
+		ino = inode->i_ino;
+		dev = inode->i_sb->s_dev;
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		/* SUS_KSTAT covers app-uid processes, whether umounted or not. */
+		if (susfs_is_current_app_uid())
+			susfs_show_map_vma_spoofer(inode, &dev, &ino);
+		metadata_spoofed = ino != inode->i_ino || dev != inode->i_sb->s_dev;
+#endif
 		seq_printf(m, "fanotify ino:%lx sdev:%x mflags:%x mask:%x ignored_mask:%x ",
-			   inode->i_ino, inode->i_sb->s_dev,
-			   mflags, mark->mask, mark->ignored_mask);
-		show_mark_fhandle(m, inode);
+			   ino, dev, mflags, mark->mask, mark->ignored_mask);
+		/* a file handle encodes the real dev/ino, so never emit it spoofed */
+		if (!metadata_spoofed)
+			show_mark_fhandle(m, inode);
 		seq_putc(m, '\n');
 		iput(inode);
 	} else if (mark->connector->flags & FSNOTIFY_OBJ_TYPE_VFSMOUNT) {
 		struct mount *mnt = real_mount(mark->connector->mnt);
+		int mnt_id = mnt->mnt_id;
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+		/* hide the KSU-range mount id from an umounted process */
+		if (susfs_is_current_proc_umounted() &&
+		    mnt_id >= DEFAULT_KSU_MNT_ID)
+			mnt_id = susfs_get_non_sus_mnt_id_from_mnt(mnt);
+#endif
 		seq_printf(m, "fanotify mnt_id:%x mflags:%x mask:%x ignored_mask:%x\n",
-			   mnt->mnt_id, mflags, mark->mask, mark->ignored_mask);
+			   mnt_id, mflags, mark->mask, mark->ignored_mask);
 	}
 }
 

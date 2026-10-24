@@ -510,7 +510,14 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		ino = inode->i_ino;
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-		susfs_show_map_vma_spoofer(inode, &dev, &ino);
+		/*
+		 * SUS_KSTAT applies to app-uid processes (v2.3.0), the same gate
+		 * fs/stat.c and the fdinfo paths use. Without it root and other
+		 * non-app readers got spoofed dev/ino here while stat() on the very
+		 * same inode returned the truth.
+		 */
+		if (susfs_is_current_app_uid())
+			susfs_show_map_vma_spoofer(inode, &dev, &ino);
 #endif
 	}
 
@@ -2250,7 +2257,29 @@ static int show_numa_map(struct seq_file *m, void *v, int is_pid)
 
 	if (file) {
 		seq_puts(m, " file=");
-		seq_file_path(m, file, "\n\t= ");
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		/*
+		 * /proc/pid/numa_maps prints the vma's backing path straight from
+		 * file->f_path, so an open_redirect'd file leaked its real path
+		 * here even though /proc/pid/maps was spoofed.
+		 */
+		if (SUSFS_IS_INODE_OPEN_REDIRECT(file_inode(file))) {
+			char *spoofed_redirected_name = NULL;
+			unsigned long r_ino = 0;
+			dev_t r_dev = 0;
+			int srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
+
+			if (!susfs_open_redirect_spoof_show_map_vma_srcu(
+					file_inode(file), &r_ino, &r_dev,
+					&spoofed_redirected_name) &&
+			    spoofed_redirected_name)
+				seq_puts(m, spoofed_redirected_name);
+			else
+				seq_file_path(m, file, "\n\t= ");
+			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+		} else
+#endif
+			seq_file_path(m, file, "\n\t= ");
 	} else if (vma->vm_start <= mm->brk && vma->vm_end >= mm->start_brk) {
 		seq_puts(m, " heap");
 	} else if (is_stack(vma)) {

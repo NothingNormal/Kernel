@@ -2316,6 +2316,16 @@ static struct dentry *proc_map_files_lookup(struct inode *dir,
 	if (!vma)
 		goto out_no_vma;
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+	/*
+	 * readdir() is not the only way in: probing
+	 * /proc/<pid>/map_files/<start>-<end> by address still reached the
+	 * hidden file. Keep result = -ENOENT from the init above.
+	 */
+	if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+		goto out_no_vma;
+#endif
+
 	if (vma->vm_file)
 		result = proc_map_files_instantiate(dir, dentry, task,
 				(void *)(unsigned long)vma->vm_file->f_mode);
