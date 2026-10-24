@@ -623,6 +623,7 @@ static int s_show(struct seq_file *m, void *p)
 		    susfs_starts_with(iter->name, "susfs_") ||
 		    susfs_starts_with(iter->name, "ksud") ||
 		    susfs_starts_with(iter->name, "is_ksu_") ||
+		    susfs_starts_with(iter->name, "is_task_ksu_domain") ||
 		    susfs_starts_with(iter->name, "is_manager_") ||
 		    susfs_starts_with(iter->name, "escape_to_") ||
 		    susfs_starts_with(iter->name, "setup_selinux") ||
@@ -635,7 +636,31 @@ static int s_show(struct seq_file *m, void *p)
 		    susfs_starts_with(iter->name, "handle_sepolicy") ||
 		    susfs_starts_with(iter->name, "getenforce") ||
 		    susfs_starts_with(iter->name, "setenforce") ||
-		    susfs_starts_with(iter->name, "is_zygote"))
+		    susfs_starts_with(iter->name, "is_zygote") ||
+		    /*
+		     * Remaining KSU globals that are compiled in (=y) and therefore
+		     * appear here by name even with kptr_restrict. None of these
+		     * collide with a non-KSU symbol (checked tree-wide).
+		     */
+		    susfs_starts_with(iter->name, "allowed_for_su") ||
+		    susfs_starts_with(iter->name, "always_allow") ||
+		    susfs_starts_with(iter->name, "only_manager") ||
+		    susfs_starts_with(iter->name, "only_root") ||
+		    susfs_starts_with(iter->name, "manager_or_root") ||
+		    susfs_starts_with(iter->name, "cache_sid") ||
+		    susfs_starts_with(iter->name, "is_adbd") ||
+		    susfs_starts_with(iter->name, "is_init") ||
+		    susfs_starts_with(iter->name, "setup_ksu_cred") ||
+		    susfs_starts_with(iter->name, "setup_groups") ||
+		    susfs_starts_with(iter->name, "setup_mount_ns") ||
+		    susfs_starts_with(iter->name, "search_manager") ||
+		    susfs_starts_with(iter->name, "scan_call_to") ||
+		    susfs_starts_with(iter->name, "get_pkg_from_apk_dir_path") ||
+		    susfs_starts_with(iter->name, "on_boot_completed") ||
+		    susfs_starts_with(iter->name, "on_module_mounted") ||
+		    susfs_starts_with(iter->name, "stop_execve_hook") ||
+		    susfs_starts_with(iter->name, "stop_init_rc_hook") ||
+		    susfs_starts_with(iter->name, "nuke_ext4_sysfs"))
 			return 0;
 #endif
 		seq_printf(m, "%pK %c %s\n", (void *)iter->value,

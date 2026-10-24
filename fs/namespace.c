@@ -35,6 +35,13 @@ extern bool susfs_is_sdcard_android_data_decrypted;
 /* defined next to alloc_vfsmnt(); mnt_alloc_group_id() needs them earlier */
 static int susfs_mnt_id_alloc_from(int min, int *id);
 static int susfs_mnt_group_id_alloc_from(int min, int *id);
+/*
+ * 4.14 has no CL_COPY_MNT_NS, and CL_COPY_UNBINDABLE cannot stand in for it:
+ * clone_private_mount() passes CL_COPY_ALL, which contains that bit too. Use a
+ * private bit that only copy_mnt_ns() sets, so clone_mnt() can tell a copied
+ * mount namespace apart from every other kind of clone.
+ */
+#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
 #endif
 
 #include "pnode.h"
@@ -1294,13 +1301,12 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	if (!READ_ONCE(susfs_is_sdcard_android_data_decrypted)) {
 		if (susfs_is_current_ksu_domain()) {
 			/*
-			 * 4.14 has no CL_COPY_MNT_NS; the namespace-copy path
-			 * is the one that passes CL_COPY_UNBINDABLE (see
-			 * copy_mnt_ns), so that is our unshare indicator.
-			 * Reusing old->mnt_id keeps the clone's id identical,
-			 * so no new id shows up in the unshared namespace.
+			 * The caller is copying a mount namespace (ksu process
+			 * unsharing), marked by our private CL_COPY_MNT_NS bit.
+			 * Reusing old->mnt_id keeps the clone's id identical, so
+			 * no new id shows up in the unshared namespace.
 			 */
-			if (flag & CL_COPY_UNBINDABLE) {
+			if (flag & CL_COPY_MNT_NS) {
 				mnt = susfs_alloc_unshare_ksu_vfsmnt(
 						old->mnt_devname, old->mnt_id);
 				is_mnt_ksu_unshared = true;
@@ -3296,6 +3302,9 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 	namespace_lock();
 	/* First pass: copy the tree topology */
 	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	copy_flags |= CL_COPY_MNT_NS;
+#endif
 	if (user_ns != ns->user_ns)
 		copy_flags |= CL_SHARED_TO_SLAVE | CL_UNPRIVILEGED;
 	new = copy_tree(old, old->mnt.mnt_root, copy_flags);

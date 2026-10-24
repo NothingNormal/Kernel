@@ -988,14 +988,20 @@ int get_anon_bdev(dev_t *p)
 	 */
 	if (!READ_ONCE(susfs_is_sdcard_android_data_decrypted) &&
 	    susfs_is_current_ksu_domain()) {
+ retry_ksu:
 		if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)
 			return -ENOMEM;
 		spin_lock(&unnamed_dev_lock);
 		error = ida_get_new_above(&unnamed_dev_ida,
 					  DEFAULT_KSU_MNT_MINOR_DEV, &dev);
 		spin_unlock(&unnamed_dev_lock);
+		/*
+		 * Retry inside the KSU branch: falling through to the common
+		 * retry: below would allocate a normal minor and silently drop
+		 * the KSU marker this mount is supposed to carry.
+		 */
 		if (error == -EAGAIN)
-			goto retry;
+			goto retry_ksu;
 		if (error)
 			return -EMFILE;
 		*p = MKDEV(0, dev & MINORMASK);
