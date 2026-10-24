@@ -777,3 +777,7 @@ CONFIG_PSTORE_PMSG=y
 # drivers/input/input.c, guarded by CONFIG_KSU_MANUAL_HOOK.
 CONFIG_KSU=y
 CONFIG_KSU_MANUAL_HOOK=y
+# SUSFS v2.3.0 kernel-side addon; the sub-options default to y in
+# drivers/kernelsu/Kconfig, SUS_MEMFD is opt-in.
+CONFIG_KSU_SUSFS=y
+CONFIG_KSU_SUSFS_SUS_MEMFD=y

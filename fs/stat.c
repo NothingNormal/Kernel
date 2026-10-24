@@ -17,9 +17,18 @@
 #include <linux/syscalls.h>
 #include <linux/pagemap.h>
 #include <linux/compat.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#endif
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+extern bool susfs_is_current_app_uid(void);
+extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
+extern void susfs_generic_fillattr_spoofer(struct inode *inode, struct kstat *stat, u32 result_mask);
+#endif
 
 /**
  * generic_fillattr - Fill in the basic attributes from the inode struct
@@ -79,10 +88,59 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 	stat->result_mask |= STATX_BASIC_STATS;
 	request_mask &= STATX_ALL;
 	query_flags &= KSTAT_QUERY_FLAGS;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	/*
+	 * SUS_KSTAT applies to any app-uid process (uid % 100000 >= 10000),
+	 * whether or not it was umounted. Tag result_mask here; the actual
+	 * spoofing happens after ->getattr()/generic_fillattr().
+	 * 4.14's kstat has no mnt_id member, so upstream's mnt_id spoofing
+	 * is a no-op here and omitted.
+	 */
+	if (susfs_is_current_app_uid()) {
+		bool is_fuse = false;
+
+		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
+			if (!is_fuse)
+				stat->result_mask |= STATX_SUS_KSTAT;
+			else
+				stat->result_mask |= STATX_SUS_KSTAT_FUSE;
+		}
+	}
+#endif
+
 	if (inode->i_op->getattr)
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	{
+		int err = inode->i_op->getattr(path, stat, request_mask,
+					       query_flags);
+
+		if (!err) {
+			if (stat->result_mask & STATX_SUS_KSTAT)
+				susfs_generic_fillattr_spoofer(inode, stat, STATX_SUS_KSTAT);
+			else if (stat->result_mask & STATX_SUS_KSTAT_FUSE)
+				susfs_generic_fillattr_spoofer(inode, stat, STATX_SUS_KSTAT_FUSE);
+		}
+		/* never let our internal marks leak to userspace (stx_mask) */
+		stat->result_mask &= ~(STATX_SUS_KSTAT | STATX_SUS_KSTAT_FUSE);
+		return err;
+	}
+	if (stat->result_mask & STATX_SUS_KSTAT) {
+		generic_fillattr(inode, stat);
+		susfs_generic_fillattr_spoofer(inode, stat, STATX_SUS_KSTAT);
+		stat->result_mask &= ~(STATX_SUS_KSTAT | STATX_SUS_KSTAT_FUSE);
+		return 0;
+	}
+	if (stat->result_mask & STATX_SUS_KSTAT_FUSE) {
+		generic_fillattr(inode, stat);
+		susfs_generic_fillattr_spoofer(inode, stat, STATX_SUS_KSTAT_FUSE);
+		stat->result_mask &= ~(STATX_SUS_KSTAT | STATX_SUS_KSTAT_FUSE);
+		return 0;
+	}
+#else
 		return inode->i_op->getattr(path, stat, request_mask,
 					    query_flags);
-
+#endif
 	generic_fillattr(inode, stat);
 	return 0;
 }
