@@ -37,9 +37,10 @@ static int susfs_mnt_id_alloc_from(int min, int *id);
 static int susfs_mnt_group_id_alloc_from(int min, int *id);
 /*
  * 4.14 has no CL_COPY_MNT_NS, and CL_COPY_UNBINDABLE cannot stand in for it:
- * clone_private_mount() passes CL_COPY_ALL, which contains that bit too. Use a
- * private bit that only copy_mnt_ns() sets, so clone_mnt() can tell a copied
- * mount namespace apart from every other kind of clone.
+ * collect_mounts() (used only by kernel/audit_tree.c) passes CL_COPY_ALL,
+ * which carries that bit too, so its private clones were being taken for
+ * namespace copies. Use a private bit that only copy_mnt_ns() sets; the VFS
+ * uses nothing above 0x80 here.
  */
 #define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
 #endif
