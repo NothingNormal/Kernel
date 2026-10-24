@@ -208,11 +208,21 @@ jobs:
             fail=1
           fi
 
-          # and the strings must survive into the actual image
-          img=out/arch/arm64/boot/Image
-          [ -f "$img" ] || img=out/arch/arm64/boot/Image.gz
+          # and the symbols must survive into the linked kernel. vmlinux is
+          # uncompressed; Image.gz would need gunzip before grepping.
+          img=out/vmlinux
+          if [ ! -f "$img" ]; then
+            img=out/arch/arm64/boot/Image
+          fi
+          if [ ! -f "$img" ] && [ -f out/arch/arm64/boot/Image.gz ]; then
+            gunzip -c out/arch/arm64/boot/Image.gz > "$RUNNER_TEMP/Image.raw"
+            img="$RUNNER_TEMP/Image.raw"
+          fi
+
           if [ -f "$img" ]; then
-            for str in susfs_init SUSFS_ "kernelsu"; do
+            echo "  grepping $img ($(stat -c%s "$img") bytes)"
+            for str in susfs_init susfs_open_redirect susfs_add_sus_path \
+                       susfs_spoof_uname ksu_handle_execveat; do
               if grep -qa -- "$str" "$img"; then
                 echo "  ok   image contains '$str'"
               else
@@ -221,7 +231,7 @@ jobs:
               fi
             done
           else
-            echo "::error::no built Image found"
+            echo "::error::no built kernel image found"
             fail=1
           fi
 
