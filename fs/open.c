@@ -31,6 +31,9 @@
 #include <linux/ima.h>
 #include <linux/dnotify.h>
 #include <linux/compat.h>
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#include <linux/susfs_def.h>
+#endif
 
 #include "internal.h"
 
@@ -1114,64 +1117,21 @@ struct file *filp_clone_open(struct file *oldfile)
 }
 EXPORT_SYMBOL(filp_clone_open);
 
-bool task_is_powerhal(struct task_struct *p);
-static bool libperfmgr_redirect(struct file **f, int dfd, struct filename *n,
-				struct open_flags *op, int flags)
-{
-	struct filename *redir_name;
-	struct file *redir_file;
-
-	/*
-	 * Check for a libperfmgr attempt to open a file that doesn't exist. The
-	 * open flags are checked to isolate file writes from FileNode::Update()
-	 * in libperfmgr specifically. This is done to avoid telling a different
-	 * part of libperfmgr that a file exists when it doesn't even exist on
-	 * the stock kernel.
-	 *
-	 * To identify FileNode::Update()'s open() attempts: O_WRONLY and
-	 * O_CLOEXEC must both be present, O_TRUNC is optional, and O_LARGEFILE
-	 * may be set at the beginning of the syscall so it's also optional.
-	 */
-#define REQUIRED_FLAGS (O_WRONLY | O_CLOEXEC)
-#define ALLOWED_FLAGS  (REQUIRED_FLAGS | O_TRUNC | O_LARGEFILE)
-	if (likely(*f != ERR_PTR(-ENOENT) ||
-	    (flags & REQUIRED_FLAGS) != REQUIRED_FLAGS ||
-	    flags & ~ALLOWED_FLAGS ||
-	    !task_is_powerhal(current)))
-		return false;
-#undef ALLOWED_FLAGS
-#undef REQUIRED_FLAGS
-
-	/*
-	 * Check that the file is a pseudo kernel file. tracefs and debugfs are
-	 * blocked since they're supposed to be ignored when they don't exist.
-	 */
-#define STARTS_WITH(prefix) !strncmp(n->name, prefix, sizeof(prefix) - 1)
-	if (!STARTS_WITH("/dev/") && !STARTS_WITH("/proc/") &&
-	    (!STARTS_WITH("/sys/") || STARTS_WITH("/sys/kernel/tracing/") ||
-	     STARTS_WITH("/sys/kernel/debug/")))
-		return false;
-#undef STARTS_WITH
-
-	/* Redirect the attempt to /dev/null instead */
-	redir_name = getname_kernel("/dev/null");
-	if (IS_ERR(redir_name))
-		return false;
-
-	redir_file = do_filp_open(dfd, redir_name, op);
-	putname(redir_name);
-	if (IS_ERR(redir_file))
-		return false;
-
-	*f = redir_file;
-	return true;
-}
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 {
 	struct open_flags op;
 	int fd = build_open_flags(flags, mode, &op);
 	struct filename *tmp;
+
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	struct filename *fake_filename = NULL;
+	bool is_inode_open_redirect = false;
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+
 
 	if (fd)
 		return fd;
@@ -1180,21 +1140,28 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
-	{
-		static const char addon_path[] = "/system/addon.d";
-
-		if (unlikely(!strncmp(tmp->name, addon_path, strlen(addon_path)))) {
-			if (uid_gt(current_fsuid(), KUIDT_INIT(2000))) {
-				putname(tmp);
-				return -ENOENT;
-			}
-		}
-	}
-
 	fd = get_unused_fd_flags(flags);
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+retry:
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 	if (fd >= 0) {
 		struct file *f = do_filp_open(dfd, tmp, &op);
-		if (IS_ERR(f) && !libperfmgr_redirect(&f, dfd, tmp, &op, flags)) {
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		if (!is_inode_open_redirect && f && !IS_ERR(f)) {
+			struct inode *inode = file_inode(f);
+			if (SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode)) {
+				fake_filename = susfs_open_redirect_spoof_do_sys_openat(inode);
+				if (fake_filename && !IS_ERR(fake_filename)) {
+					is_inode_open_redirect = true;
+					filp_close(f, NULL);
+					putname(tmp);
+					tmp = fake_filename;
+					goto retry;
+				}
+			}
+		}
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+		if (IS_ERR(f)) {
 			put_unused_fd(fd);
 			fd = PTR_ERR(f);
 		} else {

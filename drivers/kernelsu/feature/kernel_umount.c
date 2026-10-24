@@ -79,7 +79,11 @@ static void ksu_sys_umount(const char *mnt, int flags)
 
 #endif
 
-static void try_umount(const char *mnt, int flags)
+/*
+ * Non-static on purpose: fs/susfs.c declares this extern and reuses it to
+ * umount the SUSFS try_umount list before KernelSU's own list runs.
+ */
+void try_umount(const char *mnt, int flags)
 {
 	struct path path;
 	int err = kern_path(mnt, 0, &path);

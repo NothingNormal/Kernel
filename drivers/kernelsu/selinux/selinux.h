@@ -67,4 +67,23 @@ void escape_to_root_for_adb_root();
 
 extern u32 ksu_file_sid;
 
+#ifdef CONFIG_KSU_SUSFS
+/*
+ * SIDs SUSFS compares against. avc.c reads susfs_ksu_sid/susfs_priv_app_sid
+ * directly, so these have to be non-static.
+ */
+extern u32 susfs_ksu_sid;
+extern u32 susfs_init_sid;
+extern u32 susfs_zygote_sid;
+extern u32 susfs_priv_app_sid;
+
+void susfs_set_ksu_sid(void);
+void susfs_set_init_sid(void);
+void susfs_set_zygote_sid(void);
+void susfs_set_priv_app_sid(void);
+bool susfs_is_current_ksu_domain(void);
+bool susfs_is_current_init_domain(void);
+bool susfs_is_current_zygote_domain(void);
+#endif
+
 #endif
