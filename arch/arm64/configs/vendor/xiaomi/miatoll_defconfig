@@ -771,7 +771,9 @@ CONFIG_PSTORE_PMSG=y
 
 # Required by PSTORE_FTRACE
 
-# KernelSU-Next (kprobe hook mode)
-CONFIG_KPROBES=y
+# KernelSU-Next (manual hook mode)
+# CONFIG_KPROBES is not needed: the hooks are explicit call sites in
+# fs/exec.c, fs/open.c, fs/stat.c, fs/read_write.c, kernel/reboot.c and
+# drivers/input/input.c, guarded by CONFIG_KSU_MANUAL_HOOK.
 CONFIG_KSU=y
-CONFIG_KSU_KPROBES_HOOK=y
+CONFIG_KSU_MANUAL_HOOK=y
