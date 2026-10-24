@@ -25,6 +25,11 @@
 #include "mount.h"
 
 extern bool susfs_is_current_ksu_domain(void);
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+/* defined in fs/statfs.c; fills f_flags that statfs_by_dentry() leaves zero */
+extern int susfs_calculate_f_flags(struct vfsmount *mnt);
+#endif
 extern void setup_selinux(const char *domain, struct cred *cred);
 extern struct cred *ksu_cred;
 extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
@@ -327,6 +332,9 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 		new_entry->spoofed_mnt_id = susfs_get_non_sus_mnt_id_from_mnt(real_mount(path.mnt));
 		no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path.mnt);
 		err = statfs_by_dentry(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+		if (!err)
+			new_entry->spoofed_kstatfs.f_flags =
+				susfs_calculate_f_flags(no_sus_vfsmnt);
 		dput(no_sus_vfsmnt->mnt_root);
 		mntput(no_sus_vfsmnt);
 		if (err)
@@ -346,6 +354,9 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 	new_entry->spoofed_mnt_id = susfs_get_non_sus_mnt_id_from_mnt(real_mount(path.mnt));
 	no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path.mnt);
 	err = statfs_by_dentry(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+	if (!err)
+		new_entry->spoofed_kstatfs.f_flags =
+			susfs_calculate_f_flags(no_sus_vfsmnt);
 	dput(no_sus_vfsmnt->mnt_root);
 	mntput(no_sus_vfsmnt);
 	if (err)

@@ -53,6 +53,20 @@ static int calculate_f_flags(struct vfsmount *mnt)
 		flags_by_sb(mnt->mnt_sb->s_flags);
 }
 
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+/*
+ * fs/susfs.c captures a spoofed kstatfs with statfs_by_dentry(), which fills
+ * the filesystem counters but leaves f_flags at zero - f_flags is normally
+ * computed here, in vfs_statfs(). Copying that zeroed struct back out made
+ * statfs() report f_flags == 0 for a sus_kstat path, losing at minimum
+ * ST_VALID and any of ST_RDONLY/ST_NOSUID/ST_NODEV that apply.
+ */
+int susfs_calculate_f_flags(struct vfsmount *mnt)
+{
+	return calculate_f_flags(mnt);
+}
+#endif
+
 static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
 {
 	int retval;
