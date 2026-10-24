@@ -406,6 +406,28 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # The artifact API hands back a blob URL on a storage host that is not
+      # reachable from every environment, so publish the zip straight onto the
+      # release from the runner instead. Creates the release if it is missing,
+      # and --clobber keeps re-runs idempotent.
+      - name: Publish zip to the KSUN release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          ZIP=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
+          ls -lh "$ZIP"
+          if ! gh release view KSUN >/dev/null 2>&1; then
+            gh release create KSUN \
+              --title "Sixfaced KSUN" \
+              --notes-file .github/RELEASE_NOTES.md \
+              --target "$GITHUB_SHA"
+          fi
+          gh release upload KSUN "$ZIP" --clobber
+          gh release view KSUN --json assets \
+            -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
+
       - name: Upload kernel zip (artifact)
         if: success()
         uses: actions/upload-artifact@v4
