@@ -1183,24 +1183,44 @@ static int override_release(char __user *release, size_t len)
 }
 
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-extern void susfs_spoof_uname(struct new_utsname* tmp);
+extern void susfs_spoof_uname(struct new_utsname *tmp);
 #endif
+
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
 	struct new_utsname tmp;
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
+#ifndef CONFIG_FAKE_UNAME_NONE
 	if (!strncmp(current->comm, "bpfloader", 9) ||
 	    !strncmp(current->comm, "netbpfload", 10) ||
-	    !strncmp(current->comm, "netd", 4)) {
+	    !strncmp(current->comm, "netd", 4) ||
+	    !strncmp(current->comm, "uprobestats", 11)) {
 		if (current_uid().val == 0) {
+#if defined(CONFIG_FAKE_UNAME_5_4)
+			strcpy(tmp.release, "5.4.200");
+#elif defined(CONFIG_FAKE_UNAME_5_10)
 			strcpy(tmp.release, "5.10.239");
+#elif defined(CONFIG_FAKE_UNAME_5_15)
+			strcpy(tmp.release, "5.15.200");
+#elif defined(CONFIG_FAKE_UNAME_6_1)
+			strcpy(tmp.release, "6.1.200");
+#elif defined(CONFIG_FAKE_UNAME_6_6)
+			strcpy(tmp.release, "6.6.200");
+#elif defined(CONFIG_FAKE_UNAME_6_12)
+			strcpy(tmp.release, "6.12.200");
+#endif
 			pr_debug("fake uname: %s/%d release=%s\n",
 				 current->comm, current->pid, tmp.release);
+		} else {
+			pr_debug("fake uname skipped (not root): %s/%d\n",
+				 current->comm, current->pid);
 		}
 	}
+#endif
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+	/* runs after the vendor fake-uname chain above, so SUSFS wins */
 	susfs_spoof_uname(&tmp);
 #endif
 	up_read(&uts_sem);
