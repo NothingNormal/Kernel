@@ -2,9 +2,20 @@ KernelSU (kernel-side driver) — vendored snapshot
 
   source   : https://github.com/backslashxx/KernelSU
   branch   : master
-  commit   : 709711bd91f2c9098bd35dc9036291ba8863a276 ("KernelSU v3.3.1+")
-  upstream commit date : 2026-08-17
-  vendored on          : 2026-10-22
+  commit   : 17bacffdd23bd1e1f1100b555c1d2185f5efb80e (tip, committed 2026-10-24;
+             content-equivalent to release v3.3.1+23 / manager APK 32703)
+  upstream commit date : 2026-08-17 (author date; master is periodically rebased)
+  vendored on          : 2026-10-22 (709711bd)
+  synced               : 2026-10-24 (preinit downstream rework d56bb8e7c-era),
+                          2026-10-24 (v3.3.1+23: kallsyms '$' suffix handling,
+                          getpriority-filter demo [toolkit 10014 + Kconfig +
+                          downstream/ksu_getpriority.h, default n],
+                          unconditional TIF_KSU_UNMOUNTABLE in kernel_umount,
+                          OOT fallback defines in ksu.c)
+
+  driver version       : KSU_VERSION=32700 (unchanged upstream through
+                          v3.3.1+23), KERNEL_SU_UAPI_VERSION=6 — compatible
+                          with manager APK v3.3.1+23 (versionCode 32703).
 
   layout   : only KernelSU/kernel/ is vendored (the kernel driver);
              manager/userspace are not needed to build the kernel.
@@ -39,4 +50,4 @@ KernelSU (kernel-side driver) — vendored snapshot
   Kconfig "KernelSU - SUSFS" menu, Makefile SUSFS_VERSION banner.
 - defconfig: CONFIG_KSU_SUSFS=y + all features except SUS_MEMFD.
 - uapi/: backslashxx KernelSU root uapi headers (for custom manager
-  builds; stock APK v3.3.1+22 needs nothing from here).
+  builds; stock APK v3.3.1+23 needs nothing from here).
