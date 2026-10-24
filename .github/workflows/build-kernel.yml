@@ -209,7 +209,8 @@ jobs:
           done
 
           # fs/susfs.c must have been compiled, not just selected
-          if grep -q "CC fs/susfs.o" "$RUNNER_TEMP/build.log"; then
+          if [ -f out/fs/susfs.o ] ||
+             grep -qE "CC[[:space:]]+fs/susfs\.o" "$RUNNER_TEMP/build.log"; then
             echo "  ok   fs/susfs.o compiled"
           else
             echo "::error::fs/susfs.o was never compiled"
