@@ -25,6 +25,7 @@
 #include "supercall/supercall.h"
 #include "hook/hook_manager.h"
 #include "feature/kernel_umount.h"
+#include "selinux/selinux.h"
 #include "compat/kernel_compat.h"
 
 #ifdef CONFIG_KSU_SUSFS
@@ -91,21 +92,41 @@ extern struct work_struct susfs_extra_works;
     susfs_try_umount(new_uid);
 #endif
 
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#ifdef CONFIG_KSU_SUSFS
     /*
-     * SUS_PATH loop rules are stored by pathname, not pinned to an inode, so
-     * they have to be re-applied once the target inode may have been
-     * re-instantiated (FUSE revalidation, remount, cold boot rebuild). The
-     * list lives in fs/susfs.c and is drained by susfs_run_sus_path_loop()
-     * from this work_struct - which susfs_init() arms but nothing ever
-     * queued, leaving CMD_SUSFS_ADD_SUS_PATH_LOOP rules permanently inert.
+     * Mark the freshly spawned app here rather than relying on
+     * ksu_handle_umount() to have done it.
      *
-     * Queued only for a task that was just marked umounted, matching the
-     * reference kernels, and deferred to a workqueue so the process being
-     * spawned here is never blocked by the walk.
+     * ksu_handle_umount() returns early when ksu_module_mounted is false,
+     * when the kernel_umount feature is disabled, when the uid is not on the
+     * umount list, or when the caller is not a zygote child. Only the last
+     * case is a real precondition. SUS_PATH, SUS_MAP and the sus_path_loop
+     * all gate on susfs_is_current_proc_umounted_app(), so whenever any of
+     * those early exits is taken the flag is never set and every hiding rule
+     * silently does nothing for that process - root and shell still see the
+     * paths, apps see them too.
+     *
+     * The reference trees set this in the setuid hook for exactly this
+     * reason, independent of the umount machinery.
      */
-    if (susfs_is_current_proc_umounted() && !work_pending(&susfs_extra_works))
-        schedule_work(&susfs_extra_works);
+    if (susfs_zygote_sid != 0 && is_zygote(current_cred()) &&
+        !susfs_is_current_proc_umounted() &&
+        is_appuid(new_uid) && ksu_uid_should_umount(new_uid)) {
+        susfs_set_current_proc_umounted();
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+        /*
+         * sus_path_loop rules are keyed by pathname, not pinned to an inode,
+         * so they have to be re-applied once the target inode may have been
+         * re-instantiated. fs/susfs.c arms susfs_extra_works with INIT_WORK
+         * and susfs_run_sus_path_loop() is its only consumer - nothing ever
+         * queued it, so CMD_SUSFS_ADD_SUS_PATH_LOOP rules were inert.
+         * Deferred to the workqueue so the spawned process is never blocked.
+         */
+        if (!work_pending(&susfs_extra_works))
+            schedule_work(&susfs_extra_works);
+#endif
+    }
 #endif
 
     return 0;
