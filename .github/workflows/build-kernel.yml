@@ -1,63 +1,218 @@
+# Sixfaced Kernel CI — miatoll (SM6250), arm64, 4.14
+#
+# Adapted for this fork:
+#   * no in-tree root solution  -> artifact/job names say NON-KSU, matching
+#     the zip name build.sh produces (Sixfaced-V5-NON-KSU-*.zip)
+#   * toolchain is Neutron Clang -> cached between runs and verified for
+#     Polly support *before* a multi-hour build starts, because
+#     CONFIG_LLVM_POLLY=y makes kbuild pass ~14 -mllvm -polly* flags
+#   * ccache is restored AND saved even when the build fails, so failed
+#     iterations still make progress
+#   * artifact upload fails loudly if the zip is missing instead of
+#     silently "warning"
 name: Sixfaced Kernel CI
 
 on:
+  # manual runs, with the toolchain tag overridable for testing a bump
   workflow_dispatch:
+    inputs:
+      neutron_tag:
+        description: "Neutron Clang release tag"
+        required: false
+        default: "06092026"
   push:
     branches-ignore:
       - build-logs
+    # doc-only pushes cannot change the resulting Image.gz
+    paths-ignore:
+      - "**.md"
+      - "Documentation/**"
 
+# one build per ref; a new push cancels the previous run
 concurrency:
-  group: sixfaced-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# contents:write is required by the "push logs to build-logs" step
 permissions:
   contents: write
+
+env:
+  NEUTRON_TAG: ${{ github.event.inputs.neutron_tag || '06092026' }}
+  NEUTRON_DIR: /home/runner/neutron-clang
+  CCACHE_MAXSIZE: 4G
 
 jobs:
   build:
     name: Build Sixfaced (miatoll, arm64, NON-KSU)
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    # LTO + Polly on a 4 vCPU runner is slow; 6h is the GitHub maximum
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Show build inputs
+        run: |
+          {
+            echo "## Sixfaced build inputs"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| repo | \`${{ github.repository }}\` |"
+            echo "| ref | \`${{ github.ref }}\` |"
+            echo "| commit | \`${{ github.sha }}\` |"
+            echo "| kernel | \`$(awk -F' = ' '/^(VERSION|PATCHLEVEL|SUBLEVEL) = /{printf "%s.", $2}' Makefile | sed 's/\.$//')\` |"
+            echo "| defconfig | \`vendor/xiaomi/miatoll_defconfig\` |"
+            echo "| localversion | \`$(sed -n 's/^CONFIG_LOCALVERSION=//p' arch/arm64/configs/vendor/xiaomi/miatoll_defconfig | tr -d '"')\` |"
+            echo "| neutron tag | \`${NEUTRON_TAG}\` |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
-                      /usr/share/swift /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+                      /usr/share/swift /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost /usr/lib/jvm 2>/dev/null || true
           df -h /
 
-      - name: Install toolchain and build deps
+      - name: Install build dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            clang lld llvm zip ccache pigz zstd bc bison flex libssl-dev libelf-dev lz4 lzop
-          echo "--- versions ---"
-          clang --version | head -2
+            clang lld llvm zip ccache pigz zstd bc bison flex \
+            libssl-dev libelf-dev lz4 lzop
+          echo "--- fallback toolchain (only used if Neutron is unreachable) ---"
+          clang --version | head -1
           ld.lld --version | head -1
 
-      - name: Compiler cache (ccache)
-        uses: actions/cache@v4
+      - name: Restore Neutron Clang
+        id: neutron-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.NEUTRON_DIR }}
+          key: neutron-clang-${{ runner.os }}-${{ env.NEUTRON_TAG }}
+
+      - name: Install Neutron Clang
+        run: |
+          set -euo pipefail
+          CLANG="$NEUTRON_DIR/bin/clang"
+          if [ -x "$CLANG" ]; then
+            echo "Neutron restored from cache"
+          else
+            TAR="/tmp/neutron-clang-${NEUTRON_TAG}.tar.zst"
+            URL="https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/${NEUTRON_TAG}/neutron-clang-${NEUTRON_TAG}.tar.zst"
+            echo "Downloading $URL"
+            curl -fL --retry 5 --retry-delay 5 --connect-timeout 20 -o "$TAR" "$URL"
+            rm -rf "$NEUTRON_DIR"; mkdir -p "$NEUTRON_DIR"
+            tar --use-compress-program=unzstd -xf "$TAR" -C "$NEUTRON_DIR" \
+              || tar -I zstd -xf "$TAR" -C "$NEUTRON_DIR"
+            rm -f "$TAR"
+            # some releases nest everything under a top-level directory
+            if [ ! -x "$CLANG" ]; then
+              FOUND=$(find "$NEUTRON_DIR" -maxdepth 4 -type f -name clang -path '*/bin/*' | head -1)
+              # $FOUND is <prefix>/bin/clang; NEUTRON_DIR must be <prefix>
+              [ -n "$FOUND" ] && NEUTRON_DIR=$(dirname "$(dirname "$FOUND")")
+              echo "NEUTRON_DIR=$NEUTRON_DIR" >> "$GITHUB_ENV"
+              CLANG="$NEUTRON_DIR/bin/clang"
+            fi
+          fi
+          for tool in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy llvm-strip; do
+            [ -x "$NEUTRON_DIR/bin/$tool" ] || { echo "::error::Neutron is missing bin/$tool"; exit 1; }
+          done
+          "$CLANG" --version | head -2
+          echo "$NEUTRON_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Polly support (fail fast)
+        run: |
+          set -euo pipefail
+          # CONFIG_LLVM_POLLY=y, so kbuild passes exactly these flags; an LLVM
+          # without Polly (or with renamed pass options) fails here in seconds
+          # instead of 20+ minutes into the build.
+          POLLY_FLAGS="
+            -mllvm -polly
+            -mllvm -polly-run-inliner
+            -mllvm -polly-ast-use-context
+            -mllvm -polly-detect-keep-going
+            -mllvm -polly-invariant-load-hoisting
+            -mllvm -polly-vectorizer=stripmine
+            -mllvm -polly-loopfusion-greedy=1
+            -mllvm -polly-reschedule=1
+            -mllvm -polly-postopts=1
+            -mllvm -polly-num-threads=0
+            -mllvm -polly-omp-backend=LLVM
+            -mllvm -polly-scheduling=dynamic
+            -mllvm -polly-scheduling-chunksize=1
+            -mllvm -polly-run-dce"
+          printf 'int probe(int a, int b) { return a * b + 1; }\n' > /tmp/polly-probe.c
+          # shellcheck disable=SC2086
+          if ! "$NEUTRON_DIR/bin/clang" -target aarch64-linux-gnu -O2 $POLLY_FLAGS \
+                 -c /tmp/polly-probe.c -o /tmp/polly-probe.o 2>/tmp/polly-probe.err; then
+            echo "::error::This Neutron build does not accept the Polly flags required by CONFIG_LLVM_POLLY"
+            sed -n '1,40p' /tmp/polly-probe.err
+            {
+              echo "## Polly probe failed"
+              echo
+              echo '```'
+              sed -n '1,40p' /tmp/polly-probe.err
+              echo '```'
+              echo
+              echo "Fix: bump \`neutron_tag\` (workflow_dispatch input) or set"
+              echo "\`CONFIG_LLVM_POLLY\` off in \`vendor/xiaomi/miatoll_defconfig\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Polly flag set accepted"
+
+      - name: Restore ccache
+        id: ccache-restore
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.ref_name }}-
-            ccache-${{ runner.os }}-
+            ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-
 
       - name: Build kernel
         id: build
         run: |
           set -o pipefail
           chmod +x build.sh
-          ./build.sh 2>&1 | tee "${RUNNER_TEMP}/build.log"
+          # build.sh reuses $NEUTRON_DIR when bin/clang is present (no re-download)
+          ./build.sh 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Save ccache
+        if: always() && steps.ccache-restore.outputs.cache-hit != 'true'
+            && steps.ccache-restore.outputs.cache-primary-key != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Package summary
+        if: success()
+        run: |
+          set -euo pipefail
+          ZIP=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
+          ls -lh "$ZIP"
+          {
+            echo "## Sixfaced build artifact"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| zip | \`$(basename "$ZIP")\` |"
+            echo "| size | $(du -h "$ZIP" | cut -f1) |"
+            echo "| sha256 | \`$(sha256sum "$ZIP" | cut -d' ' -f1)\` |"
+            echo "| Image.gz | $(du -h out/arch/arm64/boot/Image.gz | cut -f1) |"
+            echo "| clang | \`$("$NEUTRON_DIR/bin/clang" --version | head -1)\` |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          ccache -s | head -15 || true
 
       - name: Prepare failure report
         if: failure()
         run: |
-          LOG="${RUNNER_TEMP}/build.log"
+          LOG="$RUNNER_TEMP/build.log"
           [ -f "$LOG" ] || : > "$LOG"
           {
             echo "# Sixfaced CI - FAILED run #${{ github.run_number }}"
@@ -66,7 +221,7 @@ jobs:
             echo "- ref     : ${{ github.ref }}"
             echo "- commit  : ${{ github.sha }}"
             echo "- date    : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo "- clang   : $(clang --version 2>/dev/null | head -1)"
+            echo "- clang   : $("$NEUTRON_DIR/bin/clang" --version 2>/dev/null | head -1)"
             echo
             echo "## Extracted errors (last 300 matches)"
             echo '```'
@@ -78,11 +233,12 @@ jobs:
             echo '```'
             tail -n 250 "$LOG"
             echo '```'
-          } > "${RUNNER_TEMP}/ERRORS.md"
-          cat "${RUNNER_TEMP}/ERRORS.md" >> "$GITHUB_STEP_SUMMARY"
+          } > "$RUNNER_TEMP/ERRORS.md"
+          cat "$RUNNER_TEMP/ERRORS.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push logs to build-logs branch
         if: failure()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -99,13 +255,14 @@ jobs:
             git checkout -q --orphan build-logs
           fi
           mkdir -p "$RUNDIR"
-          cp "${RUNNER_TEMP}/build.log" "$RUNDIR/build.log" 2>/dev/null \
+          cp "$RUNNER_TEMP/build.log" "$RUNDIR/build.log" 2>/dev/null \
             || echo "(no build.log produced)" > "$RUNDIR/build.log"
-          cp "${RUNNER_TEMP}/ERRORS.md" "$RUNDIR/ERRORS.md" 2>/dev/null || true
+          cp "$RUNNER_TEMP/ERRORS.md" "$RUNDIR/ERRORS.md" 2>/dev/null || true
           SZ=$(stat -c%s "$RUNDIR/build.log" 2>/dev/null || echo 0)
           if [ "$SZ" -gt 80000000 ]; then gzip -9f "$RUNDIR/build.log"; fi
           # keep the branch tip slim: last 15 runs (older ones stay in history/artifacts)
           ls -1dt runs/*/ 2>/dev/null | tail -n +16 | xargs -r rm -rf
+          printf 'CI build logs (failed runs). Latest runs live in runs/.\n' > README.md
           git add -A
           git commit -q -m "build-logs: FAILED run #${{ github.run_number }} (${{ github.sha }})" || true
           git push -q origin HEAD:refs/heads/build-logs \
@@ -128,5 +285,5 @@ jobs:
         with:
           name: Sixfaced-NON-KSU-miatoll
           path: AnyKernel/Sixfaced-*.zip
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
