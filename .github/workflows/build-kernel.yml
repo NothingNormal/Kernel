@@ -170,9 +170,14 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ github.ref_name }}-${{ github.sha }}
+          # Key on the build inputs, not the commit. A per-SHA key can never
+          # produce an exact hit, so every run wrote a brand-new multi-GB
+          # entry and pushed the toolchain cache toward eviction. ccache
+          # decides per-object what to reuse, so a cache built from an older
+          # commit still hits for every file that did not change.
+          key: ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ hashFiles('arch/arm64/configs/vendor/xiaomi/miatoll_defconfig', 'build.sh', 'Makefile') }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ hashFiles('arch/arm64/configs/vendor/xiaomi/miatoll_defconfig', 'build.sh', 'Makefile') }}-
             ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-
 
       - name: Build kernel

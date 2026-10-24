@@ -70,6 +70,18 @@ if command -v ccache >/dev/null 2>&1; then
 CCACHE_BIN="ccache "
 export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
 ccache -M "${CCACHE_MAXSIZE:-8G}" >/dev/null 2>&1
+# Hash the compiler binary instead of stat'ing it. The toolchain arrives as
+# an extracted tarball (or an Actions cache restore of one), so its mtime is
+# not stable across runs - with the default mtime check that alone throws
+# the whole restored cache away and every build starts cold.
+export CCACHE_COMPILERCHECK=content
+# The kernel embeds __DATE__/__TIME__ and build paths; letting those
+# invalidate entries defeats the cache for no gain in correctness here.
+export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,modules_install"
+# Do not fold the build directory into the hash: the checkout path differs
+# between the runner and a local build.
+export CCACHE_NOHASHDIR=1
+export CCACHE_BASEDIR="$(pwd)"
 echo "ccache enabled: $(ccache --version 2>/dev/null | head -1)"
 fi
 

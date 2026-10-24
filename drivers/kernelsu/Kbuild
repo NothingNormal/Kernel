@@ -3,7 +3,7 @@
 # git-derived version and fall back to 1 -- and the manager rejects any
 # kernel reporting less than 32310 (MINIMAL_SUPPORTED_KERNEL).
 KSU_VERSION_OVERRIDE ?= 33315
-KSU_VERSION_TAG_OVERRIDE ?= v3.4.2-legacy-susfs-v2
+KSU_VERSION_TAG_OVERRIDE ?= v3.4.2-legacy
 
 kernelsu-objs := core/init.o
 

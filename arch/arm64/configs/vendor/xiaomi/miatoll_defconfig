@@ -797,3 +797,10 @@ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
 # CONFIG_KSU_SUSFS_SUS_MEMFD is not set
+
+# NoMount VFS path redirection subsystem (maxsteeel/nomount).
+# Legacy kernel (< 5.10), so it is built in rather than loaded as an LKM.
+# CONFIG_KEYS is required: the userspace `nm` tool talks to the kernel
+# through add_key()/keyctl rather than an ioctl on a /dev node.
+CONFIG_NOMOUNT=y
+CONFIG_KEYS=y
