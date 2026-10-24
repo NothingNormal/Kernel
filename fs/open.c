@@ -1196,34 +1196,60 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 		}
 	}
 
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+	/*
+	 * Resolve just far enough to identify the inode, then swap in the
+	 * replacement name before opening anything. Redirecting after the open
+	 * (close + reopen) ran the real file's ->atomic_open()/->open() first,
+	 * so an O_TRUNC|O_CREAT request truncated, and a FIFO/device blocked on,
+	 * the hidden file before it was closed again.
+	 */
+	{
+		struct filename *lookup_filename;
+		struct path lookup_path;
+		int lookup_err;
+
+		lookup_filename = getname_kernel(tmp->name);
+		if (IS_ERR(lookup_filename)) {
+			putname(tmp);
+			return PTR_ERR(lookup_filename);
+		}
+		lookup_err = filename_lookup(dfd, lookup_filename, op.lookup_flags,
+					     &lookup_path, NULL);
+		if (!lookup_err) {
+			struct inode *inode = d_backing_inode(lookup_path.dentry);
+			struct filename *fake_filename = NULL;
+
+			if (inode && SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode))
+				fake_filename =
+					susfs_open_redirect_spoof_do_sys_openat(inode);
+			path_put(&lookup_path);
+			if (IS_ERR(fake_filename)) {
+				lookup_err = PTR_ERR(fake_filename);
+				putname(tmp);
+				return lookup_err;
+			}
+			if (fake_filename) {
+				putname(tmp);
+				tmp = fake_filename;
+			}
+		} else if (lookup_err != -ENOENT) {
+			/*
+			 * Only a missing file is allowed to continue (O_CREAT).
+			 * Anything else must not fall through and open the original
+			 * inode, which is the one we were asked to hide.
+			 */
+			putname(tmp);
+			return lookup_err;
+		}
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+
 	fd = get_unused_fd_flags(flags);
 	if (fd >= 0) {
 		struct file *f;
 
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-		bool is_inode_open_redirect = false;
-retry:
-#endif
 		f = do_filp_open(dfd, tmp, &op);
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-		/* SUSFS redirection: reopen via the replacement path once */
-		if (!is_inode_open_redirect && !IS_ERR(f)) {
-			struct inode *inode = file_inode(f);
-
-			if (SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode)) {
-				struct filename *fake_filename =
-					susfs_open_redirect_spoof_do_sys_openat(inode);
-
-				if (fake_filename && !IS_ERR(fake_filename)) {
-					is_inode_open_redirect = true;
-					filp_close(f, NULL);
-					putname(tmp);
-					tmp = fake_filename;
-					goto retry;
-				}
-			}
-		}
-#endif
 		if (IS_ERR(f) && !libperfmgr_redirect(&f, dfd, tmp, &op, flags)) {
 			put_unused_fd(fd);
 			fd = PTR_ERR(f);

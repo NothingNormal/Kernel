@@ -52,6 +52,25 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern bool susfs_is_inode_sus_path(struct inode *inode);
 extern const struct qstr susfs_fake_qstr_name;
+
+/*
+ * The fake qstr is the reserved name SUSFS substitutes for a hidden entry.
+ * It must never be resolvable in its own right: a stale on-disk artifact
+ * from a kernel that wrote one out, or a caller that picked the name by
+ * accident, would otherwise get a dentry for it and see through the hide.
+ */
+static inline bool susfs_name_is_fake_qstr(const struct qstr *name)
+{
+	return name->len == susfs_fake_qstr_name.len &&
+	       !memcmp(name->name, susfs_fake_qstr_name.name, name->len);
+}
+
+static inline bool susfs_dentry_is_fake_qstr(const struct dentry *dentry)
+{
+	return dentry->d_name.len == susfs_fake_qstr_name.len &&
+	       !memcmp(dentry->d_name.name, susfs_fake_qstr_name.name,
+		       dentry->d_name.len);
+}
 #endif
 
 /* [Feb-1997 T. Schoebel-Theuer]
@@ -1684,31 +1703,46 @@ static struct dentry *lookup_real(struct inode *dir, struct dentry *dentry,
 static struct dentry *__lookup_hash(const struct qstr *name,
 		struct dentry *base, unsigned int flags)
 {
-	struct dentry *dentry = lookup_dcache(name, base, flags);
+	struct dentry *dentry;
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	bool found_sus_path = false;
+	/* Reserved hide name: never resolve it. */
+	if (susfs_name_is_fake_qstr(name))
+		return ERR_PTR(-ENOENT);
 #endif
+	dentry = lookup_dcache(name, base, flags);
 	if (dentry)
 		return dentry;
 
 	dentry = d_alloc(base, name);
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-retry:
-#endif
 	if (unlikely(!dentry))
 		return ERR_PTR(-ENOMEM);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode && !found_sus_path && susfs_is_inode_sus_path(dentry->d_inode)) {
+	/*
+	 * Check AFTER lookup_real(). A dentry straight out of d_alloc() is
+	 * negative - d_inode is NULL - so testing it before the lookup made
+	 * this hide dead code, and the create/unlink/rename family (which
+	 * all reach here with LOOKUP_CREATE) saw hidden names exist.
+	 *
+	 * Returning an error rather than a fake-qstr negative dentry also
+	 * matters: a caller that creates on a negative dentry would
+	 * instantiate a real "..5.u.S" object on disk. Create-family
+	 * callers get -EACCES, everything else must see the name as absent.
+	 */
+	dentry = lookup_real(base->d_inode, dentry, flags);
+	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode &&
+	    susfs_is_inode_sus_path(dentry->d_inode)) {
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
 		if (!(flags & LOOKUP_RCU))
 			dput(dentry);
-		dentry = d_alloc(base, &susfs_fake_qstr_name);
-		found_sus_path = true;
-		goto retry;
+		if (flags & (LOOKUP_CREATE | LOOKUP_EXCL))
+			return ERR_PTR(-EACCES);
+		return ERR_PTR(-ENOENT);
 	}
-#endif
+	return dentry;
+#else
 	return lookup_real(base->d_inode, dentry, flags);
+#endif
 }
 
 
@@ -1734,7 +1768,8 @@ static int lookup_fast(struct nameidata *nd,
 		bool negative;
 		dentry = __d_lookup_rcu(parent, &nd->last, &seq);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode &&
+		    (susfs_is_inode_sus_path(dentry->d_inode) || susfs_dentry_is_fake_qstr(dentry))) {
 				if (d_in_lookup(dentry))
 					d_lookup_done(dentry);
 				// no dput() here, __d_lookup_rcu() does not take the dentry->d_lockref.count
@@ -1788,7 +1823,8 @@ static int lookup_fast(struct nameidata *nd,
 	} else {
 		dentry = __d_lookup(parent, &nd->last);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (is_nd_state_lookup_last_and_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode &&
+		    (susfs_is_inode_sus_path(dentry->d_inode) || susfs_dentry_is_fake_qstr(dentry))) {
 				if (d_in_lookup(dentry))
 					d_lookup_done(dentry);
 				dput(dentry);
@@ -1835,6 +1871,11 @@ static struct dentry *lookup_slow(const struct qstr *name,
 	/* Don't go there if it's already dead */
 	if (unlikely(IS_DEADDIR(inode)))
 		goto out;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	/* Reserved hide name: never resolve it (dentry is ERR_PTR here). */
+	if (susfs_name_is_fake_qstr(name))
+		goto out;
+#endif
 again:
 	dentry = d_alloc_parallel(dir, name, &wq);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
@@ -1870,8 +1911,9 @@ retry:
 		}
 	}
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (is_nd_flags_lookup_last && !found_sus_path && dentry && !IS_ERR(dentry) && dentry->d_inode &&
-		susfs_is_inode_sus_path(dentry->d_inode))
+	if (is_nd_flags_lookup_last && !found_sus_path && dentry && !IS_ERR(dentry) &&
+		((dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) ||
+		 susfs_dentry_is_fake_qstr(dentry)))
 	{
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
@@ -2283,7 +2325,8 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 		struct dentry *dentry = nd->path.dentry;
-		if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		if (dentry->d_inode &&
+		    (susfs_is_inode_sus_path(dentry->d_inode) || susfs_dentry_is_fake_qstr(dentry))) {
 			// return -ENOENT here since it is walking the sub path of sus path
 			return -ENOENT;
 		}
@@ -2559,8 +2602,15 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 	return err;
 }
 
-static int filename_lookup(int dfd, struct filename *name, unsigned flags,
-			   struct path *path, struct path *root)
+/**
+ * filename_lookup - resolve a kernel-side &struct filename relative to @dfd
+ *
+ * Consumes @name (putname is done here). Kept non-static so the
+ * OPEN_REDIRECT pre-lookup in fs/open.c can resolve relative to the caller's
+ * dirfd instead of the root, which kern_path() cannot do.
+ */
+int filename_lookup(int dfd, struct filename *name, unsigned flags,
+		    struct path *path, struct path *root)
 {
 	int retval;
 	struct nameidata nd;
@@ -3388,11 +3438,18 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 	dentry = d_lookup(dir, &nd->last);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	if (is_nd_state_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode &&
-		susfs_is_inode_sus_path(dentry->d_inode))
+		(susfs_is_inode_sus_path(dentry->d_inode) || susfs_dentry_is_fake_qstr(dentry)))
 	{
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
 		dput(dentry);
+		/*
+		 * Creating (or O_EXCL probing) must not fall through to the
+		 * fake-qstr retry: O_CREAT would create a real "..5.u.S" file
+		 * next to the hidden one.
+		 */
+		if (open_flag & (O_CREAT | O_EXCL))
+			return -EACCES;
 		dentry = NULL;
 		found_sus_path = true;
 	}
@@ -3486,6 +3543,21 @@ no_open:
 			dentry = res;
 		}
 	}
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	/*
+	 * The d_lookup() above only catches cached hidden dentries; on a cache
+	 * miss the fs lookup just instantiated the real hidden one. Hide it here
+	 * before the O_CREAT branch can create on it and before do_last opens it.
+	 */
+	if (is_nd_state_open_last && dentry && !IS_ERR(dentry) && dentry->d_inode &&
+	    (susfs_is_inode_sus_path(dentry->d_inode) || susfs_dentry_is_fake_qstr(dentry))) {
+		if (d_in_lookup(dentry))
+			d_lookup_done(dentry);
+		dput(dentry);
+		return (open_flag & (O_CREAT | O_EXCL)) ? -EACCES : -ENOENT;
+	}
+#endif
 
 	/* Negative dentry, just create the file */
 	if (!dentry->d_inode && (open_flag & O_CREAT)) {
@@ -5048,7 +5120,7 @@ static int generic_readlink(struct dentry *dentry, char __user *buffer,
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 	if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
 		res = susfs_open_redirect_spoof_vfs_readlink(inode, buffer, buflen);
-		if (!res) {
+		if (res != -ENOENT) {
 			do_delayed_call(&done);
 			return res;
 		}
@@ -5082,7 +5154,7 @@ int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 		{
 			if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
 				res = susfs_open_redirect_spoof_vfs_readlink(inode, buffer, buflen);
-				if (!res)
+				if (res != -ENOENT)
 					return res;
 			}
 			return inode->i_op->readlink(dentry, buffer, buflen);

@@ -82,6 +82,9 @@ extern struct dentry *kern_path_locked(const char *, struct path *);
 extern int kern_path_mountpoint(int, const char *, struct path *, unsigned int);
 extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
 		const char *, unsigned int, struct path *);
+struct filename;
+extern int filename_lookup(int dfd, struct filename *name, unsigned flags,
+			   struct path *path, struct path *root);
 
 extern struct dentry *lookup_one_len(const char *, struct dentry *, int);
 extern struct dentry *lookup_one_len2(const char *, struct vfsmount *mnt, struct dentry *, int);
