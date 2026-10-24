@@ -183,10 +183,18 @@ jobs:
           ./build.sh 2>&1 | tee "$RUNNER_TEMP/build.log"
 
       - name: Verify SUSFS is in the built kernel
+        id: susfs-verify
         if: success()
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/verify.log") 2>&1
           fail=0
+
+          echo "-- kernel config"
+          grep -E "^CONFIG_(KSU|KSU_SUSFS)" out/.config || echo "  (no KSU symbols at all!)"
+
+          echo "-- build outputs"
+          ls -l out/vmlinux out/arch/arm64/boot/Image out/arch/arm64/boot/Image.gz 2>&1 || true
 
           for sym in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUSFS \
                      CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
@@ -288,6 +296,13 @@ jobs:
             echo '```'
             tail -n 250 "$LOG"
             echo '```'
+            if [ -s "$RUNNER_TEMP/verify.log" ]; then
+              echo
+              echo "## SUSFS verification output"
+              echo '```'
+              cat "$RUNNER_TEMP/verify.log"
+              echo '```'
+            fi
           } > "$RUNNER_TEMP/ERRORS.md"
           cat "$RUNNER_TEMP/ERRORS.md" >> "$GITHUB_STEP_SUMMARY"
 
