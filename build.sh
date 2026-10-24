@@ -121,7 +121,7 @@ echo -e " Kernel Compile Successful"
 cp -a AnyKernel3 AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
-zip -r9 Sixfaced-V5-NON-KSU-miatoll-${TANGGAL}.zip *
+zip -r9 Sixfaced-V5-KSUN-miatoll-${TANGGAL}.zip *
 cd ../
 fi
 }

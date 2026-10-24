@@ -1,8 +1,9 @@
 # Sixfaced Kernel CI — miatoll (SM6250), arm64, 4.14
 #
 # Adapted for this fork:
-#   * no in-tree root solution  -> artifact/job names say NON-KSU, matching
-#     the zip name build.sh produces (Sixfaced-V5-NON-KSU-*.zip)
+#   * KernelSU-Next (manual hook) + SUSFS v2.3.0 are built in  -> artifact,
+#     job and zip names say KSUN, matching build.sh
+#     (Sixfaced-V5-KSUN-*.zip)
 #   * toolchain is Neutron Clang -> cached between runs and verified for
 #     Polly support *before* a multi-hour build starts, because
 #     CONFIG_LLVM_POLLY=y makes kbuild pass ~14 -mllvm -polly* flags
@@ -44,7 +45,7 @@ env:
 
 jobs:
   build:
-    name: Build Sixfaced (miatoll, arm64, NON-KSU)
+    name: Build Sixfaced (miatoll, arm64, KSUN)
     runs-on: ubuntu-latest
     # LTO + Polly on a 4 vCPU runner is slow; 6h is the GitHub maximum
     timeout-minutes: 360
@@ -354,7 +355,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Sixfaced-NON-KSU-miatoll
+          name: Sixfaced-KSUN-miatoll
           path: AnyKernel/Sixfaced-*.zip
           if-no-files-found: error
           retention-days: 30
