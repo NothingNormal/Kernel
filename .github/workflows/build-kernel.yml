@@ -182,6 +182,51 @@ jobs:
           # build.sh reuses $NEUTRON_DIR when bin/clang is present (no re-download)
           ./build.sh 2>&1 | tee "$RUNNER_TEMP/build.log"
 
+      - name: Verify SUSFS is in the built kernel
+        if: success()
+        run: |
+          set -euo pipefail
+          fail=0
+
+          for sym in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUSFS \
+                     CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
+                     CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+                     CONFIG_KSU_SUSFS_SUS_MAP CONFIG_KSU_SUSFS_SUS_MEMFD; do
+            if grep -qx "$sym=y" out/.config; then
+              echo "  ok   $sym=y"
+            else
+              echo "::error::$sym is not enabled in out/.config"
+              fail=1
+            fi
+          done
+
+          # fs/susfs.c must have been compiled, not just selected
+          if grep -q "CC fs/susfs.o" "$RUNNER_TEMP/build.log"; then
+            echo "  ok   fs/susfs.o compiled"
+          else
+            echo "::error::fs/susfs.o was never compiled"
+            fail=1
+          fi
+
+          # and the strings must survive into the actual image
+          img=out/arch/arm64/boot/Image
+          [ -f "$img" ] || img=out/arch/arm64/boot/Image.gz
+          if [ -f "$img" ]; then
+            for str in susfs_init SUSFS_ "kernelsu"; do
+              if grep -qa -- "$str" "$img"; then
+                echo "  ok   image contains '$str'"
+              else
+                echo "::error::image is missing '$str'"
+                fail=1
+              fi
+            done
+          else
+            echo "::error::no built Image found"
+            fail=1
+          fi
+
+          exit $fail
+
       - name: Save ccache
         if: always() && steps.ccache-restore.outputs.cache-hit != 'true'
             && steps.ccache-restore.outputs.cache-primary-key != ''
