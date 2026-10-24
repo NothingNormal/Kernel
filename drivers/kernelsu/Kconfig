@@ -73,107 +73,95 @@ config KSU_SYSCALL_TABLE_HOOK
 endchoice
 
 menu "KernelSU - SUSFS"
+
 config KSU_SUSFS
-    bool "KernelSU addon - SUSFS"
-    depends on KSU
-    depends on THREAD_INFO_IN_TASK
-    default y
-    help
-        Patch and Enable SUSFS to kernel with KernelSU.
+	bool "KernelSU addon - SUSFS"
+	depends on KSU
+	default n
+	help
+	  Enable SUSFS, the kernel-side path/mount/stat hiding addon.
+	  Requires the fs/susfs.c kernel side plus its hooks.
 
 config KSU_SUSFS_SUS_PATH
-    bool "Enable to hide suspicious path (NOT recommended)"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow hiding the user-defined path and all its sub-paths from various system calls.
-        - Includes temp fix for the leaks of app path in /sdcard/Android/data directory.
-        - Effective only on zygote spawned user app process.
-        - Use with cautious as it may cause performance loss and will be vulnerable to side channel attacks,
-          just disable this feature if it doesn't work for you or you don't need it at all.
-
-config KSU_SUSFS_SUS_MOUNT
-    bool "Enable to hide suspicious mounts"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow hiding the user-defined mount paths from /proc/self/[mounts|mountinfo|mountstat].
-        - Effective on all processes for hiding mount entries.
-        - mnt_id and mnt_group_id of the sus mount will be assigned to a much bigger number to solve the ssue of id not being contiguous.
-
-config KSU_SUSFS_SUS_KSTAT
-    bool "Enable to spoof suspicious kstat"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow spoofing the kstat of user-defined file/directory.
-        - Effective only on zygote spawned user app process.
-
-config KSU_SUSFS_TRY_UMOUNT
-	bool "Enable to use ksu's try_umount"
+	bool "Enable to hide suspicious path"
 	depends on KSU_SUSFS
 	default y
 	help
-		- Allow using try_umount to umount other user-defined mount paths prior to ksu's default umount paths.
-		- Effective only on zygote spawned umounted user app process.
+	  Show a fake view for the given paths.
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "Enable to hide suspicious mounts"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Rearrange the mount ids so non-su processes cannot correlate
+	  KernelSU's mounts with their origin.
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "Enable to spoof suspicious kstat"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Spoof stat/statfs/inotify/maps results for the given paths.
+
+config KSU_SUSFS_TRY_UMOUNT
+	bool "Enable to use try_umount"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Umount user-defined paths in the target mount namespace
+	  before KernelSU's own umount handling runs.
 
 config KSU_SUSFS_SPOOF_UNAME
-    bool "Enable to spoof uname"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow spoofing the string returned by uname syscall to user-defined string.
-        - Effective on all processes.
+	bool "Enable to spoof uname"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Spoof the kernel release/version reported by uname().
 
 config KSU_SUSFS_ENABLE_LOG
-    bool "Enable logging susfs log to kernel"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow logging susfs log to kernel, uncheck it to completely disable all susfs log.
+	bool "Enable logging"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Allow the manager to toggle SUSFS kernel logging at runtime.
 
 config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-    bool "Enable to automatically hide ksu and susfs symbols from /proc/kallsyms"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Automatically hide ksu and susfs symbols from '/proc/kallsyms'.
-        - Effective on all processes.
+	bool "Enable to hide KernelSU and SUSFS symbols"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide all ksu_/susfs_ symbols from /proc/kallsyms.
 
 config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-    bool "Enable to spoof /proc/bootconfig (gki) or /proc/cmdline (non-gki)"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Spoof the output of /proc/bootconfig (gki) or /proc/cmdline (non-gki) with a user-defined file.
-        - Effective on all processes.
+	bool "Enable to spoof /proc/cmdline"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Spoof /proc/cmdline with a user-supplied string.
 
 config KSU_SUSFS_OPEN_REDIRECT
-    bool "Enable to redirect a path to be opened with another path (experimental)"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow redirecting a target path to be opened with another user-defined path.
-        - Effective only on processes with uid < 2000.
-        - Please be reminded that process with open access to the target and redirected path can be detected.
+	bool "Enable to redirect a path to a new path"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Redirect reads and readlinks of one path to another.
 
 config KSU_SUSFS_SUS_MAP
-    bool "Enable to hide some mmapped real file from different proc maps interfaces"
-    depends on KSU_SUSFS
-    default y
-    help
-        - Allow hiding mmapped real file from /proc/<pid>/[maps|smaps|smaps_rollup|map_files|mem|pagemap]
-        - It does NOT support hiding for anon memory.
-        - It does NOT hide any inline hooks or plt hooks cause by the injected library itself.
-        - It may not be able to evade detections by apps that implement a good injection detection.
-        - Effective only on zygote spawned umounted user app process.
+	bool "Enable to hide suspicious mappings"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide suspicious mappings from /proc/self/maps and related
+	  interfaces by faking the device and inode of the backing file.
 
 config KSU_SUSFS_SUS_MEMFD
-    bool "Enable to hide or spoof suspicous memfd (experimental)"
-    depends on KSU_SUSFS
-    default n
-    help
-        - Allow preventing the user-defined memfd name from being created
+	bool "Enable to hide suspicious memfd"
+	depends on KSU_SUSFS
+	default n
+	help
+	  Spoof the name of suspicious memfd files, as reported through
+	  /proc/<pid>/fd and the maps interfaces.
 
 endmenu
 
