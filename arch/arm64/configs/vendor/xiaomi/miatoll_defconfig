@@ -777,18 +777,23 @@ CONFIG_PSTORE_PMSG=y
 # drivers/input/input.c, guarded by CONFIG_KSU_MANUAL_HOOK.
 CONFIG_KSU=y
 CONFIG_KSU_MANUAL_HOOK=y
-# SUSFS v2.3.0 kernel-side addon. Every feature is stated explicitly
-# rather than inherited from the Kconfig defaults, so the set that ships
-# is visible here and survives make savedefconfig.
+# SUSFS v2.3.0 kernel-side addon. Same set as the sibling branch: every
+# feature is stated explicitly rather than inherited from the Kconfig
+# defaults, so what ships is visible here and survives savedefconfig.
+#
+# TRY_UMOUNT is off because CMD_SUSFS_ADD_TRY_UMOUNT (0x55580) is marked
+# deprecated, and KernelSU-Next already implements its own try_umount list
+# (supercall/dispatch.c add_try_umount) - SUSFS's copy is redundant.
+# SUS_MEMFD is off to match; it is not deprecated, only opt-in.
 CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_SUS_PATH=y
 CONFIG_KSU_SUSFS_SUS_MOUNT=y
 CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+# CONFIG_KSU_SUSFS_TRY_UMOUNT is not set
 CONFIG_KSU_SUSFS_SPOOF_UNAME=y
 CONFIG_KSU_SUSFS_ENABLE_LOG=y
 CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
 CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
-CONFIG_KSU_SUSFS_SUS_MEMFD=y
+# CONFIG_KSU_SUSFS_SUS_MEMFD is not set
