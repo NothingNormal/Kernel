@@ -12,6 +12,9 @@
 #ifndef KSU_HAS_PATH_UMOUNT
 #include <linux/syscalls.h>
 #endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include <linux/susfs_def.h> /* susfs_set_current_proc_umounted() */
+#endif
 
 #include "feature/kernel_umount.h"
 #include "klog.h" // IWYU pragma: keep
@@ -164,6 +167,16 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
 	}
 	// umount the target mnt
 	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	/*
+	 * This zygote child is supposed to have KernelSU's mounts removed.
+	 * SUSFS leaves them mounted on purpose and hides them per-task
+	 * instead, so mark the task: __lookup_mnt() then resolves straight
+	 * past every sus mount for it.
+	 */
+	susfs_set_current_proc_umounted();
+#endif
 
 	tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
 	if (!tw)

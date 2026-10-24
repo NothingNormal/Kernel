@@ -17,6 +17,9 @@
 #include "feature/kernel_umount.h"
 #include "manager/manager_identity.h"
 #include "selinux/selinux.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h> /* susfs_start_sdcard_monitor_fn */
+#endif
 #include "infra/file_wrapper.h"
 #include "hook/hook_manager.h"
 #include "policy/app_profile.h"
@@ -135,6 +138,11 @@ static int do_report_event(void __user *arg)
 			} else {
 				pr_info("boot_complete triggered\n");
 				on_boot_completed();
+#ifdef CONFIG_KSU_SUSFS
+				/* watches /data/media/0 and is the only thing that
+				 * ever sets susfs_is_sdcard_android_data_decrypted */
+				susfs_start_sdcard_monitor_fn();
+#endif
 			}
 		}
 		break;

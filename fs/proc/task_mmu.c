@@ -992,6 +992,15 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	bool rollup_mode;
 	bool last_vma;
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+	/*
+	 * This tree drives both /proc/pid/smaps and smaps_rollup through
+	 * show_smap(), so one guard covers both: a sus-mapped VMA is neither
+	 * printed nor accumulated into the rollup totals.
+	 */
+	if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+		return 0;
+#endif
 	if (priv->rollup) {
 		rollup_mode = true;
 		mss = priv->rollup;

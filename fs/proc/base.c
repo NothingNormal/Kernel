@@ -1802,8 +1802,10 @@ out:
 	return ERR_PTR(error);
 }
 
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
 #include <linux/susfs_def.h>
+#endif
+#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 extern int susfs_open_redirect_spoof_do_proc_readlink(struct inode *inode,
 						      char *tmp_buf,
 						      int buflen);
@@ -2376,6 +2378,13 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 	 */
 
 	for (vma = mm->mmap, pos = 2; vma; vma = vma->vm_next) {
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		/* must skip here too, or nr_files overcounts and the fill
+		 * loop below walks uninitialised flex_array slots */
+		if (vma->vm_file &&
+		    SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+			continue;
+#endif
 		if (vma->vm_file && ++pos > ctx->pos)
 			nr_files++;
 	}
@@ -2396,6 +2405,10 @@ proc_map_files_readdir(struct file *file, struct dir_context *ctx)
 				vma = vma->vm_next) {
 			if (!vma->vm_file)
 				continue;
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+			if (SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+				continue;
+#endif
 			if (++pos <= ctx->pos)
 				continue;
 

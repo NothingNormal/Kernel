@@ -329,19 +329,24 @@ void susfs_set_priv_app_sid(void)
     susfs_set_sid(SUSFS_KERNEL_PRIV_APP_DOMAIN, &susfs_priv_app_sid);
 }
 
+/*
+ * A SID of 0 means cache_sid() could not resolve it at boot. Without the
+ * explicit != 0 test, every task whose sid is also 0 would match and be
+ * treated as the KSU/init/zygote domain.
+ */
 bool susfs_is_current_ksu_domain(void)
 {
-    return unlikely(current_sid() == susfs_ksu_sid);
+    return unlikely(susfs_ksu_sid != 0 && current_sid() == susfs_ksu_sid);
 }
 
 bool susfs_is_current_init_domain(void)
 {
-    return unlikely(current_sid() == susfs_init_sid);
+    return unlikely(susfs_init_sid != 0 && current_sid() == susfs_init_sid);
 }
 
 bool susfs_is_current_zygote_domain(void)
 {
-    return unlikely(current_sid() == susfs_zygote_sid);
+    return unlikely(susfs_zygote_sid != 0 && current_sid() == susfs_zygote_sid);
 }
 #endif /* CONFIG_KSU_SUSFS */
 
