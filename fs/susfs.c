@@ -44,6 +44,22 @@ bool susfs_is_log_enabled __read_mostly = true;
 #define SUSFS_LOGE(fmt, ...) 
 #endif
 
+/*
+ * A userspace-supplied string field is only usable if it is non-empty AND
+ * NUL-terminated inside its own field. Without the second part strlen()/
+ * strcmp()/kern_path() run off the end of the field into whatever follows it
+ * in the copied struct, and possibly past it.
+ */
+static bool susfs_string_is_valid(const char *str, size_t size)
+{
+	return str[0] != '\0' && memchr(str, '\0', size) != NULL;
+}
+
+static bool susfs_path_is_valid(const char *path)
+{
+	return susfs_string_is_valid(path, SUSFS_MAX_LEN_PATHNAME);
+}
+
 bool susfs_starts_with(const char *str, const char *prefix) {
     while (*prefix) {
         if (*str++ != *prefix++)
@@ -67,6 +83,12 @@ void susfs_add_sus_path(void __user **user_info) {
 
 	if (copy_from_user(&info, (struct st_susfs_sus_path __user*)*user_info, sizeof(info))) {
 		info.err = -EFAULT;
+		goto out_copy_to_user;
+	}
+
+	if (!susfs_path_is_valid(info.target_pathname)) {
+		SUSFS_LOGE("target_pathname is empty or unterminated\n");
+		info.err = -EINVAL;
 		goto out_copy_to_user;
 	}
 
@@ -120,8 +142,8 @@ void susfs_add_sus_path_loop(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	if (*info.target_pathname == '\0') {
-		SUSFS_LOGE("target_pathname cannot be empty\n");
+	if (!susfs_path_is_valid(info.target_pathname)) {
+		SUSFS_LOGE("target_pathname is empty or unterminated\n");
 		info.err = -EINVAL;
 		goto out_copy_to_user;
 	}
@@ -381,7 +403,8 @@ void susfs_add_sus_kstat(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	if (*info.target_pathname == '\0') {
+	if (!susfs_path_is_valid(info.target_pathname)) {
+		SUSFS_LOGE("target_pathname is empty or unterminated\n");
 		info.err = -EINVAL;
 		goto out_copy_to_user;
 	}
@@ -492,6 +515,11 @@ void susfs_update_sus_kstat(void __user **user_info) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+	if (!susfs_path_is_valid(info.target_pathname)) {
+		SUSFS_LOGE("target_pathname is empty or unterminated\n");
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
 
 	new_entry = kzalloc(sizeof(struct st_susfs_sus_kstat_hlist), GFP_KERNEL);
 	if (!new_entry) {
@@ -526,6 +554,7 @@ void susfs_update_sus_kstat(void __user **user_info) {
 		}
 	}
 	mutex_unlock(&susfs_mutex_lock_sus_kstat);
+	kfree(new_entry); /* no matching entry: never installed, so free it */
 	info.err = -ENOENT;
 
 out_copy_to_user:
@@ -788,6 +817,16 @@ void susfs_set_uname(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/*
+	 * strcmp()/strncpy() below need both fields terminated inside their own
+	 * array; the copy_from_user above does not guarantee that.
+	 */
+	if (!susfs_string_is_valid(info.release, sizeof(info.release)) ||
+	    !susfs_string_is_valid(info.version, sizeof(info.version))) {
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
 	mutex_lock(&susfs_mutex_lock_set_uname);
 	if (!strcmp(info.release, "default")) {
 		strncpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
@@ -811,10 +850,18 @@ out_copy_to_user:
 }
 
 void susfs_spoof_uname(struct new_utsname* tmp) {
-	if (unlikely(my_uname.release[0] == '\0' || mutex_is_locked(&susfs_mutex_lock_set_uname)))
-		return;
-	strncpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
-	strncpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
+	/*
+	 * Take the lock instead of bailing out when it is busy: skipping the
+	 * spoof for one uname() call hands out the real release/version, and
+	 * reading my_uname unlocked can tear a half-written string. Only the
+	 * newuname() syscall calls this, so sleeping is fine.
+	 */
+	mutex_lock(&susfs_mutex_lock_set_uname);
+	if (my_uname.release[0] != '\0') {
+		strncpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
+		strncpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
+	}
+	mutex_unlock(&susfs_mutex_lock_set_uname);
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 
@@ -868,7 +915,8 @@ void susfs_set_cmdline_or_bootconfig(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	if (*info->fake_cmdline_or_bootconfig == '\0') {
+	if (!susfs_string_is_valid(info->fake_cmdline_or_bootconfig,
+				   sizeof(info->fake_cmdline_or_bootconfig))) {
 		info->err = -EINVAL;
 		goto out_copy_to_user;
 	}
@@ -900,17 +948,34 @@ out_copy_to_user:
 }
 
 int susfs_spoof_cmdline_or_bootconfig(struct seq_file *m) {
+	char *snapshot;
 	unsigned seq;
 	int err = -EINVAL;
 
+	/*
+	 * Snapshot under the seqlock, print outside it. seq_puts() writes into
+	 * the seq_file buffer and can kmalloc(GFP_KERNEL) there, and because a
+	 * failed read_seqretry() repeats the body, printing inside the window
+	 * appended the string a second time.
+	 */
+	snapshot = kmalloc(SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE, GFP_KERNEL);
+	if (!snapshot)
+		return -ENOMEM;
+
 	do {
 		seq = read_seqbegin(&susfs_fake_cmdline_or_bootconfig_seqlock);
-		if (susfs_is_fake_cmdline_or_bootconfig_set) {
-			seq_puts(m, fake_cmdline_or_bootconfig);
-			err = 0;
-		}
+		if (susfs_is_fake_cmdline_or_bootconfig_set)
+			strlcpy(snapshot, fake_cmdline_or_bootconfig,
+				SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE);
+		else
+			snapshot[0] = '\0';
 	} while (read_seqretry(&susfs_fake_cmdline_or_bootconfig_seqlock, seq));
 
+	if (snapshot[0] != '\0') {
+		seq_puts(m, snapshot);
+		err = 0;
+	}
+	kfree(snapshot);
 	return err;
 }
 #endif
@@ -935,11 +1000,12 @@ void susfs_add_open_redirect(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-        if (*info.target_pathname == '\0') {
-                info.err = -EINVAL;
-		SUSFS_LOGE("empty target_pathname\n");
-                goto out_copy_to_user;
-        }
+	if (!susfs_path_is_valid(info.target_pathname) ||
+	    !susfs_path_is_valid(info.redirected_pathname)) {
+		SUSFS_LOGE("pathname is empty or unterminated\n");
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
 
 	if (info.uid_scheme < UID_NON_APP_PROC || info.uid_scheme > UID_UMOUNTED_PROC) {
 		info.err = -EINVAL;
@@ -1035,7 +1101,16 @@ void susfs_add_open_redirect(void __user **user_info) {
 
 	if (is_first_dup_found) {
 		hash_for_each_possible_safe(OPEN_REDIRECT_HLIST, tmp_entry_redirected, tmp_hlist_node, node, redirected_inode->i_ino) {
-			if (!strcmp(tmp_entry_redirected->info.target_pathname, info.redirected_pathname)) {
+			/*
+			 * Only drop the mirror entry of the redirect we are replacing
+			 * (reversed_lookup_only, keyed on the redirected inode, dev
+			 * matching). Without those guards this also matched, and freed,
+			 * an unrelated forward entry that happens to live in the same
+			 * ino bucket.
+			 */
+			if (tmp_entry_redirected->reversed_lookup_only &&
+			    tmp_entry_redirected->target_dev == redirected_inode->i_sb->s_dev &&
+			    !strcmp(tmp_entry_redirected->info.target_pathname, info.redirected_pathname)) {
 				is_second_dup_found = true;
 				hash_del_rcu(&tmp_entry_redirected->node);
 				break;
@@ -1138,18 +1213,28 @@ int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode, char __user *buf
 		{
 			SUSFS_LOGI("spoof path '%s' to '%s'\n",
 					entry->info.target_pathname, entry->info.redirected_pathname);
-			if (strlen(entry->info.redirected_pathname) >= buflen) {
-				SUSFS_LOGE("buflen not big enough\n");
+			{
+				int len = strnlen(entry->info.redirected_pathname,
+						  SUSFS_MAX_LEN_PATHNAME);
+
+				if (len >= SUSFS_MAX_LEN_PATHNAME) {
+					srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+					return -ENAMETOOLONG;
+				}
+				/* readlink() truncates instead of failing */
+				len = min(len, buflen);
+				if (copy_to_user(buffer, entry->info.redirected_pathname, len)) {
+					SUSFS_LOGE("copy_to_user() failed\n");
+					srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+					return -EFAULT;
+				}
 				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-				return -ENAMETOOLONG;
+				/*
+				 * vfs_readlink() hands this value straight back to the
+				 * syscall, so it must be the length, not 0.
+				 */
+				return len;
 			}
-			if (copy_to_user(buffer, entry->info.redirected_pathname, strlen(entry->info.redirected_pathname))) {
-				SUSFS_LOGE("copy_to_user() failed\n");
-				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-				return -EFAULT;
-			}
-			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-			return 0;
 		}
 	}
 	srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
@@ -1172,6 +1257,8 @@ int susfs_open_redirect_spoof_do_proc_readlink(struct inode *inode, char *tmp_bu
 				return -ENAMETOOLONG;
 			}
 			strncpy(tmp_buf, entry->info.redirected_pathname, SUSFS_MAX_LEN_PATHNAME - 1);
+			/* strncpy() only pads when the source is shorter */
+			tmp_buf[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 			return 0;
 		}
@@ -1213,6 +1300,11 @@ void susfs_add_sus_map(void __user **user_info) {
 
 	if (copy_from_user(&info, (struct st_susfs_sus_map __user*)*user_info, sizeof(info))) {
 		info.err = -EFAULT;
+		goto out_copy_to_user;
+	}
+	if (!susfs_path_is_valid(info.target_pathname)) {
+		SUSFS_LOGE("target_pathname is empty or unterminated\n");
+		info.err = -EINVAL;
 		goto out_copy_to_user;
 	}
 
@@ -1524,6 +1616,8 @@ static int watch_one_dir(struct watch_dir *wd)
 	if (!wd->inode) {
 		SUSFS_LOGE("wd->inode is NULL\n");
 		path_put(&wd->kpath);
+		/* the deferred cleanup puts kpath again if .mnt is non-NULL */
+		memset(&wd->kpath, 0, sizeof(wd->kpath));
 		return -ENOENT;
 	}
 	ihold(wd->inode);
@@ -1534,6 +1628,7 @@ static int watch_one_dir(struct watch_dir *wd)
 		iput(wd->inode);
 		wd->inode = NULL;
 		path_put(&wd->kpath);
+		memset(&wd->kpath, 0, sizeof(wd->kpath));
 		return ret;
 	}
 	SUSFS_LOGI("watching %s\n", wd->path);
