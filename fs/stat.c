@@ -213,6 +213,8 @@ EXPORT_SYMBOL(vfs_statx_fd);
 #ifdef CONFIG_KSU_MANUAL_HOOK
 extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
 			   int *flags);
+extern void ksu_handle_newfstat_ret(unsigned int *fd,
+				    struct stat __user **statbuf_ptr);
 #endif
 
 /**
@@ -444,6 +446,23 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
 
 	if (!error)
 		error = cp_new_stat(&stat, statbuf);
+
+	#ifdef CONFIG_KSU_MANUAL_HOOK
+	/*
+	 * init fstat()s init.rc and sizes its read buffer from st_size.
+	 * ksu_handle_vfs_read() appends the ksud stage commands to the tail of
+	 * init.rc, so the reported size has to grow with it - otherwise the
+	 * appended "exec ... /data/adb/ksud post-fs-data" line sits past the
+	 * end of the buffer and is never parsed.
+	 *
+	 * Without this the cold-boot post-fs-data stage never runs: freshly
+	 * installed modules stay in modules_update (shown as "updated" in the
+	 * manager) until a userspace reboot replays the stage from ksud, which
+	 * is exactly why a soft reboot appears to fix it and a full reboot does
+	 * not. Matches the hook placement used by the reference non-GKI trees.
+	 */
+	ksu_handle_newfstat_ret(&fd, &statbuf);
+	#endif
 
 	return error;
 }

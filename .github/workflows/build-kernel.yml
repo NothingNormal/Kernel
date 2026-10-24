@@ -237,6 +237,28 @@ jobs:
             fail=1
           fi
 
+          # Every manual hook site must still be wired. A dropped hook does
+          # not fail to build - it fails silently at boot, which is how the
+          # init.rc size hook went missing and left modules stuck in
+          # modules_update until a userspace reboot replayed the stage.
+          for hook in \
+            "fs/exec.c:ksu_handle_execveat(&fd, &filename" \
+            "fs/open.c:ksu_handle_faccessat(&dfd, &filename" \
+            "fs/stat.c:ksu_handle_stat(&dfd, &filename" \
+            "fs/stat.c:ksu_handle_newfstat_ret(&fd, &statbuf)" \
+            "fs/read_write.c:ksu_handle_vfs_read(&file, &buf" \
+            "kernel/reboot.c:ksu_handle_sys_reboot(magic1, magic2" \
+            "drivers/input/input.c:ksu_handle_input_handle_event(&type, &code"; do
+            f=${hook%%:*}
+            pat=${hook#*:}
+            if grep -qF "$pat" "$f"; then
+              echo "  ok   hook $f -> ${pat%%(*}"
+            else
+              echo "::error::manual hook missing: $f should call ${pat%%(*}"
+              fail=1
+            fi
+          done
+
           # fs/susfs.c must have been compiled, not just selected
           if [ -f out/fs/susfs.o ] ||
              grep -qE "CC[[:space:]]+fs/susfs\.o" "$RUNNER_TEMP/build.log"; then
