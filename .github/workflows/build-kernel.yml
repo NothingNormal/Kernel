@@ -1,0 +1,132 @@
+name: Sixfaced Kernel CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - build-logs
+
+concurrency:
+  group: sixfaced-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Sixfaced (miatoll, arm64, NON-KSU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/share/swift /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          df -h /
+
+      - name: Install toolchain and build deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            clang lld llvm zip ccache pigz zstd bc bison flex libssl-dev libelf-dev lz4 lzop
+          echo "--- versions ---"
+          clang --version | head -2
+          ld.lld --version | head -1
+
+      - name: Compiler cache (ccache)
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-
+
+      - name: Build kernel
+        id: build
+        run: |
+          set -o pipefail
+          chmod +x build.sh
+          ./build.sh 2>&1 | tee "${RUNNER_TEMP}/build.log"
+
+      - name: Prepare failure report
+        if: failure()
+        run: |
+          LOG="${RUNNER_TEMP}/build.log"
+          [ -f "$LOG" ] || : > "$LOG"
+          {
+            echo "# Sixfaced CI - FAILED run #${{ github.run_number }}"
+            echo
+            echo "- run URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- ref     : ${{ github.ref }}"
+            echo "- commit  : ${{ github.sha }}"
+            echo "- date    : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "- clang   : $(clang --version 2>/dev/null | head -1)"
+            echo
+            echo "## Extracted errors (last 300 matches)"
+            echo '```'
+            grep -nE "error:|Error [0-9]+|fatal error|undefined (reference|symbol)|No rule to make target|ld\.lld:|Segmentation" \
+              "$LOG" | tail -n 300 || echo "(no pattern matches - see full build.log)"
+            echo '```'
+            echo
+            echo "## Tail of build log (last 250 lines)"
+            echo '```'
+            tail -n 250 "$LOG"
+            echo '```'
+          } > "${RUNNER_TEMP}/ERRORS.md"
+          cat "${RUNNER_TEMP}/ERRORS.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push logs to build-logs branch
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUNDIR="runs/$(date -u +%Y%m%d-%H%M%S)-run${{ github.run_number }}"
+          WORK=/tmp/logpush
+          rm -rf "$WORK"; git init -q "$WORK"; cd "$WORK"
+          git config user.name  "sixfaced-ci[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch -q --depth=1 origin build-logs || true
+          if git rev-parse -q --verify origin/build-logs >/dev/null; then
+            git checkout -q -b build-logs origin/build-logs
+          else
+            git checkout -q --orphan build-logs
+          fi
+          mkdir -p "$RUNDIR"
+          cp "${RUNNER_TEMP}/build.log" "$RUNDIR/build.log" 2>/dev/null \
+            || echo "(no build.log produced)" > "$RUNDIR/build.log"
+          cp "${RUNNER_TEMP}/ERRORS.md" "$RUNDIR/ERRORS.md" 2>/dev/null || true
+          SZ=$(stat -c%s "$RUNDIR/build.log" 2>/dev/null || echo 0)
+          if [ "$SZ" -gt 80000000 ]; then gzip -9f "$RUNDIR/build.log"; fi
+          # keep the branch tip slim: last 15 runs (older ones stay in history/artifacts)
+          ls -1dt runs/*/ 2>/dev/null | tail -n +16 | xargs -r rm -rf
+          git add -A
+          git commit -q -m "build-logs: FAILED run #${{ github.run_number }} (${{ github.sha }})" || true
+          git push -q origin HEAD:refs/heads/build-logs \
+            || echo "::warning::could not push build-logs branch (token permissions?); logs are still in the run artifacts"
+
+      - name: Upload failure logs (artifact)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-run${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/ERRORS.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload kernel zip (artifact)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sixfaced-NON-KSU-miatoll
+          path: AnyKernel/Sixfaced-*.zip
+          if-no-files-found: warn
+          retention-days: 30

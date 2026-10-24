@@ -131,3 +131,8 @@ kernel/configs/android-*.cfg
 #Ignoring Android.bp link file
 #
 Android.bp
+
+#
+# Keep CI workflows tracked: the ".*" rule above ignores dotfiles
+#
+!.github/
