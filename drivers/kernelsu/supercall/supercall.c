@@ -320,6 +320,15 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 		case CMD_SUSFS_ADD_SUS_KSTAT:
 			susfs_add_sus_kstat(arg);
 			return 0;
+		case CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY:
+			/*
+			 * Distinct command id, same handler: susfs_add_sus_kstat()
+			 * branches on info.is_statically itself. Without this case
+			 * 0x55572 fell through to default and logged "unknown susfs
+			 * cmd", so a statically seeded kstat spoof was a no-op.
+			 */
+			susfs_add_sus_kstat(arg);
+			return 0;
 		case CMD_SUSFS_UPDATE_SUS_KSTAT:
 			susfs_update_sus_kstat(arg);
 			return 0;

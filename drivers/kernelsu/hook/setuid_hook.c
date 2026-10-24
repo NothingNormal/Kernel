@@ -13,6 +13,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/uidgid.h>
+#include <linux/workqueue.h>
 
 #include "policy/app_profile.h"
 #include "policy/allowlist.h"
@@ -26,7 +27,12 @@
 #include "feature/kernel_umount.h"
 #include "compat/kernel_compat.h"
 
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+#ifdef CONFIG_KSU_SUSFS
+/*
+ * Needed for susfs_is_current_proc_umounted() (static inline, susfs_def.h)
+ * regardless of whether TRY_UMOUNT is on - the sus_path_loop work is gated
+ * on that flag.
+ */
 #include <linux/susfs.h>
 #endif
 
@@ -73,12 +79,33 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
 #endif
     }
 
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+extern struct work_struct susfs_extra_works;
+#endif
+
     // Handle kernel umount
     ksu_handle_umount(old_uid, new_uid);
 
 #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
     // let SUSFS umount its own user-defined paths in the new mnt ns
     susfs_try_umount(new_uid);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+    /*
+     * SUS_PATH loop rules are stored by pathname, not pinned to an inode, so
+     * they have to be re-applied once the target inode may have been
+     * re-instantiated (FUSE revalidation, remount, cold boot rebuild). The
+     * list lives in fs/susfs.c and is drained by susfs_run_sus_path_loop()
+     * from this work_struct - which susfs_init() arms but nothing ever
+     * queued, leaving CMD_SUSFS_ADD_SUS_PATH_LOOP rules permanently inert.
+     *
+     * Queued only for a task that was just marked umounted, matching the
+     * reference kernels, and deferred to a workqueue so the process being
+     * spawned here is never blocked by the walk.
+     */
+    if (susfs_is_current_proc_umounted() && !work_pending(&susfs_extra_works))
+        schedule_work(&susfs_extra_works);
 #endif
 
     return 0;
