@@ -11,7 +11,15 @@
 // 4: add KSU_GET_INFO_FLAG_BUNDLED
 // 5: add EVENT_SERVICES with a start/skip result
 // 6: add KSU_IOCTL_LOOKUP_SYMBOLS and KSU_GET_INFO_FLAG_PREINIT; modules.rc and preinit may live under /metadata/vold/ksu
-#define KERNEL_SU_UAPI_VERSION 6
+//
+// ABI 6 is purely additive over 5 (one new ioctl, one new info flag bit; no
+// existing struct or command changed), so a version 5 manager is still fully
+// served by this driver. We advertise 5 because the released v3.4.2 manager
+// speaks 5 and requires an exact match - Natives.isFullFeatured() compares
+// kernelUAPIVersion == managerUAPIVersion and otherwise hides the SuperUser
+// and Module tabs. The ABI 6 ioctls stay implemented, just unadvertised.
+// Bump this back to 6 when pairing with a manager built from uapi 6.
+#define KERNEL_SU_UAPI_VERSION 5
 
 /* Magic numbers for reboot hook to install fd */
 #define KSU_INSTALL_MAGIC1 0xDEADBEEF

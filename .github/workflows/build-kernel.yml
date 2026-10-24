@@ -226,6 +226,17 @@ jobs:
             fi
           done
 
+          # The released v3.4.2 manager speaks ABI 5 and compares it for
+          # exact equality; a mismatch hides the SuperUser and Module tabs
+          # (Natives.isFullFeatured -> BottomBarDestination rootRequired).
+          if grep -qE "^#define KERNEL_SU_UAPI_VERSION 5$" \
+               drivers/kernelsu/uapi/supercall.h; then
+            echo "  ok   advertises uapi 5 (matches the v3.4.2 manager)"
+          else
+            echo "::error::driver no longer advertises KERNEL_SU_UAPI_VERSION 5; a v3.4.2 manager will hide the SuperUser/Module tabs"
+            fail=1
+          fi
+
           # fs/susfs.c must have been compiled, not just selected
           if [ -f out/fs/susfs.o ] ||
              grep -qE "CC[[:space:]]+fs/susfs\.o" "$RUNNER_TEMP/build.log"; then
