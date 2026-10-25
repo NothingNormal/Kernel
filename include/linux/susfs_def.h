@@ -32,6 +32,16 @@
 #define CMD_SUSFS_SUS_SU 0x60000 /* deprecated */
 #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x60010
 #define CMD_SUSFS_ADD_SUS_MAP 0x60020
+/*
+ * WARNING: 0x60030 is CMD_SUSFS_SET_PRIORITY_UID_FILTER in upstream SUSFS
+ * v2.3.0 (simonpunk/susfs4ksu, all branches). Upstream has no ADD_SUS_MEMFD
+ * at all, so this number is only safe while CONFIG_KSU_SUSFS_SUS_MEMFD is
+ * disabled: the dispatch case is compiled out and 0x60030 falls through to
+ * the "unknown susfs cmd" default instead of being misread. The moment that
+ * config is enabled, a module sending the upstream priority-filter command
+ * would be routed into susfs_add_sus_memfd() with an incompatible struct.
+ * If memfd is ever turned on, renumber it to a free slot (e.g. 0x60040).
+ */
 #define CMD_SUSFS_ADD_SUS_MEMFD 0x60030
 
 #define SUSFS_MAX_LEN_PATHNAME 256 // 256 should address many paths already unless you are doing some strange experimental stuff, then set your own desired length

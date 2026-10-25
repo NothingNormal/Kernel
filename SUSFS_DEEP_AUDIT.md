@@ -479,3 +479,61 @@ Not ported, on purpose:
    already exists at `kernel/reboot.c:281/298` in our tree.
 
 If it is ever wanted, it is a feature decision, not a bug fix.
+
+---
+
+# Addendum 3: upstream GitLab HEAD (simonpunk/susfs4ksu, gki-android12-5.10)
+
+Checked against the canonical repo on GitLab, branch `gki-android12-5.10`
+(`SUSFS_VERSION "v2.3.0"` — same version we ship). Two commits, both ~1 day old:
+
+## `5419f4ee` — "kernel & KernelSU: Sync with upstream"
+
+- **kernel:** in `sel_open_handle_status()`, drop the
+  `mutex_lock(&selinux_state.status_lock)` around reading `fake_status` and
+  read the pointer directly.
+- **KernelSU:** revert its own `selinux_hide.c` edits to match tiann
+  `528bafc5`, i.e. keep the hook only in the kernel patch.
+
+**Not present here, and does not need to be.** We never edit `selinuxfs.c`:
+`security/selinux/selinuxfs.c:220 sel_open_handle_status()` is stock in our
+tree, and the hiding is a runtime fops-slot patch —
+`drivers/kernelsu/feature/selinux_hide.c:473 ksu_hook_status_open()` swaps
+`fops->open` for `ksu_status_open()` (line 461). That hook already does the
+thing the commit is after, without any lock: the fake page is published once
+with `smp_store_release(&ksu_fake_status_page, ...)` (line 456) and read with
+`smp_load_acquire()` (line 464). So the post-commit property already holds; the
+pre-commit bug being fixed (status_lock taken to read a page that is published
+lock-free anyway) never existed in our shape. The KernelSU half is a revert
+inside a different fork — not applicable.
+
+## `35cbfe11` — "susfs: Add priority uid filter"
+
+New feature: `CMD_SUSFS_SET_PRIORITY_UID_FILTER 0x60030`, hides selected app
+uids from `setpriority`/`getpriority`/`ioprio_get`/`ioprio_set` (an app-uid
+caller asking about a filtered uid gets `-ESRCH`, like a uid with no
+processes), backed by an RCU bitmap of the 10000–19999 range and
+`susfs_ends_with()`.
+
+**Not present, deliberately** (same reasoning as Addendum 2): it is a feature,
+not a fix, it adds a 10th line to `CMD_SUSFS_SHOW_ENABLED_FEATURES` which is
+exactly the string the module parses, and it needs new `kernel/sys.c` and
+`block/ioprio.c` hooks.
+
+### Collision this exposed
+
+`0x60030` **is** the new upstream command id, and upstream's header has **no**
+`CMD_SUSFS_ADD_SUS_MEMFD` at all (`... ADD_SUS_MAP 0x60020` →
+`SET_PRIORITY_UID_FILTER 0x60030`). Our tree uses `0x60030` for
+`ADD_SUS_MEMFD`.
+
+Currently harmless and verified so: `case CMD_SUSFS_ADD_SUS_MEMFD` is inside
+`#ifdef CONFIG_KSU_SUSFS_SUS_MEMFD`, and `miatoll_defconfig` has that **off**,
+so a `0x60030` command reaches `default:` → `pr_info("sys_reboot: unknown
+susfs cmd: 0x%x")` and returns 0. No misinterpretation, no memory unsafety.
+
+It becomes a real defect only if `CONFIG_KSU_SUSFS_SUS_MEMFD` is ever enabled:
+the upstream priority-filter payload (a 65535-byte `app_strings` blob) would be
+handed to `susfs_add_sus_memfd()` and interpreted as a memfd struct. Documented
+at the define in `include/linux/susfs_def.h`; renumber to `0x60040` if memfd is
+ever turned on.
