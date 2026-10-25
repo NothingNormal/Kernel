@@ -527,6 +527,9 @@ void susfs_update_sus_kstat(void __user **user_info) {
 		}
 	}
 	mutex_unlock(&susfs_mutex_lock_sus_kstat);
+	/* official fix (susfs4ksu ad8e498dc): free the pre-allocated entry when
+	 * no matching pathname was found, otherwise every failed UPDATE leaks */
+	kfree(new_entry);
 	info.err = -ENOENT;
 
 out_copy_to_user:
@@ -785,8 +788,12 @@ void susfs_try_umount(uid_t uid) {
 
 /* spoof_uname */
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-static DEFINE_MUTEX(susfs_mutex_lock_set_uname);
+/* official susfs4ksu rework: seqlock instead of mutex + mutex_is_locked().
+ * The old gate could pass right before a writer took the mutex, letting a
+ * reader strncpy a half-updated release/version (torn uname). */
+static DEFINE_SEQLOCK(susfs_uname_seqlock);
 static struct st_susfs_uname my_uname;
+static bool susfs_is_uname_spoof_set __read_mostly = false;
 static void susfs_my_uname_init(void) {
 	memset(&my_uname, 0, sizeof(my_uname));
 }
@@ -799,18 +806,25 @@ void susfs_set_uname(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	mutex_lock(&susfs_mutex_lock_set_uname);
+	/* official hardening: reject empty release/version */
+	if (*info.release == '\0' || *info.version == '\0') {
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
+	write_seqlock(&susfs_uname_seqlock);
 	if (!strcmp(info.release, "default")) {
-		strncpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
 	} else {
-		strncpy(my_uname.release, info.release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, info.release, __NEW_UTS_LEN);
 	}
 	if (!strcmp(info.version, "default")) {
-		strncpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
 	} else {
-		strncpy(my_uname.version, info.version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, info.version, __NEW_UTS_LEN);
 	}
-	mutex_unlock(&susfs_mutex_lock_set_uname);
+	susfs_is_uname_spoof_set = true;
+	write_sequnlock(&susfs_uname_seqlock);
 	SUSFS_LOGI("setting spoofed release: '%s', version: '%s'\n",
 				my_uname.release, my_uname.version);
 	info.err = 0;
@@ -822,10 +836,15 @@ out_copy_to_user:
 }
 
 void susfs_spoof_uname(struct new_utsname* tmp) {
-	if (unlikely(my_uname.release[0] == '\0' || mutex_is_locked(&susfs_mutex_lock_set_uname)))
+	unsigned seq;
+
+	if (unlikely(!READ_ONCE(susfs_is_uname_spoof_set)))
 		return;
-	strncpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
-	strncpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
+	do {
+		seq = read_seqbegin(&susfs_uname_seqlock);
+		strscpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
+		strscpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
+	} while (read_seqretry(&susfs_uname_seqlock, seq));
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 
@@ -913,14 +932,30 @@ out_copy_to_user:
 int susfs_spoof_cmdline_or_bootconfig(struct seq_file *m) {
 	unsigned seq;
 	int err = -EINVAL;
+	char *buf;
 
+	/* fast path: nothing set yet -> let the hook fall back to the real
+	 * cmdline */
+	if (!READ_ONCE(susfs_is_fake_cmdline_or_bootconfig_set))
+		return -EINVAL;
+
+	/* official fix (susfs4ksu 6d574ebcb): copy under the seqlock into a
+	 * temp buffer and emit ONCE outside the retry loop; emitting inside
+	 * could duplicate the fake cmdline into the seq_file when a writer
+	 * raced the read. */
+	buf = (char *)kmalloc(SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE, GFP_KERNEL);
+	if (!buf) {
+		/* emit nothing rather than leaking the real cmdline */
+		return 0;
+	}
 	do {
 		seq = read_seqbegin(&susfs_fake_cmdline_or_bootconfig_seqlock);
-		if (susfs_is_fake_cmdline_or_bootconfig_set) {
-			seq_puts(m, fake_cmdline_or_bootconfig);
-			err = 0;
-		}
+		strscpy(buf, fake_cmdline_or_bootconfig, SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE);
+		err = 0;
 	} while (read_seqretry(&susfs_fake_cmdline_or_bootconfig_seqlock, seq));
+
+	seq_puts(m, buf);
+	kfree(buf);
 
 	return err;
 }
