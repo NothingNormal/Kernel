@@ -1725,8 +1725,13 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 	 *
 	 * Returning an error rather than a fake-qstr negative dentry also
 	 * matters: a caller that creates on a negative dentry would
-	 * instantiate a real "..5.u.S" object on disk. Create-family
-	 * callers get -EACCES, everything else must see the name as absent.
+	 * instantiate a real "..5.u.S" object on disk.
+	 *
+	 * -ENOENT for every caller, deliberately including the create family.
+	 * -EACCES would be an existence oracle: open(O_CREAT) on a hidden name
+	 * inside a world-writable directory would answer EACCES, telling an app
+	 * that something is there but protected. "No such file" is what a name
+	 * that is not there answers, so that is what we return.
 	 */
 	dentry = lookup_real(base->d_inode, dentry, flags);
 	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode &&
@@ -1735,8 +1740,6 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 			d_lookup_done(dentry);
 		if (!(flags & LOOKUP_RCU))
 			dput(dentry);
-		if (flags & (LOOKUP_CREATE | LOOKUP_EXCL))
-			return ERR_PTR(-EACCES);
 		return ERR_PTR(-ENOENT);
 	}
 	return dentry;
@@ -3446,10 +3449,11 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		/*
 		 * Creating (or O_EXCL probing) must not fall through to the
 		 * fake-qstr retry: O_CREAT would create a real "..5.u.S" file
-		 * next to the hidden one.
+		 * next to the hidden one. Report "not there" rather than EACCES,
+		 * which would confirm that a hidden entry exists (see __lookup_hash).
 		 */
 		if (open_flag & (O_CREAT | O_EXCL))
-			return -EACCES;
+			return -ENOENT;
 		dentry = NULL;
 		found_sus_path = true;
 	}
@@ -3555,7 +3559,8 @@ no_open:
 		if (d_in_lookup(dentry))
 			d_lookup_done(dentry);
 		dput(dentry);
-		return (open_flag & (O_CREAT | O_EXCL)) ? -EACCES : -ENOENT;
+		/* "not there", never EACCES: that would confirm existence */
+		return -ENOENT;
 	}
 #endif
 

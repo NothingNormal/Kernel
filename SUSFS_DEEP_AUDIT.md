@@ -447,3 +447,35 @@ three of the things I fixed are bugs that still exist in upstream v2.3.0 today
 (A1/A2 fake-qstr creation, A4 readlink length, A6/A7/A8 unhooked readers). The
 reference was right about the *shape* of the namei problem and wrong about the
 maps gate. Neither source is authority; the VFS contract is.
+
+## Second-pass follow-ups
+
+### The `-EACCES` → `-ENOENT` change (own reasoning, not copied)
+
+The first pass returned `-EACCES` for `LOOKUP_CREATE|LOOKUP_EXCL` and
+`-ENOENT` otherwise, copying the reference branch. That is an **existence
+oracle**: an app that runs `open("/data/local/tmp/some_hidden_thing", O_CREAT)`
+in a world-writable directory and gets `EACCES` learns that *something is there
+and the kernel is protecting it*. `ENOENT` is what a name that does not exist
+answers, so it reveals nothing. Now every caller — create family included —
+gets `-ENOENT`.
+
+### Deliberately absent: upstream's getpriority/ioprio uid filter
+
+Upstream v2.3.0 carries a second feature we have no equivalent of at all:
+`st_susfs_priority_uid_filter` / `susfs_set_priority_uid_filter()` /
+`susfs_is_priority_uid_filtered()`, hooked into `block/ioprio.c`'s
+`ioprio_set`/`ioprio_get` so a filtered uid cannot observe or set another
+process's ioprio. It is unconditional upstream (no CONFIG guard), so it never
+shows up in upstream's enabled-features output either.
+
+Not ported, on purpose:
+
+1. It is a whole new supercall command + struct + two syscall hooks, not a fix.
+2. It adds a line to `CMD_SUSFS_SHOW_ENABLED_FEATURES`, which is exactly the
+   string the SUSFS module parses. Our contract is 9 feature lines; adding a
+   tenth changes what userspace sees for a feature the module does not use.
+3. `kernel/reboot.c` (also new upstream) *is* covered: `ksu_handle_sys_reboot`
+   already exists at `kernel/reboot.c:281/298` in our tree.
+
+If it is ever wanted, it is a feature decision, not a bug fix.
