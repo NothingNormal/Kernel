@@ -142,7 +142,9 @@ static void inotify_fdinfo(struct seq_file *m, struct fsnotify_mark *mark)
 				goto orig_flow;
 			}
 			dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
-			if (!dpath) {
+			/* d_path() returns ERR_PTR on failure, never NULL -
+			 * feeding an ERR_PTR to kern_path() would fault. */
+			if (IS_ERR_OR_NULL(dpath)) {
 				goto out_kfree;
 			}
 			if (kern_path(dpath, 0, &path)) {
