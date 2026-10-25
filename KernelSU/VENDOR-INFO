@@ -2,8 +2,8 @@ KernelSU (kernel-side driver) — vendored snapshot
 
   source   : https://github.com/backslashxx/KernelSU
   branch   : master
-  commit   : 17bacffdd23bd1e1f1100b555c1d2185f5efb80e (tip, committed 2026-10-24;
-             content-equivalent to release v3.3.1+23 / manager APK 32703)
+  commit   : aad0cb47b (tip, committed 2026-10-25; content-equivalent to
+             release v3.3.1_24 / manager APK 32704)
   upstream commit date : 2026-08-17 (author date; master is periodically rebased)
   vendored on          : 2026-10-22 (709711bd)
   synced               : 2026-10-24 (preinit downstream rework d56bb8e7c-era),
@@ -11,11 +11,22 @@ KernelSU (kernel-side driver) — vendored snapshot
                           getpriority-filter demo [toolkit 10014 + Kconfig +
                           downstream/ksu_getpriority.h, default n],
                           unconditional TIF_KSU_UNMOUNTABLE in kernel_umount,
-                          OOT fallback defines in ksu.c)
+                          OOT fallback defines in ksu.c),
+                          2026-10-25 (v3.3.1_24: KSU_VERSION bumped 32700->32704,
+                          upstream 528bafc56 "remove useless code": rules.c
+                          policy_rwlock chain reworked [KALLSYMS_ALL bootstrap +
+                          __weak extern fallback replaces EXPORTED_POLICY_RWLOCK
+                          probe branch; probe removed from Makefile -- both were
+                          already dead on this 4.14 tree, CONFIG_KALLSYMS_ALL=y],
+                          lsm_hooks_ultralegacy.c: __weak selinux_ops runtime
+                          check replaces KSU_HAS_EXPORTED_SELINUX_OPS compile
+                          probe, preinit/runner headers refreshed [runner_oot.h,
+                          runner_xxd.h, small_rt.h -- no susfs glue in any of
+                          these, copied wholesale])
 
-  driver version       : KSU_VERSION=32700 (unchanged upstream through
-                          v3.3.1+23), KERNEL_SU_UAPI_VERSION=6 — compatible
-                          with manager APK v3.3.1+23 (versionCode 32703).
+  driver version       : KSU_VERSION=32704, KERNEL_SU_UAPI_VERSION=6 —
+                          compatible with manager APK v3.3.1_24
+                          (versionCode 32704).
 
   layout   : only KernelSU/kernel/ is vendored (the kernel driver);
              manager/userspace are not needed to build the kernel.
@@ -50,4 +61,4 @@ KernelSU (kernel-side driver) — vendored snapshot
   Kconfig "KernelSU - SUSFS" menu, Makefile SUSFS_VERSION banner.
 - defconfig: CONFIG_KSU_SUSFS=y + all features except SUS_MEMFD.
 - uapi/: backslashxx KernelSU root uapi headers (for custom manager
-  builds; stock APK v3.3.1+23 needs nothing from here).
+  builds; stock APK v3.3.1_24 needs nothing from here).
