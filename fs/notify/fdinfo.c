@@ -22,8 +22,6 @@
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
-extern void susfs_show_map_vma_spoofer(struct inode *inode, dev_t *out_dev,
-				       unsigned long *out_ino);
 extern void susfs_sus_kstat_spoof_inotify_fdinfo(unsigned long *out_target_ino, dev_t *out_target_dev);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
@@ -210,9 +208,17 @@ static void fanotify_fdinfo(struct seq_file *m, struct fsnotify_mark *mark)
 		ino = inode->i_ino;
 		dev = inode->i_sb->s_dev;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-		/* SUS_KSTAT covers app-uid processes, whether umounted or not. */
-		if (susfs_is_current_app_uid())
-			susfs_show_map_vma_spoofer(inode, &dev, &ino);
+		/*
+		 * Same spoofer the inotify path above uses, so both fdinfo files
+		 * report identical ino/sdev for the same marked inode. SUS_KSTAT
+		 * covers app-uid processes, whether umounted or not.
+		 */
+		if (susfs_is_current_app_uid()) {
+			bool is_fuse = false;
+
+			if (susfs_is_inode_sus_kstat(inode, &is_fuse))
+				susfs_sus_kstat_spoof_inotify_fdinfo(&ino, &dev);
+		}
 		metadata_spoofed = ino != inode->i_ino || dev != inode->i_sb->s_dev;
 #endif
 		seq_printf(m, "fanotify ino:%lx sdev:%x mflags:%x mask:%x ignored_mask:%x ",

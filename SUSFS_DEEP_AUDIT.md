@@ -382,3 +382,68 @@ upstream position, not a local invention.
 - Still static analysis. Nothing here has been exercised on a device; the
   behavioural claims are proven by reading both trees and every caller, not by
   running them.
+
+---
+
+# Addendum 2: re-verified against upstream SUSFS v2.3.0 itself
+
+The first addendum used the sibling branch as the yardstick. That was a
+reasonable first pass, but it is not authority: a sibling can be wrong, and
+"it differs from the reference" is not the same as "it is a bug". So this
+pass compares every change against the **actual upstream source**.
+
+## Where upstream v2.3.0 lives
+
+Not where I first looked. `ShirkNeko/susfs4ksu` branch `kernel-4.14` is
+**v1.5.9**, much older than the code we ship, and has no `open_redirect`,
+`SUS_MEMFD` or the v2 hook set. The v2.3.0 tree is on
+`ShirkNeko/susfs4ksu` branch **`gki-android14-6.1`** (also `-6.1-dev`,
+`gki-android15-6.6`): `kernel_patches/fs/susfs.c`,
+`kernel_patches/include/linux/susfs.h` (`SUSFS_VERSION "v2.3.0"`),
+`kernel_patches/include/linux/susfs_def.h`, and
+`kernel_patches/50_add_susfs_in_gki-android14-6.1.patch`.
+
+It is a 6.1 GKI tree, so function names differ (`lookup_one_qstr_excl` /
+`__lookup_slow` / `open_last_lookups` / `do_open` vs our 4.14 `__lookup_hash` /
+`lookup_slow` / `do_last`), and `ida_alloc_range()` exists there but not in
+4.14 — the *logic* is what gets compared, not the text.
+
+## Provenance of every fix in this branch
+
+| # | Fix | Upstream v2.3.0 says |
+|---|---|---|
+| A1 | SUS_PATH test after `lookup_real()`, error instead of fake dentry | upstream has the same dead pre-lookup test in `lookup_one_qstr_excl`; its own commit `6cbc44c6` ("Prevent dentry creation for fake_qstr") admits the fake-dentry problem and mitigates it only for FUSE + `LOOKUP_CREATE\|EXCL` + full-file-access. Our fix is the general form. **Beyond upstream, confirmed real** |
+| A2 | `lookup_open()` cached-hit `O_CREAT` guard + post-`->lookup()` re-check | absent upstream; upstream's `skip_orig_flow` falls straight into `i_op->create()` on a negative dentry named `..5.u.S`. **Upstream bug** |
+| A3 | `do_sys_open()` resolves before opening | upstream hooks `path_openat()` instead, which is better placed (covers every `filp_open`) but needs 6.1's split of `open_last_lookups` from `do_open`; 4.14's `do_last` opens inside the same call. Same semantics, one extra lookup per `open()`. **Same intent, 4.14-adapted** |
+| A4 | readlink spoof returns the length | upstream returns `0` and its callers test `if (!res) return res` — so `readlink()` on a redirected inode reports an **empty** link. `vfs_readlink()`'s contract is the byte count. **Upstream bug** |
+| A5 | app-uid gate on `show_map_vma` | **upstream does not gate it** — my gate was wrong and has been reverted; ungated spoofs strictly more readers, gating would hand root/system the real dev/ino |
+| A6 | `fanotify_fdinfo()` spoofing | upstream has **no fanotify code at all** (inotify only, app-uid gated). Fanotify prints the same `ino:`/`sdev:`/`mnt_id` fields, so the leak is real. **Beyond upstream**; used the same spoofer as our inotify path so the two files cannot disagree |
+| A7 | `numa_maps` open-redirect spoof | absent upstream. `show_numa_map()` prints `file->f_path` raw. **Beyond upstream** |
+| A8 | `map_files` direct lookup hides SUS_MAP | absent upstream (only `proc_map_files_readdir` is hooked). Lookup by address bypasses readdir. **Beyond upstream** |
+| A9 | `vfs_statfs` must not recompute spoofed `f_flags` | **identical to upstream**, including the `(dentry, mnt, buf, is_fuse)` signature and the early `return` |
+| A10 | `kfree(new_entry)` in `update_sus_kstat` | **identical to upstream** |
+| A11 | NUL-terminated-field validation | upstream only checks `*str == '\0'` (empty). Cannot crash anything real (KSU-authorized caller), so this is **beyond upstream**; harmless |
+| A12 | uname spoof must not skip | upstream uses a **seqlock** and never skips. My first version used the mutex and blocked; replaced with upstream's seqlock shape (`strscpy`, read_seqbegin/retry). **Now identical in effect to upstream** |
+| A13 | cmdline spoof prints outside the seqlock | **identical to upstream** (snapshot under seqlock, `seq_puts` after) |
+| A14 | `get_anon_bdev` retries inside the KSU branch | upstream uses `ida_alloc_range()`; 4.14's `ida_get_new_above()` needs the retry, and the shared `retry:` label drops the KSU minor. **4.14-adapted, same intent** |
+| A15 | private `CL_COPY_MNT_NS BIT(25)` | **identical to upstream**, including the bit number and the `copy_flags \|= CL_COPY_MNT_NS` in `copy_mnt_ns()` |
+| A16 | extra kallsyms prefixes | upstream's list is exactly what we already had (no `is_task_ksu_domain`). Our KSU fork has different symbol names, so upstream's list cannot cover them. **Ours only** — justified by the symbols existing as globals, with a tree-wide collision scan |
+| A17 | proc_readlink NUL, mirror-entry guards, kpath clear | mirror-guard differs from both upstream and the reference is stricter; only ever removes an entry that is genuinely the mirror of the redirect being replaced |
+
+## What this changed in our tree (second pass)
+
+- **Reverted A5** — `show_map_vma()` is ungated again, with a comment saying why.
+- **A12 rewritten** to upstream's seqlock, replacing my mutex version.
+- **A6 rewritten** to use `susfs_is_inode_sus_kstat()` +
+  `susfs_sus_kstat_spoof_inotify_fdinfo()` (the inotify path's pair) instead of
+  `susfs_show_map_vma_spoofer()`, so inotify and fanotify fdinfo agree on the
+  same inode.
+
+## The honest generalisation
+
+Two of the reference branch's "fixes" were wrong or overreaching (the
+`show_map_vma` gate, and gating first then claiming upstream consistency), and
+three of the things I fixed are bugs that still exist in upstream v2.3.0 today
+(A1/A2 fake-qstr creation, A4 readlink length, A6/A7/A8 unhooked readers). The
+reference was right about the *shape* of the namei problem and wrong about the
+maps gate. Neither source is authority; the VFS contract is.

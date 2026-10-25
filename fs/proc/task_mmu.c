@@ -511,13 +511,13 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 		/*
-		 * SUS_KSTAT applies to app-uid processes (v2.3.0), the same gate
-		 * fs/stat.c and the fdinfo paths use. Without it root and other
-		 * non-app readers got spoofed dev/ino here while stat() on the very
-		 * same inode returned the truth.
+		 * Deliberately NOT gated on susfs_is_current_app_uid(): upstream
+		 * v2.3.0 spoofs maps for every reader. Gating it would hand root and
+		 * system processes the real dev/ino of a hidden mapping, i.e. a
+		 * second, weaker route to the same information. (The fdinfo paths
+		 * are gated because upstream gates those.)
 		 */
-		if (susfs_is_current_app_uid())
-			susfs_show_map_vma_spoofer(inode, &dev, &ino);
+		susfs_show_map_vma_spoofer(inode, &dev, &ino);
 #endif
 	}
 

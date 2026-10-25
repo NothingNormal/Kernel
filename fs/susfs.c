@@ -803,7 +803,7 @@ void susfs_try_umount(uid_t uid) {
 
 /* spoof_uname */
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-static DEFINE_MUTEX(susfs_mutex_lock_set_uname);
+static DEFINE_SEQLOCK(susfs_uname_seqlock);
 static struct st_susfs_uname my_uname;
 static void susfs_my_uname_init(void) {
 	memset(&my_uname, 0, sizeof(my_uname));
@@ -827,18 +827,18 @@ void susfs_set_uname(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	mutex_lock(&susfs_mutex_lock_set_uname);
+	write_seqlock(&susfs_uname_seqlock);
 	if (!strcmp(info.release, "default")) {
-		strncpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, utsname()->release, sizeof(my_uname.release));
 	} else {
-		strncpy(my_uname.release, info.release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, info.release, sizeof(my_uname.release));
 	}
 	if (!strcmp(info.version, "default")) {
-		strncpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, utsname()->version, sizeof(my_uname.version));
 	} else {
-		strncpy(my_uname.version, info.version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, info.version, sizeof(my_uname.version));
 	}
-	mutex_unlock(&susfs_mutex_lock_set_uname);
+	write_sequnlock(&susfs_uname_seqlock);
 	SUSFS_LOGI("setting spoofed release: '%s', version: '%s'\n",
 				my_uname.release, my_uname.version);
 	info.err = 0;
@@ -850,18 +850,20 @@ out_copy_to_user:
 }
 
 void susfs_spoof_uname(struct new_utsname* tmp) {
+	unsigned int seq;
+
 	/*
-	 * Take the lock instead of bailing out when it is busy: skipping the
-	 * spoof for one uname() call hands out the real release/version, and
-	 * reading my_uname unlocked can tear a half-written string. Only the
-	 * newuname() syscall calls this, so sleeping is fine.
+	 * Seqlock, like upstream: never skip the spoof (that would hand out the
+	 * real release/version for this call), never sleep in newuname(), and
+	 * never copy a half-written string.
 	 */
-	mutex_lock(&susfs_mutex_lock_set_uname);
-	if (my_uname.release[0] != '\0') {
-		strncpy(tmp->release, my_uname.release, __NEW_UTS_LEN);
-		strncpy(tmp->version, my_uname.version, __NEW_UTS_LEN);
-	}
-	mutex_unlock(&susfs_mutex_lock_set_uname);
+	do {
+		seq = read_seqbegin(&susfs_uname_seqlock);
+		if (my_uname.release[0] != '\0') {
+			strscpy(tmp->release, my_uname.release, sizeof(tmp->release));
+			strscpy(tmp->version, my_uname.version, sizeof(tmp->version));
+		}
+	} while (read_seqretry(&susfs_uname_seqlock, seq));
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 
