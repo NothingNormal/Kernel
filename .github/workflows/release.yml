@@ -71,6 +71,8 @@ jobs:
     outputs:
       ksu_run: ${{ steps.resolve.outputs.ksu_run }}
       ksun_run: ${{ steps.resolve.outputs.ksun_run }}
+      ksu_artifact: ${{ steps.resolve.outputs.ksu_artifact }}
+      ksun_artifact: ${{ steps.resolve.outputs.ksun_artifact }}
       ksu_meta: ${{ steps.meta.outputs.ksu }}
       ksun_meta: ${{ steps.meta.outputs.ksun }}
     steps:
@@ -90,18 +92,26 @@ jobs:
             done
             return 1
           }
-          KSU_RUN="${{ inputs.ksu_run }}"
-          KSUN_RUN="${{ inputs.ksun_run }}"
+          # github.event.inputs is null on push events -> every parameter
+          # falls back to its documented default via `||`.
+          KSU_RUN="${{ github.event.inputs.ksu_run || '' }}"
+          KSUN_RUN="${{ github.event.inputs.ksun_run || '' }}"
+          KSU_BRANCH="${{ github.event.inputs.ksu_branch || 'arena/0fc62de9-kernel' }}"
+          KSUN_BRANCH="${{ github.event.inputs.ksun_branch || 'arena/cd1940a2-kernel' }}"
+          KSU_ARTIFACT="${{ github.event.inputs.ksu_artifact || 'Sixfaced-KSU-miatoll' }}"
+          KSUN_ARTIFACT="${{ github.event.inputs.ksun_artifact || 'Sixfaced-KSUN-miatoll' }}"
           if [ -z "$KSU_RUN" ]; then
-            KSU_RUN=$(find_run "${{ inputs.ksu_branch }}" "${{ inputs.ksu_artifact }}") \
-              || { echo "::error::no successful run with a live '${{ inputs.ksu_artifact }}' artifact on ${{ inputs.ksu_branch }}"; exit 1; }
+            KSU_RUN=$(find_run "$KSU_BRANCH" "$KSU_ARTIFACT") \
+              || { echo "::error::no successful run with a live '$KSU_ARTIFACT' artifact on $KSU_BRANCH"; exit 1; }
           fi
           if [ -z "$KSUN_RUN" ]; then
-            KSUN_RUN=$(find_run "${{ inputs.ksun_branch }}" "${{ inputs.ksun_artifact }}") \
-              || { echo "::error::no successful run with a live '${{ inputs.ksun_artifact }}' artifact on ${{ inputs.ksun_branch }}"; exit 1; }
+            KSUN_RUN=$(find_run "$KSUN_BRANCH" "$KSUN_ARTIFACT") \
+              || { echo "::error::no successful run with a live '$KSUN_ARTIFACT' artifact on $KSUN_BRANCH"; exit 1; }
           fi
           echo "ksu_run=$KSU_RUN"   >> "$GITHUB_OUTPUT"
           echo "ksun_run=$KSUN_RUN" >> "$GITHUB_OUTPUT"
+          echo "ksu_artifact=$KSU_ARTIFACT"   >> "$GITHUB_OUTPUT"
+          echo "ksun_artifact=$KSUN_ARTIFACT" >> "$GITHUB_OUTPUT"
           echo "KSU  build <- CI run $KSU_RUN"
           echo "KSUN build <- CI run $KSUN_RUN"
 
@@ -127,14 +137,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ needs.resolve.outputs.ksu_run }}
-          name: ${{ inputs.ksu_artifact }}
+          name: ${{ needs.resolve.outputs.ksu_artifact }}
           path: ksu
 
       - name: Download KSUN artifact (outer Actions zip, auto-extracted)
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ needs.resolve.outputs.ksun_run }}
-          name: ${{ inputs.ksun_artifact }}
+          name: ${{ needs.resolve.outputs.ksun_artifact }}
           path: ksun
 
       - name: Extract inner installer zips
