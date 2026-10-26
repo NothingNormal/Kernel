@@ -858,3 +858,26 @@ CONFIG_IP_SET_HASH_NET=y
 CONFIG_NETFILTER_XT_SET=y
 CONFIG_NETFILTER_NETLINK_QUEUE=y
 CONFIG_NETFILTER_NETLINK_LOG=y
+#
+# Uclamp (utilization clamping) - ACK v5.4-series backport for CAF 4.14.
+# Coexists with schedtune: /dev/stune (schedtune.boost/prefer_idle) stays
+# fully functional, while modern userspace additionally gets per-task
+# sched_setattr(SCHED_FLAG_UTIL_CLAMP_MIN/MAX), sysctls
+# kernel.sched_util_clamp_{min,max,min_rt_default} and cgroup files
+# /dev/cpuctl/<grp>/cpu.uclamp.{min,max,latency_sensitive,boosted}.
+#
+CONFIG_UCLAMP_TASK=y
+CONFIG_UCLAMP_BUCKETS_COUNT=5
+CONFIG_UCLAMP_TASK_GROUP=y
+#
+# Scheduler / deep-sleep tuning
+#  - boot straight into schedutil instead of the Kconfig-default
+#    'performance' governor (ROM init may re-set it; this only matters
+#    for early boot and non-Android boots)
+#  - opportunistic sleep: exposes /sys/power/autosleep for modern
+#    system_suspend HALs (legacy echo-mem path still works)
+#  - route per-cpu workqueues to idle CPUs (fewer wakeups, deeper idle)
+#
+CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y
+CONFIG_PM_AUTOSLEEP=y
+CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
