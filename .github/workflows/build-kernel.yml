@@ -242,6 +242,29 @@ jobs:
             fail=1
           fi
 
+          # Scheduler and container features added on top of the SUSFS set.
+          # These are the ones userspace advertises: uclamp/schedtune for
+          # task_profiles, and the Droidspaces option set for containers.
+          for sym in CONFIG_UCLAMP_TASK CONFIG_UCLAMP_TASK_GROUP \
+                     CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                     CONFIG_SCHED_TUNE CONFIG_SCHED_CASS \
+                     CONFIG_SYSVIPC CONFIG_POSIX_MQUEUE \
+                     CONFIG_PID_NS CONFIG_IPC_NS CONFIG_NET_NS CONFIG_USER_NS \
+                     CONFIG_SECCOMP_FILTER CONFIG_DEVTMPFS CONFIG_TMPFS_XATTR \
+                     CONFIG_FAIR_GROUP_SCHED CONFIG_CFS_BANDWIDTH \
+                     CONFIG_CGROUP_PIDS CONFIG_CGROUP_DEVICE \
+                     CONFIG_CGROUP_NET_PRIO CONFIG_MEMCG \
+                     CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_IP_NF_NAT \
+                     CONFIG_IP_NF_TARGET_MASQUERADE CONFIG_MACVLAN; do
+            if grep -qx "$sym=y" out/.config; then
+              echo "  ok   $sym=y"
+            else
+              echo "::error::$sym is not enabled in out/.config (scheduler/container feature missing)"
+              grep -E "^${sym}=" out/.config || echo "  ($sym not present at all - dependency unmet?)"
+              fail=1
+            fi
+          done
+
           # Every manual hook site must still be wired. A dropped hook does
           # not fail to build - it fails silently at boot, which is how the
           # init.rc size hook went missing and left modules stuck in
@@ -406,26 +429,25 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      # The artifact API hands back a blob URL on a storage host that is not
-      # reachable from every environment, so publish the zip straight onto the
-      # release from the runner instead. Creates the release if it is missing,
-      # and --clobber keeps re-runs idempotent.
-      - name: Publish zip to the KSUN release
+      # Publish straight onto the tag named "latest", the release the project
+      # links people to. Only the KSUN asset is replaced: the file is copied to
+      # a stable name first, so `gh release upload --clobber` overwrites that one
+      # asset and leaves the release title, notes, tag and any other asset
+      # (e.g. the KSU variant) untouched.
+      - name: Publish zip to the 'latest' release
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          ZIP=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
-          ls -lh "$ZIP"
-          if ! gh release view KSUN >/dev/null 2>&1; then
-            gh release create KSUN \
-              --title "Sixfaced KSUN" \
-              --notes-file .github/RELEASE_NOTES.md \
-              --target "$GITHUB_SHA"
-          fi
-          gh release upload KSUN "$ZIP" --clobber
-          gh release view KSUN --json assets \
+          SRC=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
+          OUT="$RUNNER_TEMP/Sixfaced-miatoll-KSUN.zip"
+          cp "$SRC" "$OUT"
+          ls -lh "$SRC" "$OUT"
+          # the release must already exist - do NOT create or edit it here
+          gh release view latest --json tagName -q '.tagName'
+          gh release upload latest "$OUT" --clobber
+          gh release view latest --json assets \
             -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
 
       - name: Upload kernel zip (artifact)
