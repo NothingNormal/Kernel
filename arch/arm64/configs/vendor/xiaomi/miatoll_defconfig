@@ -20,7 +20,7 @@ CONFIG_PELT_UTIL_HALFLIFE_16=y
 CONFIG_CGROUPS=y
 CONFIG_BLK_CGROUP=y
 CONFIG_CGROUP_SCHED=y
-# CONFIG_FAIR_GROUP_SCHED is not set
+CONFIG_FAIR_GROUP_SCHED=y
 CONFIG_CGROUP_FREEZER=y
 CONFIG_CPUSETS=y
 CONFIG_CGROUP_CPUACCT=y
@@ -851,5 +851,22 @@ CONFIG_MACVLAN=y
 # CONFIG_ANDROID_PARANOID_NETWORK and FW_LOADER_COMPRESS do not exist in this
 # tree. FW_LOADER_USER_HELPER is left off on purpose: it turns a missing
 # firmware file into a 60 second userspace stall.
+# ---------------------------------------------------------------------------
+
+CONFIG_CFS_BANDWIDTH=y
+CONFIG_MEMCG=y
+CONFIG_CGROUP_PIDS=y
+CONFIG_CGROUP_DEVICE=y
+CONFIG_CGROUP_NET_PRIO=y
+
+# ---------------------------------------------------------------------------
+# Droidspaces resource limits: --cpus, --memory, --pids-limit.
+#
+# These are the only additions in this series that change scheduler and mm
+# structure rather than just turning a feature on, so they are kept in their
+# own commit: dropping this commit alone reverts to the stock group-scheduler
+# layout (FAIR_GROUP_SCHED was explicitly off on miatoll) while keeping
+# uclamp, schedutil and the container namespaces from the previous commit.
+# Without them containers still run, but those three limits are skipped.
 # ---------------------------------------------------------------------------
 
