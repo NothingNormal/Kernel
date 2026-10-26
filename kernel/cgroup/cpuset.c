@@ -2007,7 +2007,6 @@ static struct cftype files[] = {
 		.write_u64 = cpuset_write_u64,
 		.private = FILE_MEMORY_PRESSURE_ENABLED,
 	},
-
 	{ }	/* terminate */
 };
 

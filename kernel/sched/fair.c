@@ -5321,7 +5321,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_entity *se = &p->se;
 	int task_new = !(flags & ENQUEUE_WAKEUP);
 	bool prefer_idle = sched_feat(EAS_PREFER_IDLE) ?
-				(schedtune_prefer_idle(p) > 0) : 0;
+				((schedtune_prefer_idle(p) > 0) ||
+				 uclamp_latency_sensitive(p)) : 0;
 
 #ifdef CONFIG_SCHED_WALT
 	p->misfit = !task_fits_max(p, rq->cpu);
@@ -5868,7 +5869,7 @@ cpu_is_in_target_set(struct task_struct *p, int cpu)
 	struct root_domain *rd = cpu_rq(cpu)->rd;
 	int first_cpu, next_usable_cpu;
 
-	if (schedtune_task_boost(p)) {
+	if (schedtune_task_boost(p) || uclamp_boosted(p)) {
 		first_cpu = rd->mid_cap_orig_cpu != -1 ? rd->mid_cap_orig_cpu :
 			    rd->max_cap_orig_cpu;
 
@@ -6866,9 +6867,22 @@ boosted_task_util(struct task_struct *task)
 	trace_sched_boost_task(task, util, margin);
 
 	if (sched_feat(SCHEDTUNE_BOOST_UTIL))
-		return util + margin;
-	else
-		return util;
+		util += margin;
+
+	/*
+	 * Schedtune and uclamp compose instead of competing: the schedtune
+	 * margin is applied to the raw util first, then one final clamp with
+	 * the task's effective uclamp values. That keeps /dev/stune semantics
+	 * for legacy userspace, lets an explicit uclamp.min raise a task that
+	 * schedtune does not boost, and makes uclamp.max always win over a
+	 * stune boost (no double counting, no post-clamp violation).
+	 */
+#ifdef CONFIG_UCLAMP_TASK
+	util = clamp(util, (unsigned long)uclamp_eff_value(task, UCLAMP_MIN),
+		     (unsigned long)uclamp_eff_value(task, UCLAMP_MAX));
+#endif
+
+	return util;
 }
 
 static unsigned long cpu_util_without(int cpu, struct task_struct *p);
@@ -7437,7 +7451,7 @@ static inline bool task_fits_max(struct task_struct *p, int cpu)
 
 	if (is_min_capacity_cpu(cpu)) {
 		if (task_boost_policy(p) == SCHED_BOOST_ON_BIG ||
-			task_boost > 0)
+		    task_boost > 0 || uclamp_boosted(p))
 			return false;
 	} else { /* mid cap cpu */
 		if (task_boost > 1)
@@ -7631,6 +7645,10 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				continue;
 
 			if (fbt_env->skip_cpu == i)
+				continue;
+
+			/* Skip CPUs which do not fit task requirements */
+			if (capacity_of(i) < boosted_task_util(p))
 				continue;
 
 			/*
@@ -8264,7 +8282,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 	int placement_boost = task_boost_policy(p);
 	u64 start_t = 0;
 	int next_cpu = -1, backup_cpu = -1;
-	int boosted = (schedtune_task_boost(p) > 0 || per_task_boost(p) > 0);
+	int boosted = (schedtune_task_boost(p) || per_task_boost(p) ||
+			uclamp_boosted(p));
 
 	fbt_env.fastpath = 0;
 	fbt_env.need_idle = 0;
@@ -8335,8 +8354,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 		 * all if(prefer_idle) blocks.
 		 */
 		prefer_idle = sched_feat(EAS_PREFER_IDLE) ?
-				(schedtune_prefer_idle(p) > 0) : 0;
-
+				((schedtune_prefer_idle(p) > 0) ||
+				 uclamp_latency_sensitive(p)) : 0;
 		eenv->max_cpu_count = EAS_CPU_BKP + 1;
 
 		fbt_env.rtg_target = rtg_target;
@@ -8451,7 +8470,8 @@ static inline int wake_energy(struct task_struct *p, int prev_cpu,
 		 * Force prefer-idle tasks into the slow path, this may not happen
 		 * if none of the sd flags matched.
 		 */
-		if (schedtune_prefer_idle(p) > 0 && !sync)
+		if ((schedtune_prefer_idle(p) > 0 ||
+		     uclamp_latency_sensitive(p)) && !sync)
 			return false;
 	}
 	return true;
@@ -12864,6 +12884,10 @@ const struct sched_class fair_sched_class = {
 
 #ifdef CONFIG_SCHED_WALT
 	.fixup_walt_sched_stats	= walt_fixup_sched_stats_fair,
+#endif
+
+#ifdef CONFIG_UCLAMP_TASK
+	.uclamp_enabled		= 1,
 #endif
 };
 
