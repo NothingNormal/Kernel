@@ -27,7 +27,7 @@ CONFIG_CGROUP_CPUACCT=y
 CONFIG_CGROUP_BPF=y
 CONFIG_NAMESPACES=y
 # CONFIG_UTS_NS is not set
-# CONFIG_PID_NS is not set
+CONFIG_PID_NS=y
 CONFIG_SCHED_CASS=y
 CONFIG_SCHED_TUNE=y
 CONFIG_CPUSET_ASSIST=y
@@ -175,7 +175,7 @@ CONFIG_IPV6_VTI=y
 CONFIG_IPV6_MULTIPLE_TABLES=y
 CONFIG_IPV6_SUBTREES=y
 CONFIG_NETFILTER=y
-# CONFIG_BRIDGE_NETFILTER is not set
+CONFIG_BRIDGE_NETFILTER=y
 CONFIG_NF_CONNTRACK=y
 CONFIG_NF_CONNTRACK_SECMARK=y
 CONFIG_NF_CONNTRACK_EVENTS=y
@@ -804,3 +804,52 @@ CONFIG_KSU_SUSFS_SUS_MAP=y
 # through add_key()/keyctl rather than an ioctl on a /dev node.
 CONFIG_NOMOUNT=y
 CONFIG_KEYS=y
+CONFIG_UCLAMP_TASK=y
+CONFIG_UCLAMP_TASK_GROUP=y
+CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y
+CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_IPC_NS=y
+CONFIG_NET_NS=y
+CONFIG_USER_NS=y
+CONFIG_SECCOMP_FILTER=y
+CONFIG_DEVTMPFS=y
+CONFIG_TMPFS_XATTR=y
+CONFIG_NETFILTER_ADVANCED=y
+CONFIG_NF_NAT=y
+CONFIG_NF_NAT_REDIRECT=y
+CONFIG_NF_TABLES=y
+CONFIG_NF_NAT_IPV4=y
+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+CONFIG_IP6_NF_NAT=y
+CONFIG_NF_NAT_IPV6=y
+CONFIG_IP6_NF_TARGET_MASQUERADE=y
+CONFIG_MACVLAN=y
+
+# ---------------------------------------------------------------------------
+# Added on top of the stock miatoll config (append-only; nothing above this
+# point was reordered or rewritten, so this block is the whole diff).
+#
+# util-clamp (uclamp): backported 4.14 series (darkhz/uclamp, uclamp_4.14).
+# Kept ALONGSIDE schedtune, not instead of it: schedtune (CONFIG_SCHED_TUNE)
+# is what this ROM drives via /dev/stune, uclamp is what newer userspace and
+# the per-task sched_setattr() API drive. The backport exposes its group
+# tunables on the *cpu* controller (/dev/cpuctl/<grp>/cpu.uclamp.min, .max,
+# .latency_sensitive, .boosted) - the AOSP task_profiles.json layout - and NOT
+# on cpusets, because css_tg() would reinterpret a struct cpuset as a
+# struct task_group there.
+#
+# schedutil as the built-in governor, because the Kconfig choice defaults to
+# "performance"; it only looked right because vendor init.rc writes the
+# governor at boot, and a ROM without that script would boot pinned at max.
+#
+# Droidspaces is a userspace container runtime: no driver, only these options
+# (ravindu644/Droidspaces-OSS, "Non-GKI (Legacy Kernels)" list, which covers
+# 4.14). Names that look ancient - NF_NAT_IPV4, NF_CONNTRACK_IPV4 - are the
+# correct 4.14 spellings of what 5.x calls NF_NAT / NF_CONNTRACK_NETLINK.
+# CONFIG_ANDROID_PARANOID_NETWORK and FW_LOADER_COMPRESS do not exist in this
+# tree. FW_LOADER_USER_HELPER is left off on purpose: it turns a missing
+# firmware file into a 60 second userspace stall.
+# ---------------------------------------------------------------------------
+
