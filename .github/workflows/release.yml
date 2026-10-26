@@ -71,8 +71,8 @@ jobs:
     outputs:
       ksu_run: ${{ steps.resolve.outputs.ksu_run }}
       ksun_run: ${{ steps.resolve.outputs.ksun_run }}
-      ksu_artifact: ${{ steps.resolve.outputs.ksu_artifact }}
-      ksun_artifact: ${{ steps.resolve.outputs.ksun_artifact }}
+      ksu_aid: ${{ steps.resolve.outputs.ksu_aid }}
+      ksun_aid: ${{ steps.resolve.outputs.ksun_aid }}
       ksu_meta: ${{ steps.meta.outputs.ksu }}
       ksun_meta: ${{ steps.meta.outputs.ksun }}
     steps:
@@ -82,13 +82,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          find_run() { # $1=branch $2=artifact-name -> newest successful run id with a live artifact
-            local branch="${1//\//%2F}" artifact="$2" rid found
+          find_run() { # $1=branch $2=artifact-name -> "run_id artifact_id" of newest successful run with a live artifact
+            local branch="${1//\//%2F}" artifact="$2" rid aid
             for rid in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$branch&status=success&per_page=15" \
                          --jq '.workflow_runs[].id'); do
-              found=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" \
-                      --jq "[.artifacts[] | select(.name==\"$artifact\" and .expired==false)] | length")
-              if [ "$found" -gt 0 ]; then echo "$rid"; return 0; fi
+              aid=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" \
+                    --jq "[.artifacts[] | select(.name==\"$artifact\" and .expired==false)][0].id // empty")
+              if [ -n "$aid" ]; then echo "$rid $aid"; return 0; fi
             done
             return 1
           }
@@ -100,20 +100,34 @@ jobs:
           KSUN_BRANCH="${{ github.event.inputs.ksun_branch || 'arena/cd1940a2-kernel' }}"
           KSU_ARTIFACT="${{ github.event.inputs.ksu_artifact || 'Sixfaced-KSU-miatoll' }}"
           KSUN_ARTIFACT="${{ github.event.inputs.ksun_artifact || 'Sixfaced-KSUN-miatoll' }}"
-          if [ -z "$KSU_RUN" ]; then
-            KSU_RUN=$(find_run "$KSU_BRANCH" "$KSU_ARTIFACT") \
-              || { echo "::error::no successful run with a live '$KSU_ARTIFACT' artifact on $KSU_BRANCH"; exit 1; }
+          KSU_AID=""
+          KSUN_AID=""
+          if [ -n "$KSU_RUN" ]; then
+            KSU_AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$KSU_RUN/artifacts" \
+                      --jq "[.artifacts[] | select(.name==\"$KSU_ARTIFACT\" and .expired==false)][0].id // empty")
+            [ -n "$KSU_AID" ] || { echo "::error::pinned run $KSU_RUN has no live '$KSU_ARTIFACT' artifact"; exit 1; }
+          else
+            read -r KSU_RUN KSU_AID <<<"$(find_run "$KSU_BRANCH" "$KSU_ARTIFACT" || true)"
+            if [ -z "$KSU_RUN" ] || [ -z "$KSU_AID" ]; then
+              echo "::error::no successful run with a live '$KSU_ARTIFACT' artifact on $KSU_BRANCH"; exit 1
+            fi
           fi
-          if [ -z "$KSUN_RUN" ]; then
-            KSUN_RUN=$(find_run "$KSUN_BRANCH" "$KSUN_ARTIFACT") \
-              || { echo "::error::no successful run with a live '$KSUN_ARTIFACT' artifact on $KSUN_BRANCH"; exit 1; }
+          if [ -n "$KSUN_RUN" ]; then
+            KSUN_AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$KSUN_RUN/artifacts" \
+                       --jq "[.artifacts[] | select(.name==\"$KSUN_ARTIFACT\" and .expired==false)][0].id // empty")
+            [ -n "$KSUN_AID" ] || { echo "::error::pinned run $KSUN_RUN has no live '$KSUN_ARTIFACT' artifact"; exit 1; }
+          else
+            read -r KSUN_RUN KSUN_AID <<<"$(find_run "$KSUN_BRANCH" "$KSUN_ARTIFACT" || true)"
+            if [ -z "$KSUN_RUN" ] || [ -z "$KSUN_AID" ]; then
+              echo "::error::no successful run with a live '$KSUN_ARTIFACT' artifact on $KSUN_BRANCH"; exit 1
+            fi
           fi
           echo "ksu_run=$KSU_RUN"   >> "$GITHUB_OUTPUT"
           echo "ksun_run=$KSUN_RUN" >> "$GITHUB_OUTPUT"
-          echo "ksu_artifact=$KSU_ARTIFACT"   >> "$GITHUB_OUTPUT"
-          echo "ksun_artifact=$KSUN_ARTIFACT" >> "$GITHUB_OUTPUT"
-          echo "KSU  build <- CI run $KSU_RUN"
-          echo "KSUN build <- CI run $KSUN_RUN"
+          echo "ksu_aid=$KSU_AID"   >> "$GITHUB_OUTPUT"
+          echo "ksun_aid=$KSUN_AID" >> "$GITHUB_OUTPUT"
+          echo "KSU  build <- CI run $KSU_RUN (artifact id $KSU_AID)"
+          echo "KSUN build <- CI run $KSUN_RUN (artifact id $KSUN_AID)"
 
       - name: Collect run metadata
         id: meta
@@ -133,19 +147,27 @@ jobs:
     needs: resolve
     runs-on: ubuntu-latest
     steps:
-      - name: Download KSU artifact (outer Actions zip, auto-extracted)
-        uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ needs.resolve.outputs.ksu_run }}
-          name: ${{ needs.resolve.outputs.ksu_artifact }}
-          path: ksu
-
-      - name: Download KSUN artifact (outer Actions zip, auto-extracted)
-        uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ needs.resolve.outputs.ksun_run }}
-          name: ${{ needs.resolve.outputs.ksun_artifact }}
-          path: ksun
+      - name: Download outer artifact zips via REST and unzip them
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KSU_AID: ${{ needs.resolve.outputs.ksu_aid }}
+          KSUN_AID: ${{ needs.resolve.outputs.ksun_aid }}
+        run: |
+          set -euo pipefail
+          # actions/download-artifact@v4's cross-run `run-id` mode reports
+          # "Artifact not found" for other-workflow runs, so we stream the
+          # artifact zips straight from the REST API instead.
+          mkdir -p ksu ksun
+          echo "downloading KSU outer zip (artifact id $KSU_AID)..."
+          gh api "repos/$REPO/actions/artifacts/$KSU_AID/zip" > ksu_outer.zip
+          echo "downloading KSUN outer zip (artifact id $KSUN_AID)..."
+          gh api "repos/$REPO/actions/artifacts/$KSUN_AID/zip" > ksun_outer.zip
+          ls -l ksu_outer.zip ksun_outer.zip
+          unzip -o ksu_outer.zip  -d ksu
+          unzip -o ksun_outer.zip -d ksun
+          echo "--- extracted contents ---"
+          find ksu ksun -type f | xargs -r ls -l
 
       - name: Extract inner installer zips
         run: |
