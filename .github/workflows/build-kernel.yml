@@ -141,3 +141,54 @@ jobs:
           path: AnyKernel/Sixfaced-*.zip
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Verify Droidspaces options in final .config
+        if: success()
+        run: |
+          MISSING=0
+          for s in SYSCTL SYSVIPC POSIX_MQUEUE PID_NS IPC_NS NET_NS USER_NS UTS_NS \
+                   SECCOMP SECCOMP_FILTER CGROUP_DEVICE CGROUP_NET_PRIO CGROUP_PIDS \
+                   FAIR_GROUP_SCHED CFS_BANDWIDTH MEMCG MEMCG_SWAP MEMCG_SWAP_ENABLED \
+                   DEVTMPFS TMPFS_XATTR TMPFS_POSIX_ACL OVERLAY_FS \
+                   FW_LOADER FW_LOADER_USER_HELPER \
+                   IPV6 NETFILTER_ADVANCED NF_TABLES NF_TABLES_INET NF_CT_NETLINK \
+                   NF_NAT NF_NAT_IPV4 NF_NAT_REDIRECT IP6_NF_NAT IP6_NF_TARGET_MASQUERADE \
+                   NETFILTER_XT_MATCH_ADDRTYPE MACVLAN BRIDGE_NETFILTER \
+                   NETFILTER_XT_MATCH_OWNER NETFILTER_XT_MATCH_CONNTRACK \
+                   IP_NF_TARGET_REJECT IP6_NF_TARGET_REJECT NETFILTER_XT_TARGET_LOG \
+                   IP_SET IP_SET_HASH_IP IP_SET_HASH_NET NETFILTER_XT_SET \
+                   NETFILTER_NETLINK_QUEUE NETFILTER_NETLINK_LOG NETFILTER_XT_TARGET_NFLOG; do
+            if grep -qE "^CONFIG_$s=y" out/.config; then
+              echo "OK       CONFIG_$s=y"
+            else
+              echo "::warning::CONFIG_$s is NOT enabled in the final .config"
+              MISSING=$((MISSING+1))
+            fi
+          done
+          echo "Droidspaces verification: ${MISSING} missing symbol(s) - see warnings above (if any)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Update KSU asset on the 'latest' release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ZIP=$(find AnyKernel -maxdepth 1 -name 'Sixfaced-*.zip' -print -quit)
+          if [ -z "$ZIP" ]; then
+            echo "::warning::no kernel zip found under AnyKernel/ - skipping release asset update"
+            exit 0
+          fi
+          cp "$ZIP" Sixfaced-miatoll-KSU.zip
+          if ! gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::warning::release tag 'latest' does not exist - skipping (this workflow never creates releases)"
+            exit 0
+          fi
+          # --clobber replaces ONLY the asset named Sixfaced-miatoll-KSU.zip.
+          # The KSUN asset and the release notes are never touched, and no
+          # release is ever created here.
+          gh release upload latest Sixfaced-miatoll-KSU.zip \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo "--- 'latest' release assets after upload ---"
+          gh release view latest --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | "\(.name): \(.size) bytes, updated \(.updatedAt)"'
+
