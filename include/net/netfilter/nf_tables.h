@@ -429,6 +429,13 @@ struct nft_set {
 					genmask:2;
 	u8				klen;
 	u8				dlen;
+	/* Dead-set marker written by nf_tables_unbind_set() (CAF backport
+	 * of upstream 628bd3e49cba brought the writer but dropped this
+	 * member, breaking the build once NF_TABLES is enabled). No reader
+	 * exists in this tree, so the flag is inert - it only restores
+	 * compile-compatibility with the upstream struct layout.
+	 */
+	bool				dead;
 	unsigned char			data[]
 		__attribute__((aligned(__alignof__(u64))));
 };
