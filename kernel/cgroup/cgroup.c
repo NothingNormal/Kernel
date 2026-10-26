@@ -3806,6 +3806,22 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 		spin_unlock_irq(&cgroup_file_kn_lock);
 	}
 
+	/*
+	 * Droidspaces / LXC compatibility (Droidspaces-OSS kernel guide, non-GKI
+	 * step 3): when a hierarchy is mounted with "noprefix", every file is
+	 * exposed under its bare name ("shares"), but container runtimes and
+	 * systemd look for the prefixed name ("cpu.shares"). Publish a link
+	 * with the prefixed name as well, so both spellings resolve to the same
+	 * file. Files that opt out with CFTYPE_NO_PREFIX (the "cgroup.*" core
+	 * files) and files without an owning subsystem are left alone.
+	 */
+	if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) &&
+	    !(cft->flags & CFTYPE_NO_PREFIX)) {
+		snprintf(name, CGROUP_FILE_NAME_MAX, "%s.%s",
+			 cft->ss->name, cft->name);
+		kernfs_create_link(cgrp->kn, name, kn);
+	}
+
 	return 0;
 }
 
