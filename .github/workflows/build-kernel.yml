@@ -6,6 +6,12 @@ on:
   push:
     branches-ignore:
       - build-logs
+    # workflow/doc-only pushes must not rebuild the kernel; the release
+    # publisher (release.yml) handles those itself.
+    paths-ignore:
+      - '.github/**'
+      - 'docs/**'
+      - '**.md'
 
 concurrency:
   group: sixfaced-${{ github.ref }}

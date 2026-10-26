@@ -19,6 +19,16 @@
 name: Publish latest release
 
 on:
+  # Self-registering trigger: this workflow lives only on non-default branches,
+  # and GitHub does not expose such a workflow for workflow_dispatch until it
+  # has run at least once. Pushing a change to THIS file triggers a publish,
+  # which both registers the workflow and refreshes the release. Kernel CI is
+  # NOT re-run for workflow-only pushes (build-kernel.yml has paths-ignore).
+  push:
+    branches-ignore:
+      - build-logs
+    paths:
+      - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
       ksu_run:
@@ -148,37 +158,42 @@ jobs:
       - name: Create/update the rolling 'latest' release and upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KSU_META: ${{ needs.resolve.outputs.ksu_meta }}
+          KSUN_META: ${{ needs.resolve.outputs.ksun_meta }}
         run: |
           set -euo pipefail
           TAG="latest"
           TITLE="Sixfaced Kernel — latest builds (miatoll)"
-          NOTES="$(cat <<EOF
-          Rolling release — re-published by the *Publish latest release* workflow on $(date -u '+%Y-%m-%d %H:%M UTC').
+          STAMP="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          # NOTE: double-quoted string, NOT a heredoc: the meta values carry
+          # markdown backticks, and expansion results are never re-scanned by
+          # bash, so they cannot trigger command substitution here.
+          NOTES="Rolling release — re-published by the *Publish latest release* workflow on ${STAMP}.
 
           ## Assets
           | File | Root solution | Source |
           |---|---|---|
-          | \`Sixfaced-miatoll-KSU.zip\`  | KernelSU (backslashxx driver, SuSFS v2.3.0 + NoMount) | ${{ needs.resolve.outputs.ksu_meta }} |
-          | \`Sixfaced-miatoll-KSUN.zip\` | KernelSU-Next | ${{ needs.resolve.outputs.ksun_meta }} |
+          | Sixfaced-miatoll-KSU.zip | KernelSU (backslashxx driver + SuSFS v2.3.0 + NoMount) | ${KSU_META} |
+          | Sixfaced-miatoll-KSUN.zip | KernelSU-Next | ${KSUN_META} |
 
           ## Flashing
-          1. Flash the zip for **your** root solution only (KSU **or** KSUN — never both, and don't stack APatch on top).
+          1. Flash the zip for your root solution only (KSU **or** KSUN — never both, and don't stack APatch on top).
           2. Reboot, then install the matching manager app:
-             - KSU build → backslashxx KernelSU manager (driver 32704, UAPI 6)
+             - KSU build → backslashxx KernelSU manager (driver version: see KernelSU/VENDOR-INFO)
              - KSUN build → KernelSU-Next manager
           3. A-only device (miatoll) — no slot handling needed.
 
           Direct links (stable, always point at the newest publish):
-          - https://github.com/$GITHUB_REPOSITORY/releases/download/latest/Sixfaced-miatoll-KSU.zip
-          - https://github.com/$GITHUB_REPOSITORY/releases/download/latest/Sixfaced-miatoll-KSUN.zip
-          EOF
-          )"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes "$NOTES"
+          - https://github.com/${REPO}/releases/download/latest/Sixfaced-miatoll-KSU.zip
+          - https://github.com/${REPO}/releases/download/latest/Sixfaced-miatoll-KSUN.zip
+          "
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --title "$TITLE" --notes "$NOTES"
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes "$NOTES"
+            gh release create "$TAG" --repo "$REPO" --title "$TITLE" --notes "$NOTES"
           fi
           gh release upload "$TAG" assets/Sixfaced-miatoll-KSU.zip assets/Sixfaced-miatoll-KSUN.zip \
-            --repo "$GITHUB_REPOSITORY" --clobber
+            --repo "$REPO" --clobber
           echo "--- published ---"
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY"
+          gh release view "$TAG" --repo "$REPO"
