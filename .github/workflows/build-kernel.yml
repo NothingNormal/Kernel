@@ -6,8 +6,9 @@ on:
   push:
     branches-ignore:
       - build-logs
-    # workflow/doc-only pushes must not rebuild the kernel; the release
-    # publisher (release.yml) handles those itself.
+    # Workflow/doc-only pushes do not rebuild the kernel: they cannot
+    # change the resulting image, and toolchain/CI changes are exercised
+    # by the next source push or by a manual workflow_dispatch run.
     paths-ignore:
       - '.github/**'
       - 'docs/**'
@@ -146,6 +147,10 @@ jobs:
         if: success()
         run: |
           MISSING=0
+          CRITICAL_MISSING=0
+          # Symbols the container feature cannot work without: a silent
+          # regression in any of these must not produce a green build.
+          CRITICAL="UTS_NS PID_NS IPC_NS NET_NS USER_NS SECCOMP NF_TABLES UCLAMP_TASK SCHED_TUNE"
           for s in SYSCTL SYSVIPC POSIX_MQUEUE PID_NS IPC_NS NET_NS USER_NS UTS_NS \
                    SECCOMP SECCOMP_FILTER CGROUP_DEVICE CGROUP_NET_PRIO CGROUP_PIDS \
                    FAIR_GROUP_SCHED CFS_BANDWIDTH MEMCG MEMCG_SWAP MEMCG_SWAP_ENABLED \
@@ -166,9 +171,16 @@ jobs:
             else
               echo "::warning::CONFIG_$s is NOT enabled in the final .config"
               MISSING=$((MISSING+1))
+              case " $CRITICAL " in
+                *" $s "*) CRITICAL_MISSING=$((CRITICAL_MISSING+1)) ;;
+              esac
             fi
           done
-          echo "Droidspaces verification: ${MISSING} missing symbol(s) - see warnings above (if any)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Droidspaces verification: ${MISSING} missing symbol(s), ${CRITICAL_MISSING} of them critical" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$CRITICAL_MISSING" -ne 0 ]; then
+            echo "::error::${CRITICAL_MISSING} critical symbol(s) missing from out/.config - the container feature would be silently broken"
+            exit 1
+          fi
 
       - name: Update KSU asset on the 'latest' release
         if: success()
