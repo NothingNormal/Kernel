@@ -526,30 +526,6 @@ append_module_rc:
 	return ret;
 }
 
-static bool check_init_path(char *dpath)
-{
-	const char *valid_paths[] = { "/system/etc/init/hw/init.rc",
-				      "/init.rc" };
-	bool path_match = false;
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(valid_paths); i++) {
-		if (strcmp(dpath, valid_paths[i]) == 0) {
-			path_match = true;
-			break;
-		}
-	}
-
-	if (!path_match) {
-		pr_err("vfs_read: couldn't determine init.rc path for %s\n",
-		       dpath);
-		return false;
-	}
-
-	pr_info("vfs_read: got init.rc path: %s\n", dpath);
-	return true;
-}
-
 static bool is_init_rc(struct file *fp)
 {
     if (strcmp(current->comm, "init")) {

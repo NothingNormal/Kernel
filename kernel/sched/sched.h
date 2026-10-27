@@ -2710,7 +2710,7 @@ static inline bool uclamp_latency_sensitive(struct task_struct *p)
 		return false;
 
 	/* Root cgroup carries no group-level flags. */
-	if (!strlen(css->cgroup->kn->name))
+	if (!css->parent)
 		return false;
 
 	/*
@@ -2733,7 +2733,7 @@ static inline bool uclamp_boosted(struct task_struct *p)
 		return false;
 
 	/* Root cgroup carries no group-level flags. */
-	if (!strlen(css->cgroup->kn->name))
+	if (!css->parent)
 		return false;
 
 	/*

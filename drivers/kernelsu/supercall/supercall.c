@@ -193,7 +193,9 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 			return 0;
 
 		if (copy_to_user((void __user *)*arg, &reply, sizeof(reply) ))
-			return 0;
+			pr_info("sys_reboot: sulog dump reply fail\n");
+
+		return 0;
 	}
 
 	if (magic2 == CHANGE_KSUVER) {

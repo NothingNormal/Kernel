@@ -255,7 +255,6 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, int cpu)
 
 	cfs_max = arch_scale_cpu_capacity(NULL, cpu);
 
-	*util = min(rq->cfs.avg.util_avg, cfs_max);
 	*max = cfs_max;
 
 	*util = boosted_cpu_util(cpu, &loadcpu->walt_load);

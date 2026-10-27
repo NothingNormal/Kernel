@@ -33,16 +33,13 @@
 #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x60010
 #define CMD_SUSFS_ADD_SUS_MAP 0x60020
 /*
- * WARNING: 0x60030 is CMD_SUSFS_SET_PRIORITY_UID_FILTER in upstream SUSFS
- * v2.3.0 (simonpunk/susfs4ksu, all branches). Upstream has no ADD_SUS_MEMFD
- * at all, so this number is only safe while CONFIG_KSU_SUSFS_SUS_MEMFD is
- * disabled: the dispatch case is compiled out and 0x60030 falls through to
- * the "unknown susfs cmd" default instead of being misread. The moment that
- * config is enabled, a module sending the upstream priority-filter command
- * would be routed into susfs_add_sus_memfd() with an incompatible struct.
- * If memfd is ever turned on, renumber it to a free slot (e.g. 0x60040).
+ * Upstream SUSFS v2.3.0 uses 0x60030 for CMD_SUSFS_SET_PRIORITY_UID_FILTER
+ * (simonpunk/susfs4ksu, all branches) and has no ADD_SUS_MEMFD at all.
+ * Take the next free slot rather than 0x60030 so that enabling
+ * CONFIG_KSU_SUSFS_SUS_MEMFD can never route an upstream priority-filter
+ * payload (a 65535-byte app_strings blob) into susfs_add_sus_memfd().
  */
-#define CMD_SUSFS_ADD_SUS_MEMFD 0x60030
+#define CMD_SUSFS_ADD_SUS_MEMFD 0x60040
 
 #define SUSFS_MAX_LEN_PATHNAME 256 // 256 should address many paths already unless you are doing some strange experimental stuff, then set your own desired length
 #define SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE 8192 // 8192 is enough I guess
