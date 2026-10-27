@@ -11,7 +11,7 @@
 #include <linux/wait.h>
 
 #include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 16, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 16, 0) && !defined(KSU_HAS_POLL_T)
 typedef unsigned int __poll_t;
 #endif
 

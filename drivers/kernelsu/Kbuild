@@ -7,6 +7,14 @@ KSU_VERSION_TAG_OVERRIDE ?= v3.4.2-legacy
 
 kernelsu-objs := core/init.o
 
+# linux/types.h only got __poll_t in 4.16, but many 4.14 trees (this one
+# included) carry the backport, which made infra/event_queue.h typedef it a
+# second time. Probe the headers instead of trusting LINUX_VERSION_CODE, the
+# same way the clone_args check below works.
+ifeq ($(shell grep -qs "__poll_t" $(srctree)/include/uapi/linux/types.h $(srctree)/include/linux/types.h; echo $$?),0)
+ccflags-y += -DKSU_HAS_POLL_T
+endif
+
 kernelsu-objs += compat/kernel_compat.o
 kernelsu-objs += feature/kernel_umount.o
 kernelsu-objs += feature/sulog.o
