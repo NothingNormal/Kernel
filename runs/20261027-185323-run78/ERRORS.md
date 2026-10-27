@@ -1,0 +1,158 @@
+# Sixfaced CI - FAILED run #78
+
+- run URL : https://github.com/rkmandilwar-rgb/Kernel/actions/runs/40563486888
+- ref     : refs/heads/arena/cd1940a2-kernel
+- commit  : 0627862ea4425369ed3f92cb8b4b8a4753f4864f
+- date    : 2026-10-27 18:53:23 UTC
+- clang   : Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+
+## Extracted errors (last 300 matches)
+```
+115:clang: error: invalid argument '-fwhole-program-vtables' only allowed with '-flto'
+116:make[3]: *** [../scripts/Makefile.build:365: scripts/mod/empty.o] Error 1
+117:make[2]: *** [../scripts/Makefile.build:667: scripts/mod] Error 2
+125:make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:651: scripts] Error 2
+127:make: *** [Makefile:151: sub-make] Error 2
+```
+
+## Tail of build log (last 250 lines)
+```
+Using Neutron Clang toolchain: /home/runner/neutron-clang/bin
+Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+Target: x86_64-unknown-linux-gnu
+ccache enabled: ccache version 4.12.3
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:165:warning: override: reassigning to symbol TCP_CONG_CUBIC
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:166:warning: override: reassigning to symbol TCP_CONG_BBR
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:759:warning: override: reassigning to symbol UTS_NS
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:761:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:762:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:763:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:764:warning: override: reassigning to symbol PSTORE_PMSG
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:767:warning: override: reassigning to symbol PSTORE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:768:warning: override: reassigning to symbol PSTORE_RAM
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:769:warning: override: reassigning to symbol PSTORE_CONSOLE
+arch/arm64/configs/vendor/xiaomi/miatoll_defconfig:770:warning: override: reassigning to symbol PSTORE_PMSG
+#
+# configuration written to .config
+#
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+scripts/kconfig/conf  --silentoldconfig Kconfig
+/home/runner/work/Kernel/Kernel/Makefile:803: CONFIG_LLVM_POLLY=y but ccache /home/runner/neutron-clang/bin/clang has no Polly support, building without it
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+../net/Makefile:24: CC cannot link executables. Skipping bpfilter.
+  Using .. as source for kernel
+../drivers/kernelsu/Kbuild:120: -- KernelSU: ./usr/include not found, preinit disabled
+../drivers/kernelsu/Kbuild:150: "KSU_GIT_VERSION not defined! It is better to make KernelSU-Next a git repository!"
+-- KernelSU-Next version fallback: 1
+-- KernelSU-Next version override: 33315
+../drivers/kernelsu/Kbuild:170: "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!"
+-- KernelSU-Next tag: v3.4.2-legacy
+-- KernelSU-Next Manager signature size: 0x3e6
+-- KernelSU-Next Manager signature hash: 79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7
+-- KernelSU-Next: Hook mode: Manual
+  WRAP    arch/arm64/include/generated/asm/bugs.h
+  WRAP    arch/arm64/include/generated/asm/clkdev.h
+  WRAP    arch/arm64/include/generated/asm/delay.h
+  WRAP    arch/arm64/include/generated/asm/div64.h
+  WRAP    arch/arm64/include/generated/asm/dma.h
+  WRAP    arch/arm64/include/generated/asm/dma-contiguous.h
+  WRAP    arch/arm64/include/generated/asm/early_ioremap.h
+  WRAP    arch/arm64/include/generated/asm/emergency-restart.h
+  WRAP    arch/arm64/include/generated/asm/hw_irq.h
+  WRAP    arch/arm64/include/generated/asm/irq_regs.h
+  WRAP    arch/arm64/include/generated/asm/kdebug.h
+  WRAP    arch/arm64/include/generated/asm/kmap_types.h
+  WRAP    arch/arm64/include/generated/asm/local.h
+  WRAP    arch/arm64/include/generated/asm/local64.h
+  WRAP    arch/arm64/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/arm64/include/generated/asm/mm-arch-hooks.h
+  WRAP    arch/arm64/include/generated/asm/msi.h
+  WRAP    arch/arm64/include/generated/asm/preempt.h
+  WRAP    arch/arm64/include/generated/asm/qrwlock.h
+  WRAP    arch/arm64/include/generated/asm/rwsem.h
+  WRAP    arch/arm64/include/generated/asm/segment.h
+  WRAP    arch/arm64/include/generated/asm/serial.h
+  WRAP    arch/arm64/include/generated/asm/set_memory.h
+  WRAP    arch/arm64/include/generated/asm/sizes.h
+  WRAP    arch/arm64/include/generated/asm/switch_to.h
+  WRAP    arch/arm64/include/generated/asm/trace_clock.h
+  WRAP    arch/arm64/include/generated/asm/unaligned.h
+  WRAP    arch/arm64/include/generated/asm/user.h
+  WRAP    arch/arm64/include/generated/asm/vga.h
+  WRAP    arch/arm64/include/generated/asm/xor.h
+  LDS     scripts/module-lto.lds
+  HOSTCC  scripts/dtc/dtc.o
+  HOSTCC  scripts/dtc/flattree.o
+  HOSTCC  scripts/dtc/fstree.o
+  HOSTCC  scripts/dtc/data.o
+  HOSTCC  scripts/dtc/livetree.o
+  HOSTCC  scripts/dtc/treesource.o
+  HOSTCC  scripts/dtc/srcpos.o
+  HOSTCC  scripts/dtc/checks.o
+  HOSTCC  scripts/dtc/util.o
+  SHIPPED scripts/dtc/dtc-lexer.lex.c
+  SHIPPED scripts/dtc/dtc-parser.tab.h
+  CC      scripts/mod/empty.o
+  SHIPPED scripts/dtc/dtc-parser.tab.c
+  HOSTCC  scripts/dtc/dtc-lexer.lex.o
+clang: error: invalid argument '-fwhole-program-vtables' only allowed with '-flto'
+make[3]: *** [../scripts/Makefile.build:365: scripts/mod/empty.o] Error 1
+make[2]: *** [../scripts/Makefile.build:667: scripts/mod] Error 2
+make[2]: *** Waiting for unfinished jobs....
+dtc-lexer.l:57:12: warning: variable 'dts_version' set but not used [-Wunused-but-set-global]
+   57 | static int dts_version = 1;
+      |            ^
+1 warning generated.
+  HOSTCC  scripts/dtc/dtc-parser.tab.o
+  HOSTLD  scripts/dtc/dtc
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:651: scripts] Error 2
+make[1]: *** Waiting for unfinished jobs....
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   118653 / 138148 (85.89%)
+  Hits:             97122 / 118653 (81.85%)
+    Direct:         92735 /  97122 (95.48%)
+    Preprocessed:    4387 /  97122 ( 4.52%)
+  Misses:           21531 / 118653 (18.15%)
+Uncacheable calls:  19495 / 138148 (14.11%)
+Local storage:
+  Cache size (GB):    0.8 /    4.0 (20.48%)
+  Hits:             97122 / 118653 (81.85%)
+  Misses:           21531 / 118653 (18.15%)
+ Kernel build failed (make exit code 2)
+```
