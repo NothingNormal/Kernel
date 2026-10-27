@@ -781,7 +781,10 @@ KBUILD_CFLAG	+= -fwhole-program-vtables
 endif
 
 ifdef CONFIG_LLVM_POLLY
-KBUILD_CFLAGS	+= -mllvm -polly \
+# Polly is a build-time option of LLVM itself, not something clang can add on
+# demand: a clang compiled without it rejects -mllvm -polly outright. AOSP and
+# distro clang builds leave it out, so probe instead of breaking every object.
+POLLY_CFLAGS	:= -mllvm -polly \
 		   -mllvm -polly-run-inliner \
 		   -mllvm -polly-ast-use-context \
 		   -mllvm -polly-detect-keep-going \
@@ -794,7 +797,11 @@ KBUILD_CFLAGS	+= -mllvm -polly \
 		   -mllvm -polly-omp-backend=LLVM \
 		   -mllvm -polly-scheduling=dynamic \
 		   -mllvm -polly-scheduling-chunksize=1
-
+ifneq ($(call cc-option,$(POLLY_CFLAGS),),)
+KBUILD_CFLAGS	+= $(POLLY_CFLAGS)
+else
+$(warning CONFIG_LLVM_POLLY=y but $(CC) has no Polly support, building without it)
+endif
 # Polly may optimise loops with dead paths beyound what the linker
 # can understand. This may negate the effect of the linker's DCE
 # so we tell Polly to perfom proven DCE on the loops it optimises
