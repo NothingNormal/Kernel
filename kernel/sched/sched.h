@@ -2709,13 +2709,14 @@ static inline bool uclamp_latency_sensitive(struct task_struct *p)
 	if (!css)
 		return false;
 
-	/* Skip the root cgroup: no group-level flags there */
-	if (!strlen(css->cgroup->kn->name))
-		return false;
-
 	tg = container_of(css, struct task_group, css);
 
-	return tg->latency_sensitive;
+	/*
+	 * No root-cgroup check is needed: cpu.uclamp.latency_sensitive is
+	 * CFTYPE_NOT_ON_ROOT, so the root task group's flag is never
+	 * writable and stays zero.
+	 */
+	return READ_ONCE(tg->latency_sensitive);
 }
 
 static inline bool uclamp_boosted(struct task_struct *p)
@@ -2726,13 +2727,14 @@ static inline bool uclamp_boosted(struct task_struct *p)
 	if (!css)
 		return false;
 
-	/* Skip the root cgroup: no group-level flags there */
-	if (!strlen(css->cgroup->kn->name))
-		return false;
-
 	tg = container_of(css, struct task_group, css);
 
-	return tg->boosted;
+	/*
+	 * No root-cgroup check is needed: cpu.uclamp.boosted is
+	 * CFTYPE_NOT_ON_ROOT, so the root task group's flag is never
+	 * writable and stays zero.
+	 */
+	return READ_ONCE(tg->boosted);
 }
 #else
 static inline bool uclamp_latency_sensitive(struct task_struct *p)

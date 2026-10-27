@@ -6878,8 +6878,21 @@ boosted_task_util(struct task_struct *task)
 	 * (no post-clamp UCLAMP_MAX violation, no double counting).
 	 */
 #ifdef CONFIG_UCLAMP_TASK
-	util = clamp(util, uclamp_eff_value(task, UCLAMP_MIN),
-		     uclamp_eff_value(task, UCLAMP_MAX));
+	{
+		unsigned long uclamp_min = uclamp_eff_value(task, UCLAMP_MIN);
+		unsigned long uclamp_max = uclamp_eff_value(task, UCLAMP_MAX);
+
+		/*
+		 * Both clamps are MAX-aggregated over the tasks sharing the rq,
+		 * so uclamp_min can legitimately end up above uclamp_max. Do not
+		 * hand that inversion to clamp(), which would return an
+		 * arbitrary one of the two bounds.
+		 */
+		if (unlikely(uclamp_min >= uclamp_max))
+			util = uclamp_min;
+		else
+			util = clamp(util, uclamp_min, uclamp_max);
+	}
 #endif
 
 	return util;
@@ -7645,7 +7658,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 				continue;
 
 			/* Skip CPUs which do not fit task requirements */
-			if (capacity_of(i) < boosted_task_util(p))
+			if (capacity_of(i) < min_util)
 				continue;
 
 			if (fbt_env->skip_cpu == i)
