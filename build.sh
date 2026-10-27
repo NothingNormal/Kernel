@@ -3,11 +3,73 @@ function compile()
 {
 [ -f ~/.bashrc ] && source ~/.bashrc >/dev/null 2>&1
 [ -f ~/.profile ] && source ~/.profile >/dev/null 2>&1
+# Always build from the top of the tree, so "bash /path/to/build.sh" works from
+# any cwd: kbuild needs cwd to be the source dir even when O=out is given.
+cd "$(dirname "$(readlink -f "$0")")" || exit 1
 export LC_ALL=C
 TANGGAL=$(date +"%Y%m%d-%H")
 export ARCH=arm64
 export KBUILD_BUILD_HOST=android-build
 export KBUILD_BUILD_USER="unknown"
+
+# ---------------------------------------------------------------------------
+# Host prerequisites. Check them here, before anything is downloaded, so a
+# missing tool says so instead of surfacing as "failed to extract Neutron" or
+# a kernel error 20 minutes in.
+# ---------------------------------------------------------------------------
+APT_DEPS="clang lld llvm zip ccache pigz zstd bc bison flex libssl-dev libelf-dev lz4 lzop"
+missing=""
+for tool in make tar zip nproc; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+done
+# one of curl/wget is enough to fetch the toolchain
+command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || missing="$missing curl"
+# kconfig needs these; kbuild only complains once it is already configuring
+for tool in bc bison flex; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+done
+if [ -n "$missing" ]; then
+    echo "ERROR: missing host tools:$missing" >&2
+    echo "Install them (Debian/Ubuntu):" >&2
+    echo "  sudo apt-get install -y --no-install-recommends $APT_DEPS" >&2
+    exit 1
+fi
+# zstd is only needed to unpack the Neutron tarball; without it the script
+# would silently fall back to system clang and then die on -mllvm -polly.
+if ! command -v zstd >/dev/null 2>&1 && ! command -v unzstd >/dev/null 2>&1; then
+    echo "WARNING: no zstd/unzstd - cannot unpack the Neutron .tar.zst, will try system LLVM"
+fi
+
+# Same flag set kbuild passes when CONFIG_LLVM_POLLY=y (see the Makefile).
+# An LLVM without Polly accepts -mllvm -polly (it is only an unknown *pass*
+# name, which LLVM tolerates) but rejects the individual -polly-* options, so
+# the probe must use the full list to be meaningful.
+POLLY_FLAGS="-mllvm -polly -mllvm -polly-run-inliner \
+ -mllvm -polly-ast-use-context -mllvm -polly-detect-keep-going \
+ -mllvm -polly-invariant-load-hoisting -mllvm -polly-vectorizer=stripmine \
+ -mllvm -polly-loopfusion-greedy=1 -mllvm -polly-reschedule=1 \
+ -mllvm -polly-postopts=1 -mllvm -polly-num-threads=0 \
+ -mllvm -polly-omp-backend=LLVM -mllvm -polly-scheduling=dynamic \
+ -mllvm -polly-scheduling-chunksize=1 -mllvm -polly-run-dce"
+
+polly_probe()
+{
+    probe_dir=$(mktemp -d 2>/dev/null) || probe_dir=/tmp
+    printf 'int probe(int a, int b) { return a * b + 1; }\n' > "${probe_dir}/polly-probe.c"
+    # shellcheck disable=SC2086
+    if "$1" -target aarch64-linux-gnu -O2 $POLLY_FLAGS \
+         -c "${probe_dir}/polly-probe.c" -o "${probe_dir}/polly-probe.o" \
+         >"${probe_dir}/polly-probe.log" 2>&1; then
+        rm -rf "$probe_dir"
+        return 0
+    fi
+    echo "ERROR: $1 does not accept the Polly flags that CONFIG_LLVM_POLLY=y requires:" >&2
+    sed -n '1,15p' "${probe_dir}/polly-probe.log" >&2
+    echo "Fix: use a Polly-enabled Neutron build, or set" >&2
+    echo "  CONFIG_LLVM_POLLY=n  in arch/arm64/configs/vendor/xiaomi/miatoll_defconfig" >&2
+    rm -rf "$probe_dir"
+    return 1
+}
 
 # LLVM-only toolchain: NO GNU GCC / binutils anywhere in the target
 # toolchain. Every binutils role (ar/nm/objcopy/objdump/readelf/strip/
@@ -63,6 +125,10 @@ else
     exit 1
 fi
 "${TOOLCHAIN_BIN}/clang" --version | head -2
+
+# Fail here rather than 20 minutes into the build, on whichever toolchain the
+# selection above actually picked.
+polly_probe "${TOOLCHAIN_BIN}/clang" || exit 1
 
 # ccache compiler cache (no-op when ccache is not installed)
 CCACHE_BIN=""
