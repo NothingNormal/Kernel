@@ -806,6 +806,10 @@ void susfs_set_uname(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
+	/* ensure the userspace strings are NUL-terminated before any use */
+	info.release[__NEW_UTS_LEN] = '\0';
+	info.version[__NEW_UTS_LEN] = '\0';
+
 	/* official hardening: reject empty release/version */
 	if (*info.release == '\0' || *info.version == '\0') {
 		info.err = -EINVAL;
@@ -814,14 +818,14 @@ void susfs_set_uname(void __user **user_info) {
 
 	write_seqlock(&susfs_uname_seqlock);
 	if (!strcmp(info.release, "default")) {
-		strscpy(my_uname.release, utsname()->release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, utsname()->release, sizeof(my_uname.release));
 	} else {
-		strscpy(my_uname.release, info.release, __NEW_UTS_LEN);
+		strscpy(my_uname.release, info.release, sizeof(my_uname.release));
 	}
 	if (!strcmp(info.version, "default")) {
-		strscpy(my_uname.version, utsname()->version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, utsname()->version, sizeof(my_uname.version));
 	} else {
-		strscpy(my_uname.version, info.version, __NEW_UTS_LEN);
+		strscpy(my_uname.version, info.version, sizeof(my_uname.version));
 	}
 	susfs_is_uname_spoof_set = true;
 	write_sequnlock(&susfs_uname_seqlock);
