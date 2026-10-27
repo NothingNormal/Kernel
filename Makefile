@@ -366,8 +366,18 @@ HOST_LFS_CFLAGS := $(shell getconf LFS_CFLAGS 2>/dev/null)
 HOST_LFS_LDFLAGS := $(shell getconf LFS_LDFLAGS 2>/dev/null)
 HOST_LFS_LIBS := $(shell getconf LFS_LIBS 2>/dev/null)
 
+# LLVM=1 selects the full LLVM toolchain. Mainline gained this in v5.4; this
+# tree predates it, so build systems that pass only "LLVM=1 LLVM_IAS=1" (e.g.
+# Lineage's vendor/lineage/config/BoardConfigKernel.mk) silently kept both the
+# host and the target compiler on gcc -- which dies immediately on hosts that
+# only ship clang, at scripts/basic/fixdep.
+ifneq ($(LLVM),)
+HOSTCC       = clang
+HOSTCXX      = clang++
+else
 HOSTCC       = gcc
 HOSTCXX      = g++
+endif
 HOSTCFLAGS   := -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 \
 		-fomit-frame-pointer -std=gnu11 -pipe $(HOST_LFS_CFLAGS)
 
@@ -398,6 +408,18 @@ AWK		= awk
 GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
 DEPMOD		= depmod
+
+# LLVM=1 overrides the gcc binutils above. Mirrors the mainline v5.10 block.
+ifneq ($(LLVM),)
+CC		= clang
+LD		= ld.lld
+AR		= llvm-ar
+NM		= llvm-nm
+OBJCOPY		= llvm-objcopy
+OBJDUMP		= llvm-objdump
+READELF		= llvm-readelf
+STRIP		= llvm-strip
+endif
 PERL		= perl
 PYTHON		= python
 CHECK		= sparse
