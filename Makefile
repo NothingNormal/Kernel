@@ -774,7 +774,21 @@ ifeq ($(cc-name),gcc)
 KBUILD_CFLAGS	+= -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55
 endif
 ifeq ($(cc-name),clang)
-KBUILD_CFLAGS	+= -mcpu=cortex-a55 -mtune=cortex-a55
+# Cortex-A55 is the lowest common denominator here: clang has no fused
+# cortex-a76.cortex-a55 -mcpu model (and rejects that name for -mtune too),
+# so the ISA stays on the little core, which both clusters implement. Aim the
+# cost model at the big core instead, where latency-sensitive work runs.
+#
+# Probe it explicitly rather than through a bare cc-option fallback: a silent
+# fallback cannot be told apart from success, and the point of this hunk is
+# which cost model ends up in the image. If the compiler refuses -mtune, say so
+# at configure time and keep -mcpu=cortex-a55, which tunes for itself.
+CORTEX_TUNE_CFLAGS := $(call cc-option,-mcpu=cortex-a55 -mtune=cortex-a76,)
+ifeq ($(CORTEX_TUNE_CFLAGS),)
+$(warning $(CC) rejected -mtune=cortex-a76, tuning for cortex-a55 only)
+CORTEX_TUNE_CFLAGS := -mcpu=cortex-a55
+endif
+KBUILD_CFLAGS	+= $(CORTEX_TUNE_CFLAGS)
 
 ifdef CONFIG_LLVM_POLLY
 # Polly is a build-time option of LLVM itself, not something clang can add on
@@ -793,28 +807,36 @@ POLLY_CFLAGS	:= -mllvm -polly \
 		   -mllvm -polly-omp-backend=LLVM \
 		   -mllvm -polly-scheduling=dynamic \
 		   -mllvm -polly-scheduling-chunksize=1
+
+# Polly may optimise loops with dead paths beyond what the linker can see,
+# which would undo the linker's DCE, so ask Polly for proven DCE on the loops
+# it optimises. This has to live inside POLLY_CFLAGS: -polly-run-dce is
+# registered by Polly itself, so a clang built without Polly rejects it just
+# as hard as -polly, and it must not escape the probe below.
+ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
+POLLY_CFLAGS	+= -mllvm -polly-run-dce
+endif
 ifneq ($(call cc-option,$(POLLY_CFLAGS),),)
 KBUILD_CFLAGS	+= $(POLLY_CFLAGS)
 else
 $(warning CONFIG_LLVM_POLLY=y but $(CC) has no Polly support, building without it)
-endif
-# Polly may optimise loops with dead paths beyound what the linker
-# can understand. This may negate the effect of the linker's DCE
-# so we tell Polly to perfom proven DCE on the loops it optimises
-# in order to preserve the overall effect of the linker's DCE.
-ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
-KBUILD_CFLAGS	+= -mllvm -polly-run-dce
 endif
 endif # CONFIG_LLVM_POLLY
 
 endif # $(cc-name),clang
 endif # CONFIG_CC_OPTIMIZE_FOR_SIZE
 
+# -mllvm is a clang driver option; GCC rejects it outright, so this block must
+# stay on the clang path (check-clang-specific-options also turns the symbol
+# off for other compilers so .config matches what is really built). The
+# cross-TU half of this feature lives with the LTO flags, which is the only
+# place it can take effect.
+ifeq ($(cc-name),clang)
 ifdef CONFIG_INLINE_OPTIMIZATION
 KBUILD_CFLAGS	+= -mllvm -inline-threshold=2000
 KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=3000
-KBUILD_CFLAGS   += -mllvm -unroll-threshold=1200
-KBUILD_LDFLAGS  += --plugin-opt=-import-instr-limit=40
+KBUILD_CFLAGS	+= -mllvm -unroll-threshold=1200
+endif
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -989,11 +1011,18 @@ LDFLAGS		+= --thinlto-cache-dir=.thinlto-cache
 else
 lto-clang-flags	:= -flto
 endif
-lto-clang-flags += -fvisibility=default -fwhole-program-vtables \
-		   $(call cc-option, -fsplit-lto-unit)
+lto-clang-flags += -fvisibility=default $(call cc-option, -fsplit-lto-unit)
 
-# Limit inlining across translation units to reduce binary size
-LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
+# Cross-translation-unit inlining budget. mainline picks 5 to keep the image
+# small for Android GKI; CONFIG_INLINE_OPTIMIZATION asks for a generous one,
+# so honour it here. Keep a single source of truth: two -import-instr-limit
+# options on one link command line override each other in argv order.
+ifdef CONFIG_INLINE_OPTIMIZATION
+lto-import-instr-limit := 40
+else
+lto-import-instr-limit := 5
+endif
+LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=$(lto-import-instr-limit)
 
 KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
@@ -1001,7 +1030,7 @@ KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += -T scripts/module-lto.lds
 
 # allow disabling only clang LTO where needed
-DISABLE_LTO_CLANG := -fno-lto -fno-whole-program-vtables
+DISABLE_LTO_CLANG := -fno-lto
 export DISABLE_LTO_CLANG
 endif
 
@@ -1379,7 +1408,7 @@ endif
 endif
 
 # Disable clang-specific config options when using a different compiler
-clang-specific-configs := LTO_CLANG CFI_CLANG SHADOW_CALL_STACK INIT_STACK_ALL_ZERO
+clang-specific-configs := LTO_CLANG CFI_CLANG SHADOW_CALL_STACK INIT_STACK_ALL_ZERO INLINE_OPTIMIZATION
 
 PHONY += check-clang-specific-options
 check-clang-specific-options: $(KCONFIG_CONFIG) FORCE

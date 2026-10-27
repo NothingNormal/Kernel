@@ -748,8 +748,10 @@ CONFIG_MODULE_FORCE_LOAD=y
 CONFIG_CRYPTO_LZ4KD=y
 CONFIG_RC_CORE=y
 
-CONFIG_STACKPROTECTOR=y
-# CONFIG_CC_STACKPROTECTOR_STRONG is not set
+# Stack protector: the 5.x CONFIG_STACKPROTECTOR name does not exist in this
+# tree and was silently ignored, leaving arch/Kconfig's choice at its NONE
+# default. Say what is actually wanted.
+CONFIG_CC_STACKPROTECTOR_STRONG=y
 CONFIG_AUDIT=y
 CONFIG_PROFILING=y
 CONFIG_DEBUG_KERNEL=y
