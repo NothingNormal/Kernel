@@ -163,7 +163,7 @@ jobs:
           CRITICAL="UTS_NS PID_NS IPC_NS NET_NS USER_NS SECCOMP NF_TABLES \
           UCLAMP_TASK UCLAMP_TASK_GROUP SCHED_TUNE \
           CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
-          TCP_CONG_BBR TCP_CONG_CUBIC DEFAULT_BBR"
+          TCP_CONG_BBR TCP_CONG_CUBIC TCP_CONG_BIC TCP_CONG_HTCP DEFAULT_BBR"
           for s in SYSCTL SYSVIPC POSIX_MQUEUE PID_NS IPC_NS NET_NS USER_NS UTS_NS \
                    SECCOMP SECCOMP_FILTER CGROUP_DEVICE CGROUP_NET_PRIO CGROUP_PIDS \
                    FAIR_GROUP_SCHED CFS_BANDWIDTH MEMCG MEMCG_SWAP MEMCG_SWAP_ENABLED \
@@ -180,7 +180,7 @@ jobs:
                    PM_AUTOSLEEP WQ_POWER_EFFICIENT_DEFAULT \
                    CPU_FREQ_DEFAULT_GOV_SCHEDUTIL ARM_CPUIDLE DT_IDLE_STATES \
                    TCP_CONG_ADVANCED TCP_CONG_CUBIC TCP_CONG_BBR TCP_CONG_WESTWOOD \
-                   DEFAULT_BBR; do
+                   TCP_CONG_BIC TCP_CONG_HTCP DEFAULT_BBR; do
             if grep -qE "^CONFIG_$s=y" out/.config; then
               echo "OK       CONFIG_$s=y"
             else
@@ -201,9 +201,23 @@ jobs:
             MISSING=$((MISSING+1))
             CRITICAL_MISSING=$((CRITICAL_MISSING+1))
           fi
-          echo "Config verification: ${MISSING} missing symbol(s), ${CRITICAL_MISSING} of them critical" | tee -a "$GITHUB_STEP_SUMMARY"
+          # anykernel.sh sets do.modules=0 and the zip ships only
+          # modules/system/lib/modules/placeholder, so anything "=m" here is
+          # compiled, modposted and thrown away - it can never be loaded on the
+          # device. TCP_CONG_BIC/TCP_CONG_HTCP were exactly that until they were
+          # made built-in, so treat a reappearance as critical.
+          MODS=$(grep -cE '^CONFIG_[A-Za-z0-9_]+=m$' out/.config || true)
+          if [ "$MODS" -ne 0 ]; then
+            echo "::warning::${MODS} option(s) are =m but no modules ship (do.modules=0):"
+            grep -E '^CONFIG_[A-Za-z0-9_]+=m$' out/.config | sed 's/^/             /'
+            MISSING=$((MISSING+MODS))
+            CRITICAL_MISSING=$((CRITICAL_MISSING+MODS))
+          else
+            echo "OK       no =m options (monolithic kernel, do.modules=0)"
+          fi
+          echo "Config verification: ${MISSING} issue(s), ${CRITICAL_MISSING} of them critical" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$CRITICAL_MISSING" -ne 0 ]; then
-            echo "::error::${CRITICAL_MISSING} critical option(s) missing from out/.config - a shipped feature would be silently broken"
+            echo "::error::${CRITICAL_MISSING} critical config issue(s) - a shipped feature could be missing or discarded"
             exit 1
           fi
 

@@ -70,6 +70,12 @@ if command -v ccache >/dev/null 2>&1; then
 CCACHE_BIN="ccache "
 export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
 ccache -M "${CCACHE_MAXSIZE:-8G}" >/dev/null 2>&1
+# CCACHE_DIR is restored from the Actions cache, and ccache keeps its own
+# counters in there, so without this the summary printed after the build
+# accumulates across runs and does not describe the build that just happened.
+if ! ccache -z >/dev/null 2>&1; then
+    echo "WARNING: ccache statistics could not be reset" >&2
+fi
 echo "ccache enabled: $(ccache --version 2>/dev/null | head -1)"
 fi
 
