@@ -690,9 +690,17 @@ static int aw8624_haptic_set_repeat_wav_seq(struct aw8624 *aw8624,
 
 static unsigned char aw8624_haptic_set_level(struct aw8624 *aw8624, int gain)
 {
-    int val = 80;
+    int val;
+
+    if (gain < 0)
+        gain = 0;
+    if (gain > 255)
+        gain = 255;
 
     val = aw8624->ulevel * gain / 128;
+    /* FF_GAIN (0xffff = unity) scales the final drive level. */
+    if (aw8624->ff_gain < 0xffff)
+        val = val * aw8624->ff_gain / 0xffff;
     if (val > 255)
         val = 255;
 
@@ -1096,17 +1104,25 @@ static int16_t aw8624_haptic_effect_strength(struct aw8624 *aw8624)
 {
 	pr_debug("%s enter\n", __func__);
 	VIB_DEBUG("aw8624->play.vmax_mv =0x%x", aw8624->play.vmax_mv);
+	/*
+	 * These three tokens used to map to 0x80 / 0x50 / 0x30, so a "strong"
+	 * request drove the LRA at 48/255 while "light" got 128/255 - the
+	 * scale was upside down and every notification felt the same or
+	 * weaker than a keypress.  Keep light where the DT default puts it and
+	 * let the stronger tokens actually drive harder.  The default arm is
+	 * deliberate: an effect carrying no recognisable magnitude must not
+	 * inherit the level of whatever played before it.
+	 */
 	switch (aw8624->play.vmax_mv) {
-	case AW8624_LIGHT_MAGNITUDE:
-		aw8624->level = 0x80;
-		break;
 	case AW8624_MEDIUM_MAGNITUDE:
-		aw8624->level = 0x50;
+		aw8624->level = 0xa0;
 		break;
 	case AW8624_STRONG_MAGNITUDE:
-		aw8624->level = 0x30;
+		aw8624->level = 0xc0;
 		break;
+	case AW8624_LIGHT_MAGNITUDE:
 	default:
+		aw8624->level = 0x80;
 		break;
 	}
 	VIB_DEBUG("aw8624->level =0x%x", aw8624->level);
@@ -1380,6 +1396,26 @@ static int aw8624_rtp_osc_calibration(struct aw8624 *aw8624)
 	return 0;
 }
 
+/*
+ * RTP effects are only playable if the matching waveform blob is present in
+ * /vendor/firmware.  This device ships the RAM waveforms and, for the single
+ * effect id at vib_effect_id_boundary (10), a RAM pattern too - but the id is
+ * not below the boundary, so it is routed to RTP and then does nothing at all
+ * when the blob is missing.  A vibration that silently plays nothing is
+ * indistinguishable from a dead motor, so play a RAM waveform instead.
+ * Caller holds aw8624->lock.
+ */
+static void aw8624_haptic_ram_fallback(struct aw8624 *aw8624)
+{
+	pr_err_once("aw8624: RTP waveform unavailable, using a RAM waveform\n");
+
+	aw8624->activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_MODE;
+	aw8624->effect_id = 0;
+	aw8624_haptic_effect_strength(aw8624);
+	aw8624_haptic_set_gain(aw8624, aw8624->level);
+	aw8624_haptic_play_effect_seq(aw8624, true);
+}
+
 static void aw8624_rtp_work_routine(struct work_struct *work)
 {
 	const struct firmware *rtp_file;
@@ -1420,6 +1456,12 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	if (aw8624->state) {
 		pm_stay_awake(aw8624->dev);
 		aw8624_haptic_effect_strength(aw8624);
+		/*
+		 * The RAM path programmes DATDBG from ->level; RTP did not, so
+		 * an RTP effect played at whatever gain the previous effect left
+		 * behind - or at zero after the chip's power-on reset.
+		 */
+		aw8624_haptic_set_gain(aw8624, aw8624->level);
 		aw8624->rtp_file_num = aw8624->effect_id - 20;
 		VIB_DEBUG("aw8624->rtp_file_num =%d", aw8624->rtp_file_num);
 		if (aw8624->rtp_file_num < 0)
@@ -1436,6 +1478,7 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 		if (ret < 0) {
 			pr_err("%s: failed to read %s\n", __func__,
 			       aw8624_rtp_name[aw8624->rtp_file_num]);
+			aw8624_haptic_ram_fallback(aw8624);
 			pm_relax(aw8624->dev);
 			mutex_unlock(&aw8624->lock);
 			return;
@@ -1446,6 +1489,7 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 		if (!aw8624_rtp) {
 			release_firmware(rtp_file);
 			pr_err("%s: error allocating memory\n", __func__);
+			aw8624_haptic_ram_fallback(aw8624);
 			pm_relax(aw8624->dev);
 			mutex_unlock(&aw8624->lock);
 			return;
@@ -2050,11 +2094,26 @@ static int aw8624_haptic_init(struct aw8624 *aw8624)
 
 	aw8624->activate_mode = aw8624->info.mode;
 	aw8624->ulevel = 128;
+	/*
+	 * aw8624_haptic_effect_strength() only assigns ->level when the effect
+	 * carries one of the three magnitude tokens, so start at full scale
+	 * instead of at zero from devm_kzalloc().
+	 */
+	aw8624->level = 0x80;
+	aw8624->ff_gain = 0xffff;
 	aw8624->osc_cali_run = 0;
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_WAVSEQ1, &reg_val);
 	aw8624->index = reg_val & 0x7F;
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_DATDBG, &reg_val);
 	aw8624->gain = reg_val & 0xFF;
+	/*
+	 * The RAM loop mode (FF_CONSTANT: long press, ringtone) does not go
+	 * through aw8624_haptic_set_gain() with a computed level, it replays
+	 * with ->gain.  DATDBG reads back as zero after a power-on reset, so
+	 * that path would drive the LRA at nothing at all.
+	 */
+	if (!aw8624->gain)
+		aw8624->gain = 0x80;
 	for (i = 0; i < AW8624_SEQUENCER_SIZE; i++) {
 		ret = aw8624_i2c_read(aw8624, AW8624_REG_WAVSEQ1 + i, &reg_val);
 		aw8624->seq[i] = reg_val;
@@ -2182,6 +2241,17 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 			   
 			aw8624_haptic_ram_vbat_comp(aw8624, true);
 			aw8624_haptic_play_effect_seq(aw8624, true);
+			/*
+			 * The repeat waveform runs until it is stopped, and the
+			 * stop comes from this timer.  A predefined effect
+			 * (long press, screenshot, confirm) arrives as
+			 * FF_CONSTANT with replay.length == 0, which armed the
+			 * timer with zero: the stop fired in the same jiffy and
+			 * the effect was inaudible even though the motor was
+			 * driven.  Give it a minimum run time.
+			 */
+			if (aw8624->duration < AW8624_MIN_PLAYBACK_MS)
+				aw8624->duration = AW8624_MIN_PLAYBACK_MS;
 			hrtimer_start(&aw8624->timer,
 				      ktime_set(aw8624->duration / 1000,
 						(aw8624->duration % 1000) *
@@ -2189,6 +2259,8 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 		} else if (aw8624->activate_mode ==
 			   AW8624_HAPTIC_ACTIVATE_CONT_MODE) {
 			aw8624_haptic_cont(aw8624);
+			if (aw8624->duration < AW8624_MIN_PLAYBACK_MS)
+				aw8624->duration = AW8624_MIN_PLAYBACK_MS;
 			hrtimer_start(&aw8624->timer,
 				      ktime_set(aw8624->duration / 1000,
 						(aw8624->duration % 1000) *
@@ -2664,6 +2736,14 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 		time_us = ktime_to_us(rem);
 		VIB_DEBUG("waiting for playing clear sequence: %lld us",
 			  time_us);
+		/*
+		 * Wait for a short effect to finish so the new one is not
+		 * swallowed, but never block for the whole length of a long
+		 * vibration: playback() cancels aw8624->timer right after this,
+		 * and the new effect stops the chip before it starts.
+		 */
+		if (time_us > AW8624_MAX_EFFECT_WAIT_US)
+			time_us = AW8624_MAX_EFFECT_WAIT_US;
 		usleep_range(time_us, time_us + 100);
 	}
 
@@ -2709,9 +2789,15 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 
 		aw8624->effect_id = data[0];
 		VIB_DEBUG("aw8624->effect_id =%d", aw8624->effect_id);
+		/*
+		 * Honour the magnitude the vibrator HAL asked for.  With
+		 * vib_gain_flag = 1 in the DT this used to be overwritten with
+		 * AW8624_LIGHT_MAGNITUDE, which is why the strength setting had
+		 * no audible effect: every effect played at light.  Values that
+		 * are not one of the three tokens fall through to the light
+		 * default, so this cannot make anything louder than asked.
+		 */
 		play->vmax_mv = effect->u.periodic.magnitude;	/*vmax level */
-		if (aw8624->info.gain_flag == 1)
-			play->vmax_mv = AW8624_LIGHT_MAGNITUDE;
 		VIB_DEBUG("aw8624->play.vmax_mv = 0x%x",
 			  aw8624->play.vmax_mv);
 
@@ -2823,7 +2909,16 @@ static int aw8624_haptics_erase(struct input_dev *dev, int effect_id)
 
 static void aw8624_haptics_set_gain(struct input_dev *dev, u16 gain)
 {
-	pr_debug("%s enter\n", __func__);
+	struct aw8624 *aw8624 = input_get_drvdata(dev);
+
+	if (!aw8624)
+		return;
+
+	/*
+	 * Applied to the next effect: the hardware gain is programmed by
+	 * aw8624_haptic_set_gain() from the play path, under aw8624->lock.
+	 */
+	WRITE_ONCE(aw8624->ff_gain, gain);
 }
 
 static ssize_t aw8624_activate_test_show(struct device *dev,
@@ -3262,7 +3357,14 @@ static ssize_t aw8624_ulevel_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
-	return snprintf(buf, PAGE_SIZE, "0x%02x\n", aw8624->gain);
+	int ulevel;
+
+	/* This reported ->gain, so the value written here never read back. */
+	mutex_lock(&aw8624->lock);
+	ulevel = aw8624->ulevel;
+	mutex_unlock(&aw8624->lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ulevel);
 }
 
 static ssize_t aw8624_ulevel_store(struct device *dev,
@@ -3270,17 +3372,15 @@ static ssize_t aw8624_ulevel_store(struct device *dev,
 				size_t count)
 {
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
-	unsigned int val = 0;
-	int rc = 0;
+	unsigned int val;
+	int rc;
 
 	rc = kstrtouint(buf, 0, &val);
-	if (rc < 0)
+	if (rc)
 		return rc;
-
-	if (val < 0 || val > 128)
-		val = 128;
-
-	pr_info("%s: value=%d\n", __FUNCTION__, val);
+	/* 128 is full scale; anything above it is a mistake, not a request. */
+	if (val > 128)
+		return -ERANGE;
 
 	mutex_lock(&aw8624->lock);
 	aw8624->ulevel = val;
@@ -4169,8 +4269,15 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 		return rc;
 	}
 
+	/*
+	 * High priority, still a single ordered worker: a buzz request should
+	 * not sit behind ordinary work, but the playback steps must stay
+	 * serialised.  The firmware loader shares this queue, so keep
+	 * WQ_MEM_RECLAIM.
+	 */
 	aw8624->work_queue =
-	    create_singlethread_workqueue("aw8924_vibrator_work_queue");
+	    alloc_workqueue("aw8924_vibrator_work_queue",
+			    WQ_HIGHPRI | WQ_MEM_RECLAIM, 1);
 	if (!aw8624->work_queue) {
 		dev_err(&i2c->dev,
 			"%s: Error creating aw8924_vibrator_work_queue\n",
@@ -4266,11 +4373,60 @@ static struct of_device_id aw8624_dt_match[] = {
 	{},
 };
 
+#ifdef CONFIG_PM_SLEEP
+static int aw8624_suspend(struct device *dev)
+{
+	struct aw8624 *aw8624 = dev_get_drvdata(dev);
+
+	if (!aw8624)
+		return 0;
+
+	/*
+	 * System suspend freezes the hrtimer queue, so none of the three
+	 * playback timers can fire while the AP sleeps.  A vibration that was
+	 * running when the screen went off therefore stayed in play mode for
+	 * the whole suspend, with the boost converter up and the LRA driven,
+	 * and the RTP path's pm_stay_awake() was only ever balanced from a
+	 * later work item that userspace has to trigger - if it never does,
+	 * the wakeup source is held indefinitely.  Cancel the timers, drain
+	 * the work that programs the chip, stop playback, park it in standby
+	 * and drop the wakelock unconditionally.
+	 */
+	hrtimer_cancel(&aw8624->timer);
+	hrtimer_cancel(&aw8624->stop_timer);
+	hrtimer_cancel(&aw8624->hap_disable_timer);
+	cancel_work_sync(&aw8624->vibrator_work);
+	cancel_work_sync(&aw8624->rtp_work);
+
+	mutex_lock(&aw8624->lock);
+	aw8624->state = 0;
+	aw8624->play.length_us = 0;
+	aw8624_haptic_stop(aw8624);
+	mutex_unlock(&aw8624->lock);
+
+	pm_relax(aw8624->dev);
+
+	return 0;
+}
+
+static int aw8624_resume(struct device *dev)
+{
+	/* The chip keeps its registers across system suspend. */
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(aw8624_pm_ops, aw8624_suspend, aw8624_resume);
+#define AW8624_PM_OPS (&aw8624_pm_ops)
+#else
+#define AW8624_PM_OPS NULL
+#endif
+
 static struct i2c_driver aw8624_i2c_driver = {
 	.driver = {
 		   .name = AW8624_I2C_NAME,
 		   .owner = THIS_MODULE,
 		   .of_match_table = of_match_ptr(aw8624_dt_match),
+		   .pm = AW8624_PM_OPS,
 		   },
 	.probe = aw8624_i2c_probe,
 	.remove = aw8624_i2c_remove,

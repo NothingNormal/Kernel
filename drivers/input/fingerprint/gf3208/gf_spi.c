@@ -117,7 +117,7 @@ static int gf_set_irq_wake(struct gf_dev *gf_dev, bool enable)
 	else
 		ret = disable_irq_wake(gf_dev->irq);
 	if (!ret)
-		gf_dev->wake_enabled = enable;
+		WRITE_ONCE(gf_dev->wake_enabled, enable);
 	return ret;
 }
 
@@ -125,7 +125,17 @@ static int gf_set_irq_wake(struct gf_dev *gf_dev, bool enable)
 static inline irqreturn_t gf_irq(int irq, void *handle) {
 	struct gf_dev *gf_dev = handle;
 
-	if (gf_dev && gf_dev->fp_wakelock)
+	if (!gf_dev)
+		return IRQ_HANDLED;
+
+	/*
+	 * Only keep the AP awake when userspace armed the wake source.  The
+	 * IRQ stays unmasked while the HAL has it disabled, so a stray trigger
+	 * used to hold the system out of suspend for 400 ms for nothing.
+	 * gf_lock must not be taken here: gf_cleanup() holds it across
+	 * free_irq(), which waits for this thread to return.
+	 */
+	if (READ_ONCE(gf_dev->wake_enabled) && gf_dev->fp_wakelock)
 		__pm_wakeup_event(gf_dev->fp_wakelock, WAKELOCK_HOLD_TIME);
 
 	sendnlmsg();
@@ -172,9 +182,12 @@ static int gf_setup(struct gf_dev *gf_dev)
 	gf_dev->irq_gpio = irq_gpio;
 	gf_dev->irq = irq;
 	gf_dev->irq_requested = true;
-	ret = gf_set_irq_wake(gf_dev, true);
-	if (ret)
-		dev_warn(dev, "failed to enable IRQ wake (%d)\n", ret);
+	/*
+	 * Leave the wake source disarmed until userspace asks for it with
+	 * GF_IOC_ENABLE_IRQ.  Arming it here kept the fingerprint IRQ able to
+	 * resume the AP, and to take a 400 ms wakelock per trigger, for as
+	 * long as the HAL held the fd - even while the sensor was idle.
+	 */
 	return 0;
 
 err_irq_gpio:

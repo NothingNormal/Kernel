@@ -37,6 +37,21 @@
 
 #define HAPTIC_MAX_TIMEOUT                  10000
 
+/*
+ * Longest a new effect waits for the previous one to clear.  Effects are
+ * short (a click is well under this); anything longer, such as a ringtone
+ * pattern, is cut loose instead of stalling the caller.
+ */
+#define AW8624_MAX_EFFECT_WAIT_US           20000
+
+/*
+ * Shortest run time for an effect that is stopped by a timer rather than by
+ * the end of its waveform.  A predefined effect (long press, screenshot,
+ * confirm) arrives as FF_CONSTANT and the loop waveform plays until stopped,
+ * so a zero length means the stop fires before anything is felt.
+ */
+#define AW8624_MIN_PLAYBACK_MS              50
+
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
 #define AW8624_VBAT_MAX                     4500
@@ -349,6 +364,8 @@ struct aw8624 {
 	int ulevel;
 	int f0_value;
 	unsigned char level;
+	/* Android FF_GAIN, 0 .. 0xffff; scales the final drive level. */
+	u16 ff_gain;
 
 	unsigned char seq[AW8624_SEQUENCER_SIZE];
 	unsigned char loop[AW8624_SEQUENCER_SIZE];
