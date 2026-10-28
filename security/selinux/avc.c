@@ -777,6 +777,10 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 			 ad->selinux_audit_data->result ? 0 : 1);
 }
 
+#ifdef CONFIG_KSU_MANUAL_HOOK
+extern int ksu_handle_slow_avc_audit(u32 *tsid);
+#endif
+
 /* This is the slow part of avc audit with big stack footprint */
 noinline int slow_avc_audit(struct selinux_state *state,
 			    u32 ssid, u32 tsid, u16 tclass,
@@ -789,6 +793,16 @@ noinline int slow_avc_audit(struct selinux_state *state,
 
 	if (!denied)
 		return 0;
+
+#ifdef CONFIG_KSU_MANUAL_HOOK
+	/*
+	 * Manual-hook builds have no kprobe on slow_avc_audit (extras.c only
+	 * registers one under KSU_KPROBES_HOOK, and this kernel builds with
+	 * CONFIG_KPROBES disabled), so without this call site the AVC spoof
+	 * feature has no path into the kernel and silently does nothing.
+	 */
+	ksu_handle_slow_avc_audit(&tsid);
+#endif
 
 	if (!a) {
 		a = &stack_data;
