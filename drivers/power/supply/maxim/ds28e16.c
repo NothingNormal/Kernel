@@ -337,7 +337,8 @@ unsigned char *read_buf, int *read_len, int write_len)
 	if ((ow_reset()) != 0) {
 		ds_err("Failed to reset ds28e16!\n");
 		ow_reset();
-		return ERROR_NO_DEVICE;
+		/* Callers test this return value as a boolean. */
+		return DS_FALSE;
 	}
 
 	write_byte(CMD_SKIP_ROM);
@@ -414,9 +415,7 @@ int DS28E16_cmd_readStatus(unsigned char *data)
 	int len_byte = 1;
 	int read_len = 7;
 
-	ds_dbg("getian--data = %02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
-	data[0], data[1], data[2], data[3],
-	data[4], data[5], data[6], data[7]);
+	/* data is an output buffer: nothing has written it yet at this point. */
 	ds_dbg("getian--mi_status = %02x,%02x,%02x,%02x,%02x,%02x,%02x,%02x\n",
 	mi_status[0], mi_status[1], mi_status[2], mi_status[3],
 	mi_status[4], mi_status[5], mi_status[6], mi_status[7]);
@@ -447,7 +446,9 @@ int DS28E16_cmd_readStatus(unsigned char *data)
 		read_buf, &read_len, write_len)) {
 		if (read_buf[0] == RESULT_SUCCESS) {
 			last_result_byte = read_buf[0];
-			memcpy(data, &read_buf[1], 8);
+			/* read_len is 7: a result byte plus six status bytes. */
+			memcpy(data, &read_buf[1], 6);
+			memset(data + 6, 0, 2);
 			flag_mi_status = 1;
 			memcpy(mi_status, data, 8);
 			MANID[0] = data[4];
@@ -1142,10 +1143,12 @@ static int ds28el16_Read_RomID_retry(unsigned char *RomID)
 	static bool read_romid_ok = false;
 
 	ds_info("read rom id communication start ...\n");
-	if(read_romid_ok){
-			ds_log("ds28el16_Read_RomID_retry success ...\n");
-			return DS_TRUE;
-	}else{
+	if (read_romid_ok) {
+		if (RomID != mi_romid)
+			memcpy(RomID, mi_romid, 8);
+		ds_log("read ROM ID succeeded from cache\n");
+		return DS_TRUE;
+	} else {
 		for (i = 0; i < GET_ROM_ID_RETRY; i++) {
 			DS28E16_cmd_romid_pre();
 			if (Read_RomID(RomID) == DS_TRUE) {
