@@ -510,13 +510,7 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 		*val = range[*new_index].value;
 	}
 
-	if (threshold < range[0].low_threshold) {
-		*new_index = 0;
-		*val = range[*new_index].value;
-	} else if (threshold > range[MAX_STEP_CHG_ENTRIES - 1].low_threshold) {
-		*new_index = MAX_STEP_CHG_ENTRIES - 1;
-		*val = range[*new_index].value;
-	}
+	/* The lookup above already selects or clamps to a populated entry. */
 
 	/*
 	 * If we don't have a current_index return this
@@ -764,6 +758,7 @@ static int handle_jeita(struct step_chg_info *chip)
 	u64 elapsed_us;
 	int curr_vfloat_uv, curr_vbat_uv;
 	int temp, fastcharge_mode = 0, pd_authen_result = 0;
+	bool skip_fastcharge_mode = false;
 	enum power_supply_type real_type = POWER_SUPPLY_TYPE_UNKNOWN;
 
 	pr_err("handle_jeita enter\n");
@@ -809,13 +804,16 @@ static int handle_jeita(struct step_chg_info *chip)
 		if (!chip->cp_disable_votable)
 			chip->cp_disable_votable = find_votable("CP_DISABLE");
 
+		/* Keep FCC/FV limits active, but defer fast-charge mode changes. */
 		if (!chip->cp_disable_votable)
-			goto update_time;
-
-		if (temp <= BATT_CP_COOL_THRESHOLD || temp >= BATT_CP_WARM_THRESHOLD)
+			skip_fastcharge_mode = true;
+		else if (temp <= BATT_CP_COOL_THRESHOLD ||
+			 temp >= BATT_CP_WARM_THRESHOLD)
 			vote(chip->cp_disable_votable, JEITA_VOTER, true, 0);
-		else if ((temp > BATT_CP_COOL_THRESHOLD + chip->jeita_fv_config->param.hysteresis)
-				|| (temp < BATT_CP_WARM_THRESHOLD - chip->jeita_fv_config->param.hysteresis))
+		else if (temp > BATT_CP_COOL_THRESHOLD +
+				chip->jeita_fv_config->param.hysteresis &&
+			 temp < BATT_CP_WARM_THRESHOLD -
+				chip->jeita_fv_config->param.hysteresis)
 			vote(chip->cp_disable_votable, JEITA_VOTER, false, 0);
 	}
 
@@ -860,8 +858,10 @@ static int handle_jeita(struct step_chg_info *chip)
 	pr_err("%s = %d FCC = %duA FV = %duV\n",
 			chip->jeita_fcc_config->param.prop_name, pval.intval, fcc_ua, fv_uv);
 
-	/* set and clear fast charge mode when soft jeita trigger and clear */
-	if (chip->six_pin_battery || chip->qc3p5_ffc_batt) {
+	/* Update fast-charge mode only after the USB supply is registered. */
+	if (!skip_fastcharge_mode &&
+	    (chip->six_pin_battery || chip->qc3p5_ffc_batt) &&
+	    is_usb_available(chip)) {
 		rc = power_supply_get_property(chip->usb_psy,
 				POWER_SUPPLY_PROP_PD_AUTHENTICATION, &pval);
 		if (rc < 0)

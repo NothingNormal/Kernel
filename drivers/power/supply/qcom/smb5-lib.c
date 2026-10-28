@@ -8274,8 +8274,10 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 	}
 
 	if (drop_fcc_enable && !chg->health_not_good &&
+		chg->index_vfloat >= 0 &&
+		chg->index_vfloat < MAX_STEP_ENTRIES - 1 &&
 		(current_fcc >= chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua
-		+ TAPER_IBAT_TRH_HYS_UA) && (chg->index_vfloat < (MAX_STEP_ENTRIES - 1))) {
+		+ TAPER_IBAT_TRH_HYS_UA)) {
 		if (chg->taper_ibat_hv_step)
 			vote(chg->fcc_votable, HIGH_VBAT_VOTER,
 					true, (current_fcc - chg->taper_ibat_hv_step));
@@ -8283,8 +8285,10 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
 					true, (current_fcc - taper_ibat_step));
 	} else if (drop_fcc_enable && !chg->health_not_good &&
+		chg->index_vfloat >= 0 &&
+		chg->index_vfloat < MAX_STEP_ENTRIES - 1 &&
 		(current_fcc < chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua
-		+ TAPER_IBAT_TRH_HYS_UA) && (chg->index_vfloat < (MAX_STEP_ENTRIES - 1))) {
+		+ TAPER_IBAT_TRH_HYS_UA)) {
 		step_cfg_enable = true;
 		set_fcc_fv_enable = true;
 	} else {

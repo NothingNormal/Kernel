@@ -50,6 +50,11 @@ jobs:
           clang --version | head -2
           ld.lld --version | head -1
 
+      - name: Test charging logic with host mocks
+        run: |
+          set -o pipefail
+          python3 tools/testing/selftests/power_supply/qcom_charge_host_test.py 2>&1 | tee "${RUNNER_TEMP}/build.log"
+
       - name: Compiler cache (ccache)
         uses: actions/cache@v4
         with:
