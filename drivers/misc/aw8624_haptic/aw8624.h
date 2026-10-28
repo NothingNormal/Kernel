@@ -274,6 +274,15 @@ struct qti_hap_effect {
 	bool lra_auto_res_disable;
 };
 
+/* Driver-specific data associated with an input force-feedback slot. */
+struct aw8624_ff_effect {
+	int effect_type;
+	int effect_id;
+	int duration;
+	unsigned char activate_mode;
+	u16 vmax_mv;
+};
+
 struct qti_hap_play_info {
 	struct qti_hap_effect *effect;
 	u16 vmax_mv;
@@ -390,6 +399,7 @@ struct aw8624 {
 	struct pwm_device *pwm_dev;
 	struct qti_hap_config config;
 	struct qti_hap_play_info play;
+	struct aw8624_ff_effect *ff_effects;
 	struct qti_hap_effect *predefined;
 	struct qti_hap_effect constant;
 	struct regulator *vdd_supply;

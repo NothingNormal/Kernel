@@ -459,18 +459,20 @@ static void vibrator_work_routine(struct work_struct *work)
 {
 	struct drv2624_data *pDRV2624 =
 	    container_of(work, struct drv2624_data, vibrator_work);
-	unsigned char status;
-	int nResult = 0;
+	int status;
+
 	mutex_lock(&pDRV2624->lock);
 	dev_dbg(pDRV2624->dev, "%s, afer mnWorkMode=0x%x\n", __func__,
 		pDRV2624->mnWorkMode);
 	if (pDRV2624->mbIRQUsed) {
-		pDRV2624->mnIntStatus =
-		    drv2624_reg_read(pDRV2624, DRV2624_REG_STATUS);
-		if (nResult < 0)
+		status = drv2624_reg_read(pDRV2624, DRV2624_REG_STATUS);
+		if (status < 0) {
+			drv2624_disableIRQ(pDRV2624);
+			drv2624_stop(pDRV2624);
 			goto err;
+		}
+		pDRV2624->mnIntStatus = status;
 		drv2624_disableIRQ(pDRV2624);
-		status = pDRV2624->mnIntStatus;
 		dev_dbg(pDRV2624->dev, "%s, status=0x%x\n", __func__,
 			pDRV2624->mnIntStatus);
 		if (status & OVERCURRENT_MASK)
@@ -487,12 +489,10 @@ static void vibrator_work_routine(struct work_struct *work)
 	if (pDRV2624->mnWorkMode == DRV2624_RTP_MODE) {
 		drv2624_stop(pDRV2624);
 	} else if (pDRV2624->mnWorkMode == DRV2624_RAM_MODE) {
-		dev_err(pDRV2624->dev, "%s: read go bit\n", __func__);
 		status = drv2624_reg_read(pDRV2624, DRV2624_REG_GO);
-		if ((status < 0) || (status == STOP)
-		    || !pDRV2624->mnVibratorPlaying) {
-			dev_err(pDRV2624->dev, "%s: status error = %d\n",
-				__func__, status);
+		if (status < 0) {
+			drv2624_stop(pDRV2624);
+		} else if (status == STOP || !pDRV2624->mnVibratorPlaying) {
 			drv2624_set_stopflag(pDRV2624);
 		} else {
 			if (!hrtimer_active(&pDRV2624->haptics_timer)) {
@@ -1575,7 +1575,8 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 		dev_info(pDRV2624->dev,
 			 "%s: waiting for playing finished: %lld us\n",
 			 __func__, time_us);
-		usleep_range(time_us, time_us + 100);
+		if (time_us > 0)
+			usleep_range(time_us, time_us + 100);
 	}
 	pDRV2624->mnEffectType = effect->type;
 	dev_err(pDRV2624->dev, "%s: mnEffectType: %d\n", __func__,
@@ -2009,7 +2010,7 @@ static irqreturn_t drv2624_irq_handler(int irq, void *dev_id)
 {
 	struct drv2624_data *pDRV2624 = (struct drv2624_data *)dev_id;
 	dev_err(pDRV2624->dev, "%s: enter\n", __func__);
-	pDRV2624->mnWorkMode |= WORK_IRQ;
+	/* mnWorkMode is an enum, not a WORK_* bitmask. */
 	schedule_work(&pDRV2624->vibrator_work);
 	return IRQ_HANDLED;
 }
