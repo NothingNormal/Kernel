@@ -21,6 +21,7 @@
 #include <linux/list.h>
 #include <linux/device.h>
 #include <linux/spinlock.h>
+#include <linux/mutex.h>
 
 #ifdef CONFIG_TARGET_PROJECT_J20C
 #define ow_info	pr_err
@@ -80,6 +81,18 @@ static int onewire_major;
 
 static int onewire_gpio_detected;
 static struct onewire_gpio_data *g_onewire_data;
+
+static DEFINE_MUTEX(onewire_bus_mutex);
+
+void onewire_bus_lock(void)
+{
+	mutex_lock(&onewire_bus_mutex);
+}
+
+void onewire_bus_unlock(void)
+{
+	mutex_unlock(&onewire_bus_mutex);
+}
 
 unsigned char ow_reset(void)
 {
@@ -294,6 +307,8 @@ const char *buf, size_t count)
 	if (sscanf(buf, "%1u", &buf_int) != 1)
 		return -EINVAL;
 
+	onewire_bus_lock();
+
 	if (buf_int == 0) {
 		ONE_WIRE_OUT_LOW;
 		ow_log("gpio : OUT 0");
@@ -390,6 +405,7 @@ const char *buf, size_t count)
 		udelay(5);
 	}
 
+	onewire_bus_unlock();
 	return count;
 }
 
@@ -449,7 +465,6 @@ static int onewire_gpio_probe(struct platform_device *pdev)
 		goto onewire_pinctrl_err;
 
 	// request onewire gpio
-        gpio_free(onewire_data->ow_gpio);
 	if (gpio_is_valid(onewire_data->ow_gpio)) {
 		retval = gpio_request(onewire_data->ow_gpio,
 						"onewire gpio");
@@ -503,8 +518,7 @@ static int onewire_gpio_probe(struct platform_device *pdev)
 
 	return 0;
 onewire_syfs_create_link_err:
-	if (gpio_is_valid(onewire_data->ow_gpio))
-		sysfs_remove_file(&pdev->dev.kobj, &dev_attr_ow_gpio.attr);
+	sysfs_remove_file(&onewire_data->dev->kobj, &dev_attr_ow_gpio.attr);
 onewire_sysfs_ow_gpio_err:
 	device_destroy(onewire_class, onewire_major);
 onewire_interface_dev_create_err:
@@ -513,7 +527,7 @@ onewire_interface_dev_create_err:
 onewire_ow_gpio_err:
 onewire_pinctrl_err:
 onewire_parse_dt_err:
-	kfree(onewire_data);
+	/* onewire_data is devm_kzalloc()ed; devres releases it on probe failure. */
 	return retval;
 }
 
@@ -521,11 +535,11 @@ static int onewire_gpio_remove(struct platform_device *pdev)
 {
 	struct onewire_gpio_data *onewire_data = platform_get_drvdata(pdev);
 
-	if (gpio_is_valid(onewire_data->ow_gpio)) {
-		sysfs_remove_file(&pdev->dev.kobj, &dev_attr_ow_gpio.attr);
+	if (onewire_data->dev)
+		sysfs_remove_file(&onewire_data->dev->kobj, &dev_attr_ow_gpio.attr);
+	if (gpio_is_valid(onewire_data->ow_gpio))
 		gpio_free(onewire_data->ow_gpio);
-	}
-	kfree(onewire_data);
+	/* onewire_data is devm_kzalloc()ed, so devres frees it after ->remove(). */
 
 	return 0;
 }

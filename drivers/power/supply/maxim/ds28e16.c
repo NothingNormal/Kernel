@@ -1288,8 +1288,10 @@ static enum power_supply_property verify_props[] = {
 static int verify_get_property(struct power_supply *psy, enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret;
+	int ret, rc = 0;
 	unsigned char buf[50];
+
+	onewire_bus_lock();
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_VERIFY_MODEL_NAME:
@@ -1312,13 +1314,19 @@ static int verify_get_property(struct power_supply *psy, enum power_supply_prope
 		break;
 	case POWER_SUPPLY_PROP_ROMID:
 		ret = ds28el16_Read_RomID_retry(mi_romid);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		memcpy(val->arrayval, mi_romid, 8);
-		if (ret != DS_TRUE)
-			return -EAGAIN;
 		break;
 	case POWER_SUPPLY_PROP_CHIP_OK:
 		ds_log("getian---POWER_SUPPLY_PROP_CHIP_OK\n");
 		ret = ds28el16_Read_RomID_retry(mi_romid);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		if ((mi_romid[0] == FAMILY_CODE) && (mi_romid[6] == CUSTOM_ID_MSB) && ((mi_romid[5] & 0xf0) == CUSTOM_ID_LSB))
 			val->intval = true;
 		else
@@ -1327,40 +1335,54 @@ static int verify_get_property(struct power_supply *psy, enum power_supply_prope
 		break;
 	case POWER_SUPPLY_PROP_DS_STATUS:
 		ret = ds28el16_get_page_status_retry(buf);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		memcpy(val->arrayval, buf, 8);
-		if (ret != DS_TRUE)
-			return -EAGAIN;
 		break;
 	case POWER_SUPPLY_PROP_PAGEDATA:
 		ret = ds28el16_get_page_data_retry(pagenumber, buf);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		memcpy(val->arrayval, buf, 16);
-		if (ret != DS_TRUE)
-			return -EAGAIN;
 		break;
 	case POWER_SUPPLY_PROP_PAGE0_DATA:
 		ret = ds28el16_get_page_data_retry(0, buf);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		memcpy(val->arrayval, buf, 16);
-		if (ret != DS_TRUE)
-			return -EAGAIN;
 		break;
 	case POWER_SUPPLY_PROP_PAGE1_DATA:
 		ret = ds28el16_get_page_data_retry(1, buf);
+		if (ret != DS_TRUE) {
+			rc = -EAGAIN;
+			goto out;
+		}
 		memcpy(val->arrayval, buf, 16);
-		if (ret != DS_TRUE)
-			return -EAGAIN;
 		break;
 	default:
 		ds_err("unsupported property %d\n", psp);
-		return -ENODATA;
+		rc = -ENODATA;
+		break;
 	}
-
-	return 0;
+out:
+	onewire_bus_unlock();
+	return rc;
 }
 
 static int verify_set_property(struct power_supply *psy,
 			       enum power_supply_property prop,
 			       const union power_supply_propval *val)
 {
+	int rc = 0;
+
+	onewire_bus_lock();
+
 	switch (prop) {
 	case POWER_SUPPLY_PROP_PAGENUMBER:
 		pagenumber = val->intval;
@@ -1373,10 +1395,12 @@ static int verify_set_property(struct power_supply *psy,
 		break;
 	default:
 		ds_err("unsupported property %d\n", prop);
-		return -ENODATA;
+		rc = -ENODATA;
+		break;
 	}
+	onewire_bus_unlock();
 
-	return 0;
+	return rc;
 }
 
 static int verify_prop_is_writeable(struct power_supply *psy,
@@ -1425,10 +1449,6 @@ static int verify_psy_register(struct ds28e16_data *ds)
 }
 
 
-static void verify_psy_unregister(struct ds28e16_data *ds)
-{
-	power_supply_unregister(ds->verify_psy);
-}
 
 // parse dts
 static int ds28e16_parse_dt(struct device *dev,
@@ -1934,7 +1954,7 @@ ds28e16_create_group_err:
 ds28e16_psy_register_err:
 dev_set_drvdata(ds28e16_data->dev, NULL);
 ds28e16_parse_dt_err:
-	kfree(ds28e16_data);
+	/* ds28e16_data is devm_kzalloc()ed; devres releases it on probe failure. */
 	return retval;
 }
 
@@ -1942,8 +1962,13 @@ static int ds28e16_remove(struct platform_device *pdev)
 {
 	struct ds28e16_data *ds28e16_data = platform_get_drvdata(pdev);
 
-	verify_psy_unregister(ds28e16_data);
-	kfree(ds28e16_data);
+	/* The retry work dereferences ds28e16_data, so stop it first. */
+	cancel_delayed_work_sync(&ds28e16_data->authentic_work);
+	/*
+	 * verify_psy was registered with devm_power_supply_register(), so devres
+	 * unregisters it exactly once after ->remove(). Calling
+	 * power_supply_unregister() here as well would free it twice.
+	 */
 	return 0;
 }
 
