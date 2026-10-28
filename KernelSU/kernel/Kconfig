@@ -202,6 +202,16 @@ config KSU_SUSFS_ENABLE_LOG
     default y
     help
         - Allow logging susfs log to kernel, uncheck it to completely disable all susfs log.
+        - NOTE: this is a compile-time switch only. When it is enabled the
+          logging code is built in but starts OFF at boot - susfs_is_log_enabled
+          in fs/susfs.c defaults to false - and is turned on at runtime by the
+          manager through CMD_SUSFS_ENABLE_LOG.
+        - The feature string handed back to the manager (see
+          susfs_get_enabled_features() in fs/susfs.c) reports this compile-time
+          availability, NOT the current runtime state, so the manager can show
+          susfs logging as enabled while no susfs message is being emitted. The
+          string itself cannot be renamed or dropped without breaking manager
+          compatibility, hence this note instead of a code change.
 
 config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
     bool "Enable to automatically hide ksu and susfs symbols from /proc/kallsyms"

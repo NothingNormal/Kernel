@@ -6883,10 +6883,18 @@ boosted_task_util(struct task_struct *task)
 		unsigned long uclamp_max = uclamp_eff_value(task, UCLAMP_MAX);
 
 		/*
-		 * Both clamps are MAX-aggregated over the tasks sharing the rq,
-		 * so uclamp_min can legitimately end up above uclamp_max. Do not
-		 * hand that inversion to clamp(), which would return an
-		 * arbitrary one of the two bounds.
+		 * uclamp_eff_value() is per-task, not per-rq: it returns the
+		 * task's own clamp as restricted by uclamp_tg_restrict()
+		 * (task group, then system default). MIN is a floor that
+		 * ancestors can only raise and MAX a ceiling they can only
+		 * lower, so a group that raises its floor under an ancestor
+		 * that caps the ceiling legitimately yields
+		 * uclamp_min > uclamp_max.
+		 *
+		 * clamp(val, lo, hi) expands to min(max(val, lo), hi), so with
+		 * lo > hi it deterministically collapses to hi and the floor is
+		 * silently dropped. Honour the floor instead: a task whose group
+		 * asked for a minimum must not be scheduled below it.
 		 */
 		if (unlikely(uclamp_min >= uclamp_max))
 			util = uclamp_min;
