@@ -2179,65 +2179,73 @@ static int qg_psy_get_property(struct power_supply *psy,
 			       union power_supply_propval *pval)
 {
 	struct qpnp_qg *chip = power_supply_get_drvdata(psy);
+	struct power_supply *verify_psy = NULL;
 	int rc = 0;
 	int64_t temp = 0;
 	union power_supply_propval b_val = {0,};
-	if (board_33w_supported) {
-	if (chip->max_verify_psy == NULL)
-		chip->max_verify_psy = power_supply_get_by_name("batt_verify");
-	if ((psp == POWER_SUPPLY_PROP_AUTHENTIC)
-		|| (psp == POWER_SUPPLY_PROP_ROMID)
-		|| (psp == POWER_SUPPLY_PROP_DS_STATUS)
-		|| (psp == POWER_SUPPLY_PROP_PAGE0_DATA)
-		|| (psp == POWER_SUPPLY_PROP_CHIP_OK)) {
-		if (chip->max_verify_psy == NULL) {
-			pr_err("max_verify_psy is NULL\n");
+
+	if (board_33w_supported &&
+	    (psp == POWER_SUPPLY_PROP_AUTHENTIC ||
+	     psp == POWER_SUPPLY_PROP_ROMID ||
+	     psp == POWER_SUPPLY_PROP_DS_STATUS ||
+	     psp == POWER_SUPPLY_PROP_PAGE0_DATA ||
+	     psp == POWER_SUPPLY_PROP_CHIP_OK)) {
+		verify_psy = power_supply_get_by_name("batt_verify");
+		if (!verify_psy) {
+			pr_err("batt_verify power supply is unavailable\n");
 			return -ENODATA;
 		}
-	}
 	}
 	pval->intval = 0;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_AUTHENTIC:
 		if (board_33w_supported) {
-		rc = power_supply_get_property(chip->max_verify_psy,
-					POWER_SUPPLY_PROP_AUTHEN_RESULT, &b_val);
-		pval->intval = b_val.intval;
-		chip->battery_authentic_result = b_val.intval;
+			rc = power_supply_get_property(verify_psy,
+						POWER_SUPPLY_PROP_AUTHEN_RESULT, &b_val);
+			if (!rc) {
+				pval->intval = b_val.intval;
+				chip->battery_authentic_result = b_val.intval;
+			}
 		}
 		break;
 	case POWER_SUPPLY_PROP_ROMID:
 		if (board_33w_supported) {
-		rc = power_supply_get_property(chip->max_verify_psy,
-					POWER_SUPPLY_PROP_ROMID, &b_val);
-		memcpy(pval->arrayval, b_val.arrayval, 8);
-		memcpy(chip->ds_romid, b_val.arrayval, 8);
+			rc = power_supply_get_property(verify_psy,
+						POWER_SUPPLY_PROP_ROMID, &b_val);
+			if (!rc) {
+				memcpy(pval->arrayval, b_val.arrayval, 8);
+				memcpy(chip->ds_romid, b_val.arrayval, 8);
+			}
 		}
 		break;
 	case POWER_SUPPLY_PROP_DS_STATUS:
 		if (board_33w_supported) {
-		rc = power_supply_get_property(chip->max_verify_psy,
-					POWER_SUPPLY_PROP_DS_STATUS, &b_val);
-		memcpy(pval->arrayval, b_val.arrayval, 8);
-		memcpy(chip->ds_status, b_val.arrayval, 8);
+			rc = power_supply_get_property(verify_psy,
+						POWER_SUPPLY_PROP_DS_STATUS, &b_val);
+			if (!rc) {
+				memcpy(pval->arrayval, b_val.arrayval, 8);
+				memcpy(chip->ds_status, b_val.arrayval, 8);
+			}
 		}
 		break;
 	case POWER_SUPPLY_PROP_PAGE0_DATA:
 		if (board_33w_supported) {
-		rc = power_supply_get_property(chip->max_verify_psy,
-					POWER_SUPPLY_PROP_PAGE0_DATA, &b_val);
-		memcpy(pval->arrayval, b_val.arrayval, 16);
-		memcpy(chip->ds_page0, b_val.arrayval, 16);
+			rc = power_supply_get_property(verify_psy,
+						POWER_SUPPLY_PROP_PAGE0_DATA, &b_val);
+			if (!rc) {
+				memcpy(pval->arrayval, b_val.arrayval, 16);
+				memcpy(chip->ds_page0, b_val.arrayval, 16);
+			}
 		}
 		break;
 	case POWER_SUPPLY_PROP_CHIP_OK:
 		if (board_33w_supported) {
-		rc = power_supply_get_property(chip->max_verify_psy,
-					POWER_SUPPLY_PROP_CHIP_OK, &b_val);
-		pval->intval = b_val.intval;
+			rc = power_supply_get_property(verify_psy,
+						POWER_SUPPLY_PROP_CHIP_OK, &b_val);
+			pval->intval = b_val.intval;
 		} else {
-		pval->intval = 2;
+			pval->intval = 2;
 		}
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
@@ -2393,6 +2401,8 @@ static int qg_psy_get_property(struct power_supply *psy,
 		break;
 	}
 
+	if (verify_psy)
+		power_supply_put(verify_psy);
 	return rc;
 }
 
@@ -3342,11 +3352,8 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 	struct device_node *profile_node;
 	int rc, tuple_len, len, i, avail_age_level = 0;
 	union power_supply_propval pval = {0, };
-	if (board_33w_supported) {
-	profile_node = ERR_PTR(-ENXIO);
-	if (chip->max_verify_psy == NULL)
-		chip->max_verify_psy = power_supply_get_by_name("batt_verify");
-	}
+	if (board_33w_supported)
+		profile_node = ERR_PTR(-ENXIO);
 
 	chip->batt_node = of_find_node_by_name(node, "qcom,battery-data");
 	if (!chip->batt_node) {
@@ -3375,46 +3382,55 @@ static int qg_load_battery_profile(struct qpnp_qg *chip)
 		}
 	} else {
 		if (board_33w_supported) {
-		if (chip->max_verify_psy != NULL) {
-			rc = power_supply_get_property(chip->max_verify_psy,
-						POWER_SUPPLY_PROP_CHIP_OK, &pval);
-			if (rc < 0) {
-				pr_err("qg_load_battery_profile : get romid error.\n");
-			}
-		}
+			struct power_supply *verify_psy;
 
-		// the battery is xiaomi's batt; FC code, custom id
-		if (pval.intval == true) {
-			rc = power_supply_get_property(chip->max_verify_psy,
-						POWER_SUPPLY_PROP_PAGE0_DATA, &pval);
-			if (rc < 0) {
-				pr_err("qg_load_battery_profile : get page0 error.\n");
-				pr_err("[Battery Stress Test]:read page0 error\n");
-			} else {
-				pr_err("[Battery Stress Test]:page0 content[%c]\n", pval.arrayval[0]);
-				if ((pval.arrayval[0] == 'S') || (pval.arrayval[0] == 'X')) {
-					profile_node = of_batterydata_get_best_profile(chip->batt_node,
-						chip->batt_id_ohm / 1000, "j6b-sunwoda-5020mah");
-					chip->profile_judge_done = true;
-				} else if ((pval.arrayval[0] == 'N') || (pval.arrayval[0] == 'A')) {
-					profile_node = of_batterydata_get_best_profile(chip->batt_node,
-						chip->batt_id_ohm / 1000, "j6b-nvt-5020mah");
-					chip->profile_judge_done = true;
+			verify_psy = power_supply_get_by_name("batt_verify");
+			if (verify_psy) {
+				rc = power_supply_get_property(verify_psy,
+							POWER_SUPPLY_PROP_CHIP_OK, &pval);
+				if (rc < 0)
+					pr_err("get romid error.\n");
+			}
+
+			/* The battery is Xiaomi's: family code and custom ID. */
+			if (verify_psy && !rc && pval.intval == true) {
+				rc = power_supply_get_property(verify_psy,
+							POWER_SUPPLY_PROP_PAGE0_DATA, &pval);
+				if (rc < 0) {
+					pr_err("get page0 error.\n");
+					pr_err("[Battery Stress Test]:read page0 error\n");
+				} else {
+					pr_err("[Battery Stress Test]:page0 content[%c]\n",
+						pval.arrayval[0]);
+					if (pval.arrayval[0] == 'S' || pval.arrayval[0] == 'X') {
+						profile_node = of_batterydata_get_best_profile(
+							chip->batt_node, chip->batt_id_ohm / 1000,
+							"j6b-sunwoda-5020mah");
+						chip->profile_judge_done = true;
+					} else if (pval.arrayval[0] == 'N' ||
+						   pval.arrayval[0] == 'A') {
+						profile_node = of_batterydata_get_best_profile(
+							chip->batt_node, chip->batt_id_ohm / 1000,
+							"j6b-nvt-5020mah");
+						chip->profile_judge_done = true;
+					}
 				}
 			}
-		}
+			if (verify_psy)
+				power_supply_put(verify_psy);
 
-		if (chip->profile_judge_done == false) {
-			if (chip->profile_loaded == false) {
-				profile_node = of_batterydata_get_best_profile(chip->batt_node,
-						chip->batt_id_ohm / 1000, "j6b-nvt-5020mah");
-			} else {
-				return 0;
+			if (chip->profile_judge_done == false) {
+				if (chip->profile_loaded == false) {
+					profile_node = of_batterydata_get_best_profile(
+						chip->batt_node, chip->batt_id_ohm / 1000,
+						"j6b-nvt-5020mah");
+				} else {
+					return 0;
+				}
 			}
-		}
 		} else {
-		profile_node = of_batterydata_get_best_profile(chip->batt_node,
-				chip->batt_id_ohm / 1000, NULL);
+			profile_node = of_batterydata_get_best_profile(chip->batt_node,
+					chip->batt_id_ohm / 1000, NULL);
 		}
 	}
 
@@ -5333,10 +5349,6 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 	chip->esr_actual = -EINVAL;
 	chip->esr_nominal = -EINVAL;
 	chip->batt_age_level = -EINVAL;
-
-	if (board_33w_supported) {
-	chip->max_verify_psy = power_supply_get_by_name("batt_verify");
-	}
 
 	rc = qg_alg_init(chip);
 	if (rc < 0) {
