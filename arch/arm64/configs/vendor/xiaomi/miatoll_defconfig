@@ -872,3 +872,17 @@ CONFIG_CGROUP_NET_PRIO=y
 # Without them containers still run, but those three limits are skipped.
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# own commit: DEFAULT_TCP_CONG resolved to "westwood".
+#
+# The tuning set enables BBR and WESTWOOD but a later "# CONFIG_TCP_CONG_CUBIC
+# is not set" turns CUBIC off again, so the choice loses its
+# "default DEFAULT_CUBIC" anchor and falls through to the first visible entry,
+# which is Westwood. Nothing asked for Westwood as the default. Re-enable CUBIC
+# to restore the anchor and pin BBR, which is the congestion control this
+# defconfig actually tunes for (fq_codel + BBR pacing). Appended here instead of
+# editing the earlier lines so the original tuning commit stays intact.
+# ---------------------------------------------------------------------------
+CONFIG_TCP_CONG_CUBIC=y
+CONFIG_DEFAULT_BBR=y
