@@ -9564,10 +9564,6 @@ int smblib_init(struct smb_charger *chg)
 
 		chg->bms_psy = power_supply_get_by_name("bms");
 
-		if (board_33w_supported) {
-		chg->batt_verify_psy = power_supply_get_by_name("batt_verify");
-		}
-
 		if (chg->sec_pl_present) {
 			chg->pl.psy = power_supply_get_by_name("parallel");
 			if (chg->pl.psy) {
