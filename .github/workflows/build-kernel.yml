@@ -143,14 +143,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Verify Droidspaces options in final .config
+      - name: Verify critical options in final .config
         if: success()
         run: |
           MISSING=0
           CRITICAL_MISSING=0
-          # Symbols the container feature cannot work without: a silent
-          # regression in any of these must not produce a green build.
-          CRITICAL="UTS_NS PID_NS IPC_NS NET_NS USER_NS SECCOMP NF_TABLES UCLAMP_TASK SCHED_TUNE"
+          # Symbols whose silent loss must not produce a green build:
+          #   - namespaces/seccomp/nftables: Droidspaces and container use
+          #   - UCLAMP_TASK/UCLAMP_TASK_GROUP/SCHED_TUNE: the dual-stack
+          #     scheduler interface libprocessgroup talks to
+          #   - CPU_FREQ_DEFAULT_GOV_SCHEDUTIL: without it the boot default
+          #     governor silently falls back to "performance"
+          #   - TCP_CONG_BBR/DEFAULT_BBR/TCP_CONG_CUBIC: a duplicated
+          #     "# CONFIG_TCP_CONG_CUBIC is not set" later in the defconfig
+          #     once won kconfig's last-one-wins rule, disabled cubic and made
+          #     DEFAULT_TCP_CONG resolve to "westwood" with BBR built but
+          #     unused. The symbol was absent rather than wrong, so no check
+          #     below could see it - hence these are critical too.
+          CRITICAL="UTS_NS PID_NS IPC_NS NET_NS USER_NS SECCOMP NF_TABLES \
+          UCLAMP_TASK UCLAMP_TASK_GROUP SCHED_TUNE \
+          CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+          TCP_CONG_BBR TCP_CONG_CUBIC DEFAULT_BBR"
           for s in SYSCTL SYSVIPC POSIX_MQUEUE PID_NS IPC_NS NET_NS USER_NS UTS_NS \
                    SECCOMP SECCOMP_FILTER CGROUP_DEVICE CGROUP_NET_PRIO CGROUP_PIDS \
                    FAIR_GROUP_SCHED CFS_BANDWIDTH MEMCG MEMCG_SWAP MEMCG_SWAP_ENABLED \
@@ -165,7 +178,9 @@ jobs:
                    NETFILTER_NETLINK_QUEUE NETFILTER_NETLINK_LOG NETFILTER_XT_TARGET_NFLOG \
                    UCLAMP_TASK UCLAMP_TASK_GROUP SCHED_TUNE \
                    PM_AUTOSLEEP WQ_POWER_EFFICIENT_DEFAULT \
-                   CPU_FREQ_DEFAULT_GOV_SCHEDUTIL ARM_CPUIDLE DT_IDLE_STATES; do
+                   CPU_FREQ_DEFAULT_GOV_SCHEDUTIL ARM_CPUIDLE DT_IDLE_STATES \
+                   TCP_CONG_ADVANCED TCP_CONG_CUBIC TCP_CONG_BBR TCP_CONG_WESTWOOD \
+                   DEFAULT_BBR; do
             if grep -qE "^CONFIG_$s=y" out/.config; then
               echo "OK       CONFIG_$s=y"
             else
@@ -176,9 +191,19 @@ jobs:
               esac
             fi
           done
-          echo "Droidspaces verification: ${MISSING} missing symbol(s), ${CRITICAL_MISSING} of them critical" | tee -a "$GITHUB_STEP_SUMMARY"
+          # String-valued options are not covered by the "=y" check above, and
+          # the resolved string is what the kernel actually boots with.
+          if grep -qE '^CONFIG_DEFAULT_TCP_CONG="bbr"' out/.config; then
+            echo 'OK       CONFIG_DEFAULT_TCP_CONG="bbr"'
+          else
+            ACTUAL=$(grep -E '^CONFIG_DEFAULT_TCP_CONG=' out/.config || echo "absent")
+            echo "::warning::${ACTUAL} - expected \"bbr\""
+            MISSING=$((MISSING+1))
+            CRITICAL_MISSING=$((CRITICAL_MISSING+1))
+          fi
+          echo "Config verification: ${MISSING} missing symbol(s), ${CRITICAL_MISSING} of them critical" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$CRITICAL_MISSING" -ne 0 ]; then
-            echo "::error::${CRITICAL_MISSING} critical symbol(s) missing from out/.config - the container feature would be silently broken"
+            echo "::error::${CRITICAL_MISSING} critical option(s) missing from out/.config - a shipped feature would be silently broken"
             exit 1
           fi
 
