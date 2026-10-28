@@ -801,12 +801,24 @@ static int match(const char *sym, const char * const pat[])
 {
 	const char *p;
 	while (*pat) {
+		const char *endp;
+		size_t len;
+
 		p = *pat++;
-		const char *endp = p + strlen(p) - 1;
+		len = strlen(p);
+		if (!len) {
+			if (!*sym)
+				return 1;
+			continue;
+		}
+		if (len == 1 && *p == '*')
+			return 1;
+		endp = p + len - 1;
 
 		/* "*foo*" */
 		if (*p == '*' && *endp == '*') {
-			char *here, *bare = strndup(p + 1, strlen(p) - 2);
+			const char *here;
+			char *bare = NOFAIL(strndup(p + 1, len - 2));
 
 			here = strstr(sym, bare);
 			free(bare);
@@ -820,7 +832,7 @@ static int match(const char *sym, const char * const pat[])
 		}
 		/* "foo*" */
 		else if (*endp == '*') {
-			if (strncmp(sym, p, strlen(p) - 1) == 0)
+			if (strncmp(sym, p, len - 1) == 0)
 				return 1;
 		}
 		/* no wildcards */
