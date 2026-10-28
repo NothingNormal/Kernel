@@ -586,7 +586,9 @@ quiet_cmd_export_list = EXPORTS $@
 
 ifdef CONFIG_LTO_CLANG
 # objdump doesn't understand IR files and llvm-dis doesn't support archives,
-# so we'll walk through each file in the archive separately
+# so we'll walk through each file in the archive separately. A bitcode member
+# that exports nothing makes llvm-nm write "no symbols" to stderr, which is
+# the normal case for an empty object, so keep it out of the log.
 cmd_export_list = 					\
 	rm -f $(ksyms-lds);				\
 	for o in $$($(AR) t $<); do			\
@@ -595,7 +597,7 @@ cmd_export_list = 					\
 				$(filter_export_list) 	\
 				>>$(ksyms-lds);		\
 		else					\
-			$(LLVM_NM) $$o |		\
+			$(LLVM_NM) $$o 2>/dev/null |		\
 				$(filter_export_list) 	\
 				>>$(ksyms-lds);		\
 		fi; 					\
