@@ -26,7 +26,6 @@ CONFIG_CPUSETS=y
 CONFIG_CGROUP_CPUACCT=y
 CONFIG_CGROUP_BPF=y
 CONFIG_NAMESPACES=y
-# CONFIG_UTS_NS is not set
 CONFIG_PID_NS=y
 CONFIG_SCHED_CASS=y
 CONFIG_SCHED_TUNE=y
@@ -162,8 +161,6 @@ CONFIG_TCP_CONG_ADVANCED=y
 CONFIG_TCP_CONG_CUBIC=y
 CONFIG_TCP_CONG_BBR=y
 CONFIG_TCP_CONG_WESTWOOD=y
-# CONFIG_TCP_CONG_CUBIC is not set
-CONFIG_TCP_CONG_BBR=y
 CONFIG_IPV6_ROUTER_PREF=y
 CONFIG_IPV6_ROUTE_INFO=y
 CONFIG_IPV6_OPTIMISTIC_DAD=y
@@ -698,6 +695,7 @@ CONFIG_TMPFS_POSIX_ACL=y
 CONFIG_ECRYPT_FS=y
 CONFIG_ECRYPT_FS_MESSAGING=y
 CONFIG_SDCARD_FS=y
+# Persistent crash logging
 CONFIG_PSTORE=y
 # CONFIG_PSTORE_ZLIB_COMPRESS is not set
 CONFIG_PSTORE_CONSOLE=y
@@ -759,17 +757,6 @@ CONFIG_GKI_HACKS_TO_FIX=y
 CONFIG_SCHED_DEBUG=y
 CONFIG_TRACE_GPU_MEM=y
 CONFIG_UTS_NS=y
-
-CONFIG_PSTORE=y
-CONFIG_PSTORE_RAM=y
-CONFIG_PSTORE_CONSOLE=y
-CONFIG_PSTORE_PMSG=y
-
-# Persistent crash logging
-CONFIG_PSTORE=y
-CONFIG_PSTORE_RAM=y
-CONFIG_PSTORE_CONSOLE=y
-CONFIG_PSTORE_PMSG=y
 
 # Required by PSTORE_FTRACE
 
@@ -876,13 +863,12 @@ CONFIG_CGROUP_NET_PRIO=y
 # ---------------------------------------------------------------------------
 # own commit: DEFAULT_TCP_CONG resolved to "westwood".
 #
-# The tuning set enables BBR and WESTWOOD but a later "# CONFIG_TCP_CONG_CUBIC
-# is not set" turns CUBIC off again, so the choice loses its
-# "default DEFAULT_CUBIC" anchor and falls through to the first visible entry,
-# which is Westwood. Nothing asked for Westwood as the default. Re-enable CUBIC
-# to restore the anchor and pin BBR, which is the congestion control this
-# defconfig actually tunes for (fq_codel + BBR pacing). Appended here instead of
-# editing the earlier lines so the original tuning commit stays intact.
+# Enabling BBR and WESTWOOD keeps the choice's "default DEFAULT_CUBIC" anchor
+# only while CUBIC is on, and this file used to switch CUBIC off again further
+# down, which left WESTWOOD as the first visible entry. That stale line is gone,
+# so the anchor is back, and the default is pinned to BBR explicitly because
+# that is the congestion control this defconfig tunes for (fq_codel + BBR
+# pacing). Appending rather than editing the tuning block keeps that commit
+# readable.
 # ---------------------------------------------------------------------------
-CONFIG_TCP_CONG_CUBIC=y
 CONFIG_DEFAULT_BBR=y
