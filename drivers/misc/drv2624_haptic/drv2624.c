@@ -68,24 +68,12 @@ static void get_command_str(struct drv2624_data *pDRV2624)
 	int nResult;
 	int pop_result = 1;
 	int data;
-	//int previous_sleeping_time = 0;
 	dev_err(pDRV2624->dev, "%s: enter\n", __func__);
-	nResult = drv2624_reg_write(pDRV2624, DRV2624_REG_RTP_INPUT, 0x0);	//clear RTP data
-	if (nResult < 0) {
-		dev_err(pDRV2624->dev, "%s %u %d\n", __func__, __LINE__,
-			nResult);
-	}
-
-	nResult = drv2624_set_go_bit(pDRV2624, GO);
-	if (nResult < 0) {
-		dev_err(pDRV2624->dev, "%s write go_bit_value filed %d\n",
-			__func__, nResult);
-	}
-
-	pDRV2624->mnVibratorPlaying = YES;
-	while (pop_result >= 0 && pDRV2624->mnVibratorPlaying == YES) {
+	while (pDRV2624->mnVibratorPlaying == YES) {
 		pop_result = pop_running_effect_command(&command, &data);
-		dev_err(pDRV2624->dev, "%s: command = %c, data = %d mnVibratorPlaying:%d \n",
+		if (pop_result < 0)
+			break;
+		dev_dbg(pDRV2624->dev, "%s: command = %c, data = %d mnVibratorPlaying:%d\n",
 			__func__, command, data, pDRV2624->mnVibratorPlaying);
 
 		if (command == 'w') {
@@ -94,8 +82,9 @@ static void get_command_str(struct drv2624_data *pDRV2624)
 					      data);
 			if (nResult < 0) {
 				dev_err(pDRV2624->dev,
-					"%s write rtp_input_value filed %d\n",
+					"%s write rtp_input_value failed %d\n",
 					__func__, nResult);
+				break;
 			}
 		} else if (command == 'd') {
 			//nResult = drv2624_reg_write(pDRV2624, DRV2624_REG_RTP_INPUT, data);
@@ -109,8 +98,9 @@ static void get_command_str(struct drv2624_data *pDRV2624)
 	dev_err(pDRV2624->dev, "%s: pop_result = %d, mnVibratorPlaying:%d \n",
 	__func__, pop_result, pDRV2624->mnVibratorPlaying);
 
+	mutex_lock(&pDRV2624->lock);
 	drv2624_stop(pDRV2624);
-
+	mutex_unlock(&pDRV2624->lock);
 }
 
 /**
@@ -1561,13 +1551,19 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 {
 	struct drv2624_data *pDRV2624 = input_get_drvdata(dev);
 	struct drv2624_constant_playinfo *play = &pDRV2624->play;
+	struct drv2624_constant_playinfo previous_play;
+	struct drv2624_waveform_sequencer previous_sequence;
 	u16 data[CUSTOM_DATA_LEN];
-	int nResult = 0;
+	int nResult = 0, previous_type, previous_mode;
 	ktime_t rem;
 	s64 time_us;
 	uint time_ms = 0;
 	dev_err(pDRV2624->dev, "%s enter function \n", __func__);
 	mutex_lock(&pDRV2624->lock);
+	previous_play = *play;
+	previous_sequence = pDRV2624->msWaveformSequencer;
+	previous_type = pDRV2624->mnEffectType;
+	previous_mode = pDRV2624->mnWorkMode;
 	/* waiting last vibration to end */
 	if (hrtimer_active(&pDRV2624->haptics_timer)) {
 		rem = hrtimer_get_remaining(&pDRV2624->haptics_timer);
@@ -1672,8 +1668,13 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			break;
 		} else if (play->effect_id > pDRV2624->fw_header.fw_effCount
 			   && play->effect_id < 127) {
-			pDRV2624->mnWorkMode = DRV2624_NEW_RTP_MODE;
-			time_ms = set_running_effect_id(play->effect_id - 1);	//test
+			nResult = rtp_get_effect_duration(play->effect_id - 1);
+			if (nResult < 0) {
+				nResult = -EINVAL;
+				break;
+			}
+			time_ms = nResult;
+			nResult = 0;
 			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = time_ms / MSEC_PER_SEC;	//300 / 1000;
 			dev_err(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
 				data[CUSTOM_DATA_TIMEOUT_SEC_IDX]);
@@ -1687,14 +1688,31 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 				nResult = -EFAULT;
 				break;
 			}
+			/* Do not reset the active stream if the user copy failed. */
+			nResult = set_running_effect_id(play->effect_id - 1);
+			if (nResult < 0) {
+				nResult = -EINVAL;
+				break;
+			}
+			nResult = 0;
+			pDRV2624->mnWorkMode = DRV2624_NEW_RTP_MODE;
 			schedule_work(&pDRV2624->upload_periodic_work);
 			break;
 		}
+		nResult = -EINVAL;
 		break;
 	default:
 		dev_err(pDRV2624->dev, "Unsupported effect type: %d\n",
 			effect->type);
+		nResult = -EINVAL;
 		break;
+	}
+	if (nResult < 0) {
+		/* An unsuccessful upload must not publish a partial effect. */
+		*play = previous_play;
+		pDRV2624->msWaveformSequencer = previous_sequence;
+		pDRV2624->mnEffectType = previous_type;
+		pDRV2624->mnWorkMode = previous_mode;
 	}
 	mutex_unlock(&pDRV2624->lock);
 	dev_info(pDRV2624->dev, "%s exit \n", __func__);
@@ -1728,6 +1746,9 @@ static void haptics_playback_work_routine(struct work_struct *work)
 	    container_of(work, struct drv2624_data, haptics_playback_work);
 	mutex_lock(&pDRV2624->lock);
 
+	/* An effect may have been erased while this work was pending. */
+	if (!pDRV2624->mnEffectType)
+		goto end;
 	nResult = drv2624_stop(pDRV2624);
 	if (nResult < 0) {
 		dev_err(pDRV2624->dev, "%s: stop failed!\n", __func__);
@@ -1748,11 +1769,20 @@ static void haptics_playback_work_routine(struct work_struct *work)
 	case DRV2624_NEW_RTP_MODE:
 		pDRV2624->play.length = 0;
 		pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
-		nResult =
-			drv2624_change_mode(pDRV2624, DRV2624_RTP_MODE);
-		dev_err(pDRV2624->dev, "%s:FF_PERIODIC mode = 0x%x\n",
-			__func__, pDRV2624->mnWorkMode);
-		//logtime vibration unlock to allow stopping
+		nResult = drv2624_change_mode(pDRV2624, DRV2624_RTP_MODE);
+		if (nResult < 0)
+			goto end;
+		nResult = drv2624_reg_write(pDRV2624, DRV2624_REG_RTP_INPUT, 0);
+		if (nResult < 0)
+			goto end;
+		nResult = drv2624_set_go_bit(pDRV2624, GO);
+		if (nResult < 0) {
+			/* A failed readback can still leave GO set in hardware. */
+			drv2624_set_go_bit(pDRV2624, STOP);
+			goto end;
+		}
+		pDRV2624->mnVibratorPlaying = YES;
+		/* Erase can now stop the running stream while its delays execute. */
 		mutex_unlock(&pDRV2624->lock);
 		get_command_str(pDRV2624);
 		goto exit;

@@ -2208,13 +2208,26 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 {
 	struct aw8624 *aw8624 =
 	    container_of(work, struct aw8624, vibrator_work);
+	bool stop_rtp;
 
 	VIB_FUNC_ENTER();
 	VIB_DEBUG("state=%d activate_mode=%d duration=%d", aw8624->state,
 		  aw8624->activate_mode, aw8624->duration);
 	mutex_lock(&aw8624->lock);
 	aw8624_haptic_upload_lra(aw8624, F0_CALI);
+	stop_rtp = aw8624->play_mode == AW8624_HAPTIC_RTP_MODE;
+	if (stop_rtp) {
+		/* Do not let the IRQ refill an RTP stream after switching modes. */
+		mutex_lock(&aw8624->rtp_lock);
+		aw8624->rtp_init = 0;
+		aw8624->rtp_cnt = 0;
+		aw8624_haptic_set_rtp_aei(aw8624, false);
+		mutex_unlock(&aw8624->rtp_lock);
+	}
 	aw8624_haptic_stop(aw8624);
+	/* The old RTP stream no longer needs its timed wakeup source. */
+	if (stop_rtp)
+		pm_relax(aw8624->dev);
 	if (aw8624->state) {
 		if (aw8624->activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE) {
 			aw8624_haptic_ram_vbat_comp(aw8624, false);
@@ -2757,14 +2770,16 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 		if (aw8624->info.gain_flag == 1)
 			uploaded.vmax_mv = AW8624_LIGHT_MAGNITUDE;
 
+		/* The HAL combines data[1] seconds and data[2] milliseconds. */
 		if (uploaded.effect_id < aw8624->info.effect_id_boundary) {
 			uploaded.activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_MODE;
 			data[1] = aw8624->predefined[uploaded.effect_id].play_rate_us / 1000000;
-			data[2] = aw8624->predefined[uploaded.effect_id].play_rate_us / 1000;
+			data[2] = (aw8624->predefined[uploaded.effect_id].play_rate_us /
+				   1000) % 1000;
 		} else {
 			uploaded.activate_mode = AW8624_HAPTIC_ACTIVATE_RTP_MODE;
 			data[1] = aw8624->info.rtp_time[uploaded.effect_id] / 1000;
-			data[2] = aw8624->info.rtp_time[uploaded.effect_id];
+			data[2] = aw8624->info.rtp_time[uploaded.effect_id] % 1000;
 		}
 		if (copy_to_user(effect->u.periodic.custom_data, data,
 				 sizeof(data))) {
