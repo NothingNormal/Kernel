@@ -410,7 +410,7 @@ static ssize_t fd_show(struct kobject *kobj,
 	struct kobj_attribute *attr,
 	char *buf)
 {
-	return snprintf(buf, sizeof(buf), "%d\n", qvr_external_sensor.fd);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", qvr_external_sensor.fd);
 }
 
 static ssize_t fd_store(struct kobject *kobj,
@@ -436,7 +436,7 @@ static ssize_t fd_store(struct kobject *kobj,
 static ssize_t ts_base_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	return snprintf(buf, 16, "%lld\n", qvr_external_sensor.ts_base);
+	return scnprintf(buf, PAGE_SIZE, "%lld\n", qvr_external_sensor.ts_base);
 }
 
 static ssize_t ts_base_store(struct kobject *kobj,
@@ -449,7 +449,7 @@ static ssize_t ts_base_store(struct kobject *kobj,
 static ssize_t ts_offset_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	return snprintf(buf, 16, "%lld\n", qvr_external_sensor.ts_offset);
+	return scnprintf(buf, PAGE_SIZE, "%lld\n", qvr_external_sensor.ts_offset);
 }
 
 static ssize_t ts_offset_store(struct kobject *kobj,
