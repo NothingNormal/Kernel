@@ -254,6 +254,7 @@ struct qti_hap_effect {
 	int pattern_length;
 	u16 play_rate_us;
 	u16 vmax_mv;
+	u8 level;
 	u8 wf_repeat_n;
 	u8 wf_s_repeat_n;
 	u8 brake[HAP_BRAKE_PATTERN_MAX];

@@ -64,6 +64,14 @@
 #define AW8624_RTP_MIN_SAMPLE_RATE 12000
 #define AW8624_RTP_WAKE_MARGIN_MS 1000
 
+/*
+ * The gain register is an 8-bit fractional scale with 0x80 meaning 100%.
+ * Effect voltages are expressed against the 3600 mV reference, so the
+ * shipped device tree keeps every predefined effect at full gain.
+ */
+#define AW8624_GAIN_FULL 0x80
+#define AW8624_VMAX_REF_MV 3600
+
 #define OSC_CALIBRATION_T_LENGTH 5100000
 #define PM_QOS_VALUE_VB 400
 struct pm_qos_request pm_qos_req_vb;
@@ -1157,7 +1165,19 @@ static int aw8624_haptic_play_effect_seq(struct aw8624 *aw8624,
 			aw8624_haptic_set_wav_seq(aw8624, 0x01, 0x00);
 			aw8624_haptic_set_wav_loop(aw8624, 0x00, 0x00);
 			aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_RAM_MODE);
-			aw8624_haptic_effect_strength(aw8624);
+			/*
+			 * vib_gain_flag makes the HAL magnitude meaningless, so
+			 * the per-effect voltage is the only strength control.
+			 * Effects without a voltage keep the magnitude mapping.
+			 */
+			if (aw8624->info.gain_flag && aw8624->effect_id >= 0 &&
+			    aw8624->effect_id < aw8624->info.effect_id_boundary &&
+			    aw8624->effect_id < aw8624->effects_count &&
+			    aw8624->predefined[aw8624->effect_id].level)
+				aw8624->level =
+				    aw8624->predefined[aw8624->effect_id].level;
+			else
+				aw8624_haptic_effect_strength(aw8624);
 			aw8624_haptic_set_gain(aw8624, aw8624->level);
 			aw8624_haptic_start(aw8624);
 		}
@@ -1413,6 +1433,7 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	const struct firmware *rtp_file;
 	struct aw8624_container *rtp;
 	struct aw8624 *aw8624 = container_of(work, struct aw8624, rtp_work);
+	unsigned int timeout_ms;
 	int ret;
 
 	pr_debug("%s enter\n", __func__);
@@ -1496,15 +1517,18 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	mutex_unlock(&aw8624->rtp_lock);
 
 	/*
-	 * Keep suspend blocked during streaming, but do not depend on an
-	 * optional userspace stop or a playback-done IRQ to release it.  The
-	 * slowest supported sample rate plus a one-second margin also covers
-	 * the FIFO tail; the timer does not stop the haptic itself.
+	 * Keep suspend blocked during streaming. The playback-done interrupt
+	 * drops the hold as soon as the stream has played out; this timed
+	 * event is only a backstop, so it must cover both the firmware length
+	 * and the duration declared for the effect in the device tree.
 	 */
-	pm_wakeup_event(aw8624->dev,
-			DIV_ROUND_UP_ULL((u64)rtp->len * MSEC_PER_SEC,
-					 AW8624_RTP_MIN_SAMPLE_RATE) +
-			AW8624_RTP_WAKE_MARGIN_MS);
+	timeout_ms = DIV_ROUND_UP_ULL((u64)rtp->len * MSEC_PER_SEC,
+				      AW8624_RTP_MIN_SAMPLE_RATE);
+	if (aw8624->effect_id >= aw8624->info.effect_id_boundary &&
+	    aw8624->effect_id < ARRAY_SIZE(aw8624->info.rtp_time))
+		timeout_ms = max_t(u32, timeout_ms,
+				   aw8624->info.rtp_time[aw8624->effect_id]);
+	pm_wakeup_event(aw8624->dev, timeout_ms + AW8624_RTP_WAKE_MARGIN_MS);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_RTP_MODE);
 	aw8624_haptic_start(aw8624);
 	ret = aw8624_haptic_rtp_init(aw8624);
@@ -2575,6 +2599,20 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 			VIB_DEBUG("Read qcom,wf-vmax-mv failed !");
 		else
 			effect->vmax_mv = tmp;
+
+		/*
+		 * The RAM playback path applies the effect voltage as a gain.
+		 * 3600 mV is the full-scale reference, so the shipped device
+		 * tree keeps every effect at 0x80 (100%).
+		 */
+		if (effect->vmax_mv) {
+			u32 level;
+
+			level = DIV_ROUND_CLOSEST(
+					(u32)effect->vmax_mv * AW8624_GAIN_FULL,
+					AW8624_VMAX_REF_MV);
+			effect->level = clamp_t(u32, level, 1, AW8624_GAIN_FULL);
+		}
 
 		rc = of_property_count_elems_of_size(child_node,
 						     "qcom,wf-pattern",
