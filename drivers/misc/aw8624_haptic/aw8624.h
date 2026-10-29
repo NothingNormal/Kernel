@@ -70,18 +70,7 @@ static int wf_s_repeat[4] = { 1, 2, 4, 8 };
  *        first edge
  *                   second edge
  */
-/* trig config */
-/*dts config
-* default_level -> 1: high level; 0: low level
-* dual_edge     -> 1: dual edge; 0: first edge
-*vib_trig_config = <
-*       1   1              1          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*       1   1              2          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*       1   1              3          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*/
+/* Number of trigger descriptors exposed by the factory sysfs node. */
 #define AW8624_TRIG_NUM                     3
 
 enum aw8624_flags {
@@ -228,7 +217,6 @@ struct aw8624_dts_info {
 	unsigned int effect_id_boundary;
 	unsigned int effect_max;
 	unsigned int rtp_time[175];
-	unsigned int trig_config[3][5];
 };
 
 #ifdef INPUT_DEV

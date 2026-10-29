@@ -2342,6 +2342,16 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	}
 	if (reg_val & AW8624_BIT_SYSINT_DONEI) {
 		VIB_DEBUG("chip playback done");
+		/*
+		 * The RTP worker holds the device awake until the stream is
+		 * fully uploaded. Once that has happened, this interrupt is
+		 * the real end of the effect: drop the hold now instead of
+		 * waiting for the firmware-length timeout. The timeout stays
+		 * armed as a backstop for a missing interrupt.
+		 */
+		if (aw8624->play_mode == AW8624_HAPTIC_RTP_MODE &&
+		    !READ_ONCE(aw8624->rtp_init))
+			pm_relax(aw8624->dev);
 	}
 
 	if (reg_val & AW8624_BIT_SYSINT_FF_AEI) {
@@ -2424,7 +2434,6 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 	unsigned int f0_trace_parameter[4];
 	unsigned int bemf_config[4];
 	unsigned int rtp_time[175];
-	//unsigned int trig_config[15];
 	struct qti_hap_config *config = &aw8624->config;
 	struct device_node *child_node;
 	struct qti_hap_effect *effect;
@@ -2506,13 +2515,6 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 	if (val != 0)
 		VIB_DEBUG("vib_bemf_config not found");
 	memcpy(aw8624->info.bemf_config, bemf_config, sizeof(bemf_config));
-
-	//val =
-	//    of_property_read_u32_array(np, "vib_trig_config", trig_config,
-	//                             ARRAY_SIZE(trig_config));
-	//if (val != 0)
-	//      VIB_DEBUG("vib_trig_config not found");
-	//memcpy(aw8624->info.trig_config, trig_config, sizeof(trig_config));
 
 	val =
 	    of_property_read_u32_array(np, "vib_rtp_time", rtp_time,
@@ -2681,10 +2683,6 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 	VIB_DEBUG("aw8624->info.cont_drv_lvl_ov: %d",
 		  aw8624->info.cont_drv_lvl_ov);
 	VIB_DEBUG("aw8624->info.gain_flag: %d", aw8624->info.gain_flag);
-	for (i = 0; i < 3; i++)
-		for (j = 0; j < 5; j++)
-			VIB_DEBUG("aw8624->info.trig_config[%d][%d]: %d",
-				  i, j, aw8624->info.trig_config[i][j]);
 	for (i = 0; i < 175; i++)
 		VIB_DEBUG("aw8624->info.rtp_time[%d]: %d",
 			  i, aw8624->info.rtp_time[i]);
