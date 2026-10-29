@@ -1054,7 +1054,14 @@ static int step_chg_notifier_call(struct notifier_block *nb,
 	if ((strcmp(psy->desc->name, "battery") == 0)
 			|| (strcmp(psy->desc->name, "usb") == 0)) {
 		__pm_stay_awake(chip->step_chg_ws);
-		schedule_delayed_work(&chip->status_change_work, 0);
+		/*
+		 * schedule_delayed_work() returns false when the work is already
+		 * queued. That run relaxes the hold taken by the earlier notifier
+		 * call, so drop ours now - otherwise the wakeup source stays active
+		 * forever and the device never suspends.
+		 */
+		if (!schedule_delayed_work(&chip->status_change_work, 0))
+			__pm_relax(chip->step_chg_ws);
 	}
 
 	if ((strcmp(psy->desc->name, "bms") == 0)) {
