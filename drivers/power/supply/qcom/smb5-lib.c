@@ -1293,7 +1293,7 @@ static inline void dump_reg(struct smb_charger *chg, u16 addr,
 
 	if (NULL == name) {
 		strlcat(log, "\n", sizeof(log));
-		printk(log);
+		printk("%s", log);
 		return;
 	}
 
@@ -6334,7 +6334,8 @@ irqreturn_t usb_plugin_irq_handler(int irq, void *data)
 {
 	struct smb_irq_data *irq_data = data;
 	struct smb_charger *chg = irq_data->parent_data;
-	printk("[PMIC_DEBUG][%s]: pd_hard_reset=%d\n", __func__, chg->pd_hard_reset);
+
+	smblib_dbg(chg, PR_INTERRUPT, "pd_hard_reset=%d\n", chg->pd_hard_reset);
 	if (chg->pd_hard_reset)
 		smblib_usb_plugin_hard_reset_locked(chg);
 	else
