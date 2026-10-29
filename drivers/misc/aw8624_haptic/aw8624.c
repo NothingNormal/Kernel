@@ -4272,12 +4272,13 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	/*
 	 * High priority, still a single ordered worker: a buzz request should
 	 * not sit behind ordinary work, but the playback steps must stay
-	 * serialised.  The firmware loader shares this queue, so keep
-	 * WQ_MEM_RECLAIM.
+	 * serialised.  alloc_ordered_workqueue() keeps the single-worker
+	 * guarantee and still honours WQ_HIGHPRI.  The firmware loader shares
+	 * this queue, so keep WQ_MEM_RECLAIM.
 	 */
 	aw8624->work_queue =
-	    alloc_workqueue("aw8924_vibrator_work_queue",
-			    WQ_HIGHPRI | WQ_MEM_RECLAIM, 1);
+	    alloc_ordered_workqueue("aw8924_vibrator_work_queue",
+				    WQ_HIGHPRI | WQ_MEM_RECLAIM);
 	if (!aw8624->work_queue) {
 		dev_err(&i2c->dev,
 			"%s: Error creating aw8924_vibrator_work_queue\n",

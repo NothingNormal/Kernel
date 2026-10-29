@@ -80,6 +80,11 @@ static struct class *onewire_class;
 static int onewire_major;
 
 static int onewire_gpio_detected;
+/*
+ * Set by probe and cleared by ->remove() and by the probe error path.  The
+ * exported bit helpers test it so a caller that outlives the bus gets a
+ * "no device" result instead of dereferencing the devm-managed state.
+ */
 static struct onewire_gpio_data *g_onewire_data;
 
 static DEFINE_MUTEX(onewire_bus_mutex);
@@ -98,6 +103,9 @@ unsigned char ow_reset(void)
 {
 	unsigned char presence = 0xFF;
 	unsigned long flags;
+
+	if (!g_onewire_data)
+		return presence;
 
 	raw_spin_lock_irqsave(&g_onewire_data->lock, flags);
 	ONE_WIRE_CONFIG_OUT;
@@ -168,6 +176,9 @@ unsigned char read_byte(void)
 	unsigned char value = 0;
 	unsigned long flags;
 
+	if (!g_onewire_data)
+		return 0xFF;
+
 	raw_spin_lock_irqsave(&g_onewire_data->lock, flags);
 	for (i = 0; i < 8; i++) {
 		if (read_bit())
@@ -184,6 +195,9 @@ void write_byte(char val)
 	unsigned char i;
 	unsigned char temp;
 	unsigned long flags;
+
+	if (!g_onewire_data)
+		return;
 
 	raw_spin_lock_irqsave(&g_onewire_data->lock, flags);
 	ONE_WIRE_CONFIG_OUT;
@@ -527,7 +541,14 @@ onewire_interface_dev_create_err:
 onewire_ow_gpio_err:
 onewire_pinctrl_err:
 onewire_parse_dt_err:
-	/* onewire_data is devm_kzalloc()ed; devres releases it on probe failure. */
+	/*
+	 * onewire_data is devm_kzalloc()ed; devres releases it on probe
+	 * failure.  Stop the bus before dropping the global pointer.
+	 */
+	onewire_bus_lock();
+	if (g_onewire_data == onewire_data)
+		g_onewire_data = NULL;
+	onewire_bus_unlock();
 	return retval;
 }
 
@@ -535,8 +556,27 @@ static int onewire_gpio_remove(struct platform_device *pdev)
 {
 	struct onewire_gpio_data *onewire_data = platform_get_drvdata(pdev);
 
-	if (onewire_data->dev)
+	/*
+	 * Tear the char device down before taking the bus lock: sysfs removal
+	 * waits for a running store handler, and that handler takes the same
+	 * lock, so holding it here would deadlock.
+	 */
+	if (onewire_data->dev) {
+		sysfs_remove_link(&onewire_data->dev->kobj, "pltdev");
 		sysfs_remove_file(&onewire_data->dev->kobj, &dev_attr_ow_gpio.attr);
+		device_destroy(onewire_class, onewire_major);
+		onewire_data->dev = NULL;
+	}
+
+	/*
+	 * Wait for a transaction that is already on the bus, then stop the
+	 * exported helpers from touching the state devres frees after this
+	 * function returns.
+	 */
+	onewire_bus_lock();
+	g_onewire_data = NULL;
+	onewire_bus_unlock();
+
 	if (gpio_is_valid(onewire_data->ow_gpio))
 		gpio_free(onewire_data->ow_gpio);
 	/* onewire_data is devm_kzalloc()ed, so devres frees it after ->remove(). */
