@@ -398,6 +398,7 @@ struct aw8624 {
 	atomic_t is_in_irq;
 	atomic_t exit_in_irq;
 	struct workqueue_struct *work_queue;
+	bool misc_registered;
 
 #ifdef INPUT_DEV
 	struct platform_device *pdev;

@@ -1858,7 +1858,7 @@ static const struct attribute_group ds_attr_group = {
 
 static int authentic_period_ms = 5000;
 #define AUTHENTIC_COUNT_MAX 5
-int retry_authentic;
+static int retry_authentic;
 static void authentic_work(struct work_struct *work)
 {
 	int rc;
@@ -1870,7 +1870,10 @@ static void authentic_work(struct work_struct *work)
 
 	rc = power_supply_get_property(ds28e16_data->verify_psy,
 					POWER_SUPPLY_PROP_AUTHEN_RESULT, &pval);
-	if (pval.intval != true) {
+	if (rc < 0)
+		ds_log("failed to read authentic result, rc:%d\n", rc);
+
+	if (rc < 0 || pval.intval != true) {
 		retry_authentic++;
 		if (retry_authentic < AUTHENTIC_COUNT_MAX) {
 			ds_log("battery authentic work begin to restart.\n");
@@ -1882,6 +1885,8 @@ static void authentic_work(struct work_struct *work)
 			ds_log("authentic result is %d\n", pval.intval);
 		}
 	} else {
+		/* A later failure must get a fresh set of retries. */
+		retry_authentic = 0;
 		ds_log("authentic result is %d\n", pval.intval);
 	}
 }
@@ -1927,6 +1932,7 @@ static int ds28e16_probe(struct platform_device *pdev)
 	ds28e16_data->dev = &pdev->dev;
 	ds28e16_data->pdev = pdev;
 	platform_set_drvdata(pdev, ds28e16_data);
+	retry_authentic = 0;
 	INIT_DELAYED_WORK(&ds28e16_data->authentic_work, authentic_work);
 
 	retval = verify_psy_register(ds28e16_data);

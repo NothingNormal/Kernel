@@ -2170,7 +2170,13 @@ static int aw8624_haptic_init(struct aw8624 *aw8624)
 	bemf_config = aw8624->info.bemf_config[3];
 	aw8624_i2c_write(aw8624, AW8624_REG_BEMF_VTHL_L, bemf_config);
 	mutex_unlock(&aw8624->lock);
-	return ret;
+
+	/*
+	 * Only misc_register() can fail in a way the caller needs to know
+	 * about.  A failed register read above must not abort probing, and
+	 * the timer/workqueue state is already set up by this point.
+	 */
+	return 0;
 }
 
 /*****************************************************
@@ -2756,15 +2762,13 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 	while (atomic_read(&aw8624->exit_in_rtp_loop)) {
 		pr_debug("goint to waiting rtp  exit\n");
 		mutex_unlock(&aw8624->lock);
-		ret =
-		    wait_event_interruptible(aw8624->stop_wait_q,
-					     atomic_read(&aw8624-> exit_in_rtp_loop) == 0);
+		ret = wait_event_interruptible(aw8624->stop_wait_q,
+					       atomic_read(&aw8624->exit_in_rtp_loop) == 0);
 		pr_debug("%s  wakeup \n", __func__);
-		if (ret == -ERESTARTSYS) {
-			mutex_unlock(&aw8624->lock);
+		if (ret) {
 			pr_err("%s wake up by signal return erro\n", __func__);
-	return ret;
-	}
+			return ret;
+		}
 		mutex_lock(&aw8624->lock);
 	}
 	if (aw8624->effect_type == FF_CONSTANT) {
@@ -4283,10 +4287,16 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 		dev_err(&i2c->dev,
 			"%s: Error creating aw8924_vibrator_work_queue\n",
 			__func__);
+		ret = -ENOMEM;
 		goto err_sysfs;
 	}
 	aw8624_vibrator_init(aw8624);
-	aw8624_haptic_init(aw8624);
+	ret = aw8624_haptic_init(aw8624);
+	if (ret) {
+		dev_err(aw8624->dev, "haptics init failed, ret=%d\n", ret);
+		goto err_sysfs;
+	}
+	aw8624->misc_registered = true;
 	aw8624_ram_init(aw8624);
 
 	ff = input_dev->ff;
@@ -4298,7 +4308,8 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	if (rc < 0) {
 		dev_err(aw8624->dev, "register input device failed, rc=%d\n",
 			rc);
-		goto destroy_ff;
+		ret = rc;
+		goto err_sysfs;
 	}
 
 	dev_set_drvdata(&i2c->dev, aw8624);
@@ -4318,7 +4329,18 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	return 0;
 
 err_sysfs:
-	devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
+	if (aw8624->misc_registered) {
+		misc_deregister(&aw8624_haptic_misc);
+		aw8624->misc_registered = false;
+	}
+	if (aw8624->work_queue) {
+		if (aw8624->ram_work.work.func)
+			cancel_delayed_work_sync(&aw8624->ram_work);
+		destroy_workqueue(aw8624->work_queue);
+		aw8624->work_queue = NULL;
+	}
+	if (gpio_is_valid(aw8624->irq_gpio))
+		devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
 destroy_ff:
 	input_ff_destroy(aw8624->input_dev);
 err_irq:
@@ -4345,19 +4367,53 @@ static int aw8624_i2c_remove(struct i2c_client *i2c)
 
 	sysfs_remove_group(&i2c->dev.kobj, &aw8624_vibrator_attribute_group);
 
-	devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
+	if (aw8624->misc_registered) {
+		misc_deregister(&aw8624_haptic_misc);
+		aw8624->misc_registered = false;
+	}
+
+	/* Stop new FF requests before tearing the playback state down. */
+	input_unregister_device(aw8624->input_dev);
+
+	/*
+	 * The playback timers queue work, and the work can re-arm the
+	 * playback timer.  Park playback first, then drain both until
+	 * neither can schedule the other.
+	 */
+	aw8624->state = 0;
+	hrtimer_cancel(&aw8624->timer);
+	hrtimer_cancel(&aw8624->stop_timer);
+	hrtimer_cancel(&aw8624->hap_disable_timer);
+	hrtimer_cancel(&aw8624->haptic_audio.timer);
+
+	cancel_work_sync(&aw8624->vibrator_work);
+	cancel_work_sync(&aw8624->rtp_work);
+	cancel_work_sync(&aw8624->haptic_audio.work);
+	cancel_delayed_work_sync(&aw8624->ram_work);
+
+	/* vibrator_work may have armed the timer before it saw state = 0. */
+	hrtimer_cancel(&aw8624->timer);
+
+	mutex_lock(&aw8624->lock);
+	aw8624->play.length_us = 0;
+	aw8624_haptic_stop(aw8624);
+	mutex_unlock(&aw8624->lock);
+
+	/* Balance the RTP path's pm_stay_awake(), as suspend does. */
+	pm_relax(aw8624->dev);
+
+	if (gpio_is_valid(aw8624->irq_gpio))
+		devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
 
 	if (gpio_is_valid(aw8624->irq_gpio))
 		devm_gpio_free(&i2c->dev, aw8624->irq_gpio);
 	if (gpio_is_valid(aw8624->reset_gpio))
 		devm_gpio_free(&i2c->dev, aw8624->reset_gpio);
-	if (aw8624 != NULL) {
-		flush_workqueue(aw8624->work_queue);
-		destroy_workqueue(aw8624->work_queue);
-	}
+
+	destroy_workqueue(aw8624->work_queue);
 	device_init_wakeup(aw8624->dev, false);
+	g_aw8624 = NULL;
 	devm_kfree(&i2c->dev, aw8624);
-	aw8624 = NULL;
 
 	return 0;
 }
