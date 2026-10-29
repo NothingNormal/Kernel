@@ -9661,8 +9661,13 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->role_reversal_check);
 		cancel_delayed_work_sync(&chg->pr_swap_detach_work);
 		power_supply_unreg_notifier(&chg->nb);
-		smblib_destroy_votables(chg);
+		/*
+		 * Stop the step-chg notifier and worker before its votables
+		 * disappear; otherwise a late notification can vote on a
+		 * freed votable.
+		 */
 		qcom_step_chg_deinit();
+		smblib_destroy_votables(chg);
 		qcom_batt_deinit();
 		break;
 	case PARALLEL_SLAVE:
