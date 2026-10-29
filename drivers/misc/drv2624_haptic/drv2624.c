@@ -1105,7 +1105,7 @@ static int drv2624_set_waveform(struct drv2624_data *pDRV2624, struct drv2624_wa
 		} else
 			break;
 	}
-	dev_err(pDRV2624->dev, "%s:len =%d, effects[0] = %d\n", __func__, len,
+	dev_dbg(pDRV2624->dev, "%s:len =%d, effects[0] = %d\n", __func__, len,
 		effects[0]);
 	if (len == 1) {
 		nResult =
@@ -1575,7 +1575,7 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			usleep_range(time_us, time_us + 100);
 	}
 	pDRV2624->mnEffectType = effect->type;
-	dev_err(pDRV2624->dev, "%s: mnEffectType: %d\n", __func__,
+	dev_dbg(pDRV2624->dev, "%s: mnEffectType: %d\n", __func__,
 		pDRV2624->mnEffectType);
 	switch (pDRV2624->mnEffectType) {
 	case FF_CONSTANT:
@@ -1604,13 +1604,13 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 		/**1-5-2**/
 		play->effect_id = data[CUSTOM_DATA_EFFECT_IDX] + 1;
 		play->magnitude = effect->u.periodic.magnitude;
-		dev_err(pDRV2624->dev, "%s: effect_id = %d, fw_effCount = %d\n",
+		dev_dbg(pDRV2624->dev, "%s: effect_id = %d, fw_effCount = %d\n",
 			__func__, play->effect_id,
 			pDRV2624->fw_header.fw_effCount);
 		if (play->effect_id > 0
 		    && play->effect_id <= pDRV2624->fw_header.fw_effCount) {
 			pDRV2624->mnWorkMode = DRV2624_RAM_MODE;
-			dev_err(pDRV2624->dev,
+			dev_dbg(pDRV2624->dev,
 				"%s: effect_id = %d, magnitude = %d\n",
 				__func__, play->effect_id, play->magnitude);
 			if ((play->effect_id < 0)
@@ -1636,7 +1636,7 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			    0;
 			pDRV2624->msWaveformSequencer.msWaveform[1].mnLoop = 0;
 		/** +1 **/
-			dev_err(pDRV2624->dev, "upload to use effect %d\n",
+			dev_dbg(pDRV2624->dev, "upload to use effect %d\n",
 				data[CUSTOM_DATA_EFFECT_IDX] + 1);
 		/**1-5-2**/
 			time_ms = pDRV2624->mnEffectTimems[data[CUSTOM_DATA_EFFECT_IDX]];
@@ -1676,10 +1676,10 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			time_ms = nResult;
 			nResult = 0;
 			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = time_ms / MSEC_PER_SEC;	//300 / 1000;
-			dev_err(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
+			dev_dbg(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
 				data[CUSTOM_DATA_TIMEOUT_SEC_IDX]);
 			data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = time_ms % MSEC_PER_SEC;	//300;
-			dev_err(pDRV2624->dev, " rtp data[2] time_ms =%d\n",
+			dev_dbg(pDRV2624->dev, " rtp data[2] time_ms =%d\n",
 				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX]);
 			if (copy_to_user
 			    (effect->u.periodic.custom_data, data,
@@ -1829,7 +1829,7 @@ static int drv2624_haptics_playback(struct input_dev *dev, int effect_id,
 {
 	struct drv2624_data *pDRV2624 = input_get_drvdata(dev);
 	int nResult = 0;
-	dev_err(pDRV2624->dev, "%s: effect_id(%d) val(%d)\n",
+	dev_dbg(pDRV2624->dev, "%s: effect_id(%d) val(%d)\n",
 		__func__, effect_id, val);
 	dev_dbg(pDRV2624->dev, "%s: mnEffectType(%d) WorkMode(%d)\n",
 		__func__, pDRV2624->mnEffectType, pDRV2624->mnWorkMode);
