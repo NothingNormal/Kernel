@@ -12,6 +12,9 @@
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef int64_t ktime_t;
+/* struct step_chg_info carries a spinlock for its wakeup pairing; none of
+ * the functions extracted for these tests take it. */
+typedef int spinlock_t;
 
 #define STEP_CHG_VOTER "STEP_CHG_VOTER"
 #define JEITA_VOTER "JEITA_VOTER"
