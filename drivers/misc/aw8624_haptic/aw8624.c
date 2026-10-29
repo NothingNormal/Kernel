@@ -1152,16 +1152,18 @@ static int16_t aw8624_haptic_effect_strength(struct aw8624 *aw8624)
 static int aw8624_haptic_play_effect_seq(struct aw8624 *aw8624,
 					 unsigned char flag)
 {
+	int effect_id = aw8624->effect_id;
+
 	pr_debug("%s enter  \n", __func__);
 
-	if (aw8624->effect_id > aw8624->info.effect_id_boundary)
+	if (effect_id > aw8624->info.effect_id_boundary)
 		return 0;
-	VIB_DEBUG("effect_id =%d activate_mode =%d", aw8624->effect_id,
+	VIB_DEBUG("effect_id =%d activate_mode =%d", effect_id,
 		  aw8624->activate_mode);
 	if (flag) {
 		if (aw8624->activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE) {
 			aw8624_haptic_set_wav_seq(aw8624, 0x00,
-						  (char)aw8624->effect_id + 1);
+						  (char)effect_id + 1);
 			aw8624_haptic_set_wav_seq(aw8624, 0x01, 0x00);
 			aw8624_haptic_set_wav_loop(aw8624, 0x00, 0x00);
 			aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_RAM_MODE);
@@ -1170,12 +1172,12 @@ static int aw8624_haptic_play_effect_seq(struct aw8624 *aw8624,
 			 * the per-effect voltage is the only strength control.
 			 * Effects without a voltage keep the magnitude mapping.
 			 */
-			if (aw8624->info.gain_flag && aw8624->effect_id >= 0 &&
-			    aw8624->effect_id < aw8624->info.effect_id_boundary &&
-			    aw8624->effect_id < aw8624->effects_count &&
-			    aw8624->predefined[aw8624->effect_id].level)
+			if (aw8624->info.gain_flag && effect_id >= 0 &&
+			    effect_id < aw8624->info.effect_id_boundary &&
+			    effect_id < aw8624->effects_count &&
+			    aw8624->predefined[effect_id].level)
 				aw8624->level =
-				    aw8624->predefined[aw8624->effect_id].level;
+				    aw8624->predefined[effect_id].level;
 			else
 				aw8624_haptic_effect_strength(aw8624);
 			aw8624_haptic_set_gain(aw8624, aw8624->level);
@@ -1433,7 +1435,6 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	const struct firmware *rtp_file;
 	struct aw8624_container *rtp;
 	struct aw8624 *aw8624 = container_of(work, struct aw8624, rtp_work);
-	unsigned int timeout_ms;
 	int ret;
 
 	pr_debug("%s enter\n", __func__);
@@ -1517,18 +1518,15 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	mutex_unlock(&aw8624->rtp_lock);
 
 	/*
-	 * Keep suspend blocked during streaming. The playback-done interrupt
-	 * drops the hold as soon as the stream has played out; this timed
-	 * event is only a backstop, so it must cover both the firmware length
-	 * and the duration declared for the effect in the device tree.
+	 * Keep suspend blocked while the firmware is being uploaded. The
+	 * timed event covers the slowest supported sample rate for the whole
+	 * buffer plus a one-second margin; the timer does not stop the
+	 * haptic itself.
 	 */
-	timeout_ms = DIV_ROUND_UP_ULL((u64)rtp->len * MSEC_PER_SEC,
-				      AW8624_RTP_MIN_SAMPLE_RATE);
-	if (aw8624->effect_id >= aw8624->info.effect_id_boundary &&
-	    aw8624->effect_id < ARRAY_SIZE(aw8624->info.rtp_time))
-		timeout_ms = max_t(u32, timeout_ms,
-				   aw8624->info.rtp_time[aw8624->effect_id]);
-	pm_wakeup_event(aw8624->dev, timeout_ms + AW8624_RTP_WAKE_MARGIN_MS);
+	pm_wakeup_event(aw8624->dev,
+			DIV_ROUND_UP_ULL((u64)rtp->len * MSEC_PER_SEC,
+					 AW8624_RTP_MIN_SAMPLE_RATE) +
+			AW8624_RTP_WAKE_MARGIN_MS);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_RTP_MODE);
 	aw8624_haptic_start(aw8624);
 	ret = aw8624_haptic_rtp_init(aw8624);
@@ -1536,6 +1534,12 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 		aw8624_haptic_stop(aw8624);
 		goto relax;
 	}
+	/*
+	 * The chip drains the FIFO on its own once the whole stream has been
+	 * queued, so nothing needs to keep the device awake after this point.
+	 */
+	if (!READ_ONCE(aw8624->rtp_init))
+		pm_relax(aw8624->dev);
 	goto out;
 
 relax:
@@ -2364,19 +2368,8 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	if (reg_val & AW8624_BIT_SYSINT_OTI) {
 		pr_err("%s chip over temperature int error\n", __func__);
 	}
-	if (reg_val & AW8624_BIT_SYSINT_DONEI) {
+	if (reg_val & AW8624_BIT_SYSINT_DONEI)
 		VIB_DEBUG("chip playback done");
-		/*
-		 * The RTP worker holds the device awake until the stream is
-		 * fully uploaded. Once that has happened, this interrupt is
-		 * the real end of the effect: drop the hold now instead of
-		 * waiting for the firmware-length timeout. The timeout stays
-		 * armed as a backstop for a missing interrupt.
-		 */
-		if (aw8624->play_mode == AW8624_HAPTIC_RTP_MODE &&
-		    !READ_ONCE(aw8624->rtp_init))
-			pm_relax(aw8624->dev);
-	}
 
 	if (reg_val & AW8624_BIT_SYSINT_FF_AEI) {
 		VIB_DEBUG("aw8624 rtp fifo almost empty int");
@@ -2406,6 +2399,7 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 					aw8624_haptic_set_rtp_aei(aw8624, false);
 					aw8624->rtp_cnt = 0;
 					aw8624->rtp_init = 0;
+					pm_relax(aw8624->dev);
 					mutex_unlock(&aw8624->rtp_lock);
 					break;
 				}
@@ -2416,6 +2410,7 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 								  false);
 					aw8624->rtp_cnt = 0;
 					aw8624->rtp_init = 0;
+					pm_relax(aw8624->dev);
 					mutex_unlock(&aw8624->rtp_lock);
 					break;
 				}
@@ -2545,7 +2540,8 @@ static int aw8624_parse_dt(struct device *dev, struct aw8624 *aw8624,
 				       ARRAY_SIZE(rtp_time));
 	if (val != 0)
 		VIB_DEBUG("vib_rtp_time not found");
-	memcpy(aw8624->info.rtp_time, rtp_time, sizeof(rtp_time));
+	else
+		memcpy(aw8624->info.rtp_time, rtp_time, sizeof(rtp_time));
 
 	val =
 	    of_property_read_u32(np, "vib_effect_id_boundary",
