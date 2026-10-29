@@ -96,9 +96,8 @@ struct step_chg_info {
 	struct power_supply	*dc_psy;
 	struct delayed_work	status_change_work;
 	struct delayed_work	get_config_work;
-	/* pairs the notifier's wakeup holds with the worker's release */
+	/* serialises the notifier's hold/queue against the worker's release */
 	spinlock_t		status_change_lock;
-	unsigned int		status_change_gen;
 	struct notifier_block	nb;
 };
 
@@ -1010,20 +1009,8 @@ static void status_change_work(struct work_struct *work)
 	struct step_chg_info *chip = container_of(work,
 			struct step_chg_info, status_change_work.work);
 	unsigned long flags;
-	unsigned int gen;
 	int rc = 0;
 	union power_supply_propval prop = {0, };
-
-	/*
-	 * Wakeup sources do not nest: a __pm_stay_awake() taken while the
-	 * source is already active changes nothing. Snapshot the notification
-	 * generation before looking at any state. If another battery or USB
-	 * change arrives while this run is executing, the generation moves on
-	 * and the release belongs to the run queued behind this one.
-	 */
-	spin_lock_irqsave(&chip->status_change_lock, flags);
-	gen = chip->status_change_gen;
-	spin_unlock_irqrestore(&chip->status_change_lock, flags);
 
 	if (!is_batt_available(chip) || !is_bms_available(chip))
 		goto exit_work;
@@ -1057,13 +1044,15 @@ static void status_change_work(struct work_struct *work)
 
 exit_work:
 	/*
-	 * Only drop the hold if no notification arrived during this run.
-	 * Otherwise the requeued run is still pending and owns the release;
-	 * clearing the source here would let the system suspend while that
-	 * run is about to touch the charger.
+	 * The workqueue clears PENDING before this function is entered, so a
+	 * set bit means another run is queued behind this one: either the
+	 * notification arrived while this run was executing, or it arrived
+	 * after the workqueue dequeued this run but before PENDING was
+	 * cleared. That run owns the release. Clearing the source here would
+	 * let the system suspend before it touches the charger.
 	 */
 	spin_lock_irqsave(&chip->status_change_lock, flags);
-	if (gen == chip->status_change_gen)
+	if (!work_pending(&chip->status_change_work.work))
 		__pm_relax(chip->step_chg_ws);
 	spin_unlock_irqrestore(&chip->status_change_lock, flags);
 }
@@ -1081,17 +1070,15 @@ static int step_chg_notifier_call(struct notifier_block *nb,
 	if ((strcmp(psy->desc->name, "battery") == 0)
 			|| (strcmp(psy->desc->name, "usb") == 0)) {
 		/*
-		 * Advance the generation and take the hold under the lock the
-		 * worker checks. A notification that races with the end of a
-		 * run therefore either blocks the release or is covered by
-		 * the run it queues, instead of leaving the source inactive
-		 * with work still pending.
+		 * Take the hold and queue under the same lock the worker uses
+		 * to check for a queued run. If the queue happened after the
+		 * worker's check but before its release, the release would
+		 * drop the source for work that is already pending.
 		 */
 		spin_lock_irqsave(&chip->status_change_lock, flags);
-		chip->status_change_gen++;
 		__pm_stay_awake(chip->step_chg_ws);
-		spin_unlock_irqrestore(&chip->status_change_lock, flags);
 		schedule_delayed_work(&chip->status_change_work, 0);
+		spin_unlock_irqrestore(&chip->status_change_lock, flags);
 	}
 
 	if ((strcmp(psy->desc->name, "bms") == 0)) {
