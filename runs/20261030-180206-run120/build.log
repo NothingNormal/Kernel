@@ -1,0 +1,157 @@
+Using Neutron Clang toolchain: /home/runner/neutron-clang/bin
+Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+Target: x86_64-unknown-linux-gnu
+ccache enabled: ccache version 4.12.3
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+#
+# configuration written to .config
+#
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+scripts/kconfig/conf  --silentoldconfig Kconfig
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+../drivers/kernelsu/Kbuild:120: -- KernelSU: ./usr/include not found, preinit disabled
+../drivers/kernelsu/Kbuild:150: "KSU_GIT_VERSION not defined! It is better to make KernelSU-Next a git repository!"
+-- KernelSU-Next version fallback: 1
+-- KernelSU-Next version override: 33315
+../drivers/kernelsu/Kbuild:170: "KSU_VERSION_TAG not defined! It is better to make KernelSU-Next a git submodule!"
+-- KernelSU-Next tag: v3.4.2-legacy
+-- KernelSU-Next Manager signature size: 0x3e6
+-- KernelSU-Next Manager signature hash: 79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7
+-- KernelSU-Next: Hook mode: Manual
+  Using .. as source for kernel
+  WRAP    arch/arm64/include/generated/asm/bugs.h
+  WRAP    arch/arm64/include/generated/asm/clkdev.h
+  WRAP    arch/arm64/include/generated/asm/delay.h
+  WRAP    arch/arm64/include/generated/asm/div64.h
+  WRAP    arch/arm64/include/generated/asm/dma.h
+  WRAP    arch/arm64/include/generated/asm/dma-contiguous.h
+  WRAP    arch/arm64/include/generated/asm/early_ioremap.h
+  WRAP    arch/arm64/include/generated/asm/emergency-restart.h
+  WRAP    arch/arm64/include/generated/asm/hw_irq.h
+  WRAP    arch/arm64/include/generated/asm/irq_regs.h
+  WRAP    arch/arm64/include/generated/asm/kdebug.h
+  WRAP    arch/arm64/include/generated/asm/kmap_types.h
+  WRAP    arch/arm64/include/generated/asm/local.h
+  WRAP    arch/arm64/include/generated/asm/local64.h
+  WRAP    arch/arm64/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/arm64/include/generated/asm/mm-arch-hooks.h
+  WRAP    arch/arm64/include/generated/asm/msi.h
+  WRAP    arch/arm64/include/generated/asm/preempt.h
+  WRAP    arch/arm64/include/generated/asm/qrwlock.h
+  WRAP    arch/arm64/include/generated/asm/rwsem.h
+  WRAP    arch/arm64/include/generated/asm/segment.h
+  WRAP    arch/arm64/include/generated/asm/serial.h
+  WRAP    arch/arm64/include/generated/asm/set_memory.h
+  WRAP    arch/arm64/include/generated/asm/sizes.h
+  WRAP    arch/arm64/include/generated/asm/switch_to.h
+  WRAP    arch/arm64/include/generated/asm/trace_clock.h
+  WRAP    arch/arm64/include/generated/asm/unaligned.h
+  WRAP    arch/arm64/include/generated/asm/user.h
+  WRAP    arch/arm64/include/generated/asm/vga.h
+  WRAP    arch/arm64/include/generated/asm/xor.h
+  LDS     scripts/module-lto.lds
+  HOSTCC  scripts/dtc/dtc.o
+  HOSTCC  scripts/dtc/flattree.o
+  HOSTCC  scripts/dtc/fstree.o
+  HOSTCC  scripts/dtc/data.o
+  HOSTCC  scripts/dtc/livetree.o
+  HOSTCC  scripts/dtc/treesource.o
+  HOSTCC  scripts/dtc/srcpos.o
+  HOSTCC  scripts/dtc/checks.o
+  HOSTCC  scripts/dtc/util.o
+  CC      scripts/mod/empty.o
+  SHIPPED scripts/dtc/dtc-lexer.lex.c
+  HOSTCC  scripts/mod/mk_elfconfig
+  SHIPPED scripts/dtc/dtc-parser.tab.h
+  SHIPPED scripts/dtc/dtc-parser.tab.c
+  HOSTCC  scripts/dtc/dtc-lexer.lex.o
+  HOSTCC  scripts/dtc/dtc-parser.tab.o
+  CC      scripts/mod/devicetable-offsets.s
+  HOSTLD  scripts/dtc/dtc
+  MKELF   scripts/mod/elfconfig.h
+  CHK     scripts/mod/devicetable-offsets.h
+  UPD     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/mod/sumversion.o
+  HOSTCC  scripts/mod/modpost.o
+  HOSTCC  scripts/mod/file2alias.o
+  HOSTCC  scripts/selinux/genheaders/genheaders
+  HOSTLD  scripts/mod/modpost
+  HOSTCC  scripts/kallsyms
+  HOSTCC  scripts/selinux/mdp/mdp
+  CC      kernel/bounds.s
+  CHK     include/generated/timeconst.h
+  UPD     include/generated/timeconst.h
+  CHK     include/generated/bounds.h
+  UPD     include/generated/bounds.h
+  CC      arch/arm64/kernel/asm-offsets.s
+  HOSTCC  scripts/pnmtologo
+  HOSTCC  scripts/conmakehash
+  HOSTCC  scripts/sortextable
+In file included from ../arch/arm64/kernel/asm-offsets.c:21:
+In file included from ../include/linux/sched.h:16:
+In file included from ../include/linux/sem.h:9:
+In file included from ../include/uapi/linux/sem.h:5:
+In file included from ../include/linux/ipc.h:7:
+In file included from ../include/linux/rhashtable.h:26:
+In file included from ../include/linux/workqueue.h:9:
+In file included from ../include/linux/timer.h:6:
+In file included from ../include/linux/ktime.h:272:
+../include/linux/timekeeping.h:110:25: error: too many arguments to function call, expected 0, have 1
+  110 |         get_monotonic_coarse64(&ts);
+      |         ~~~~~~~~~~~~~~~~~~~~~~ ^~~
+../include/linux/timekeeping.h:30:19: note: 'get_monotonic_coarse64' declared here
+   30 | struct timespec64 get_monotonic_coarse64(void);
+      |                   ^
+1 error generated.
+make[2]: *** [.././Kbuild:58: arch/arm64/kernel/asm-offsets.s] Error 1
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1385: prepare0] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  HOSTCC  scripts/asn1_compiler
+  HOSTCC  scripts/extract-cert
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   187323 / 218296 (85.81%)
+  Hits:            154806 / 187323 (82.64%)
+    Direct:        142955 / 154806 (92.34%)
+    Preprocessed:   11851 / 154806 ( 7.66%)
+  Misses:           32517 / 187323 (17.36%)
+Uncacheable calls:  30973 / 218296 (14.19%)
+Local storage:
+  Cache size (GB):    1.3 /    4.0 (33.30%)
+  Hits:            154806 / 187323 (82.64%)
+  Misses:           32517 / 187323 (17.36%)
+ Kernel build failed (make exit code 2)
