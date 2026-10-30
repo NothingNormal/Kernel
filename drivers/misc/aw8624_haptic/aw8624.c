@@ -69,6 +69,13 @@ struct pm_qos_request pm_qos_req_vb;
  *
  ******************************************************/
 #define AW8624_RTP_NAME_MAX        64
+/*
+ * Effect ids from this value up are streamed from an RTP blob: the table
+ * index is the id minus this base (21 is AcousticGuitar_RTP.bin, index 1).
+ * Index 0 is the oscillator calibration stream, not a haptic effect, so an
+ * id below the base has nothing to stream.
+ */
+#define AW8624_RTP_FIRST_EFFECT_ID 20
 static char *aw8624_ram_name = "aw8624_haptic.bin";
 
 static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
@@ -1151,8 +1158,18 @@ static int aw8624_haptic_play_effect_seq(struct aw8624 *aw8624,
 		}
 		if (aw8624->activate_mode ==
 		    AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE) {
-			aw8624_haptic_set_repeat_wav_seq(aw8624,
-							 (aw8624->info. effect_id_boundary +1));
+			unsigned int seq = aw8624->info.effect_id_boundary;
+
+			/*
+			 * The loop waveform is the last predefined one.  A DT
+			 * that declares fewer effects than the boundary would
+			 * otherwise point the sequencer at a waveform that does
+			 * not exist, and the effect plays nothing at all.
+			 */
+			if (aw8624->effects_count > 0 &&
+			    seq >= aw8624->effects_count)
+				seq = aw8624->effects_count - 1;
+			aw8624_haptic_set_repeat_wav_seq(aw8624, seq + 1);
 			aw8624_haptic_play_repeat_seq(aw8624, true);
 		}
 	}
@@ -1398,10 +1415,7 @@ static int aw8624_rtp_osc_calibration(struct aw8624 *aw8624)
 
 /*
  * RTP effects are only playable if the matching waveform blob is present in
- * /vendor/firmware.  This device ships the RAM waveforms and, for the single
- * effect id at vib_effect_id_boundary (10), a RAM pattern too - but the id is
- * not below the boundary, so it is routed to RTP and then does nothing at all
- * when the blob is missing.  A vibration that silently plays nothing is
+ * /vendor/firmware.  Without it the chip simply plays nothing, which is
  * indistinguishable from a dead motor, so play a RAM waveform instead.
  * Caller holds aw8624->lock.
  */
@@ -1424,8 +1438,13 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 
 	pr_debug("%s enter\n", __func__);
 
-	if ((aw8624->effect_id < aw8624->info.effect_id_boundary) &&
-	    (aw8624->effect_id > aw8624->info.effect_max))
+	/*
+	 * upload_effect() already rejects ids above vib_effect_max; keep a
+	 * defensive bound here instead of the inverted test that could never
+	 * be true.  Low ids are handled below by falling back to a RAM
+	 * waveform.
+	 */
+	if (aw8624->effect_id > aw8624->info.effect_max)
 		return;
 	VIB_DEBUG("effect_id =%d state=%d", aw8624->effect_id, aw8624->state);
 
@@ -1455,6 +1474,19 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 
 	if (aw8624->state) {
 		pm_stay_awake(aw8624->dev);
+		/*
+		 * Ids below the first RTP waveform have no blob of their own:
+		 * rtp_file_num would come out negative and be clamped onto
+		 * index 0, which is the oscillator calibration stream, not a
+		 * haptic effect.  Play a RAM waveform instead of streaming the
+		 * calibration tone.
+		 */
+		if (aw8624->effect_id < AW8624_RTP_FIRST_EFFECT_ID) {
+			aw8624_haptic_ram_fallback(aw8624);
+			pm_relax(aw8624->dev);
+			mutex_unlock(&aw8624->lock);
+			return;
+		}
 		aw8624_haptic_effect_strength(aw8624);
 		/*
 		 * The RAM path programmes DATDBG from ->level; RTP did not, so
@@ -1462,10 +1494,9 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 		 * behind - or at zero after the chip's power-on reset.
 		 */
 		aw8624_haptic_set_gain(aw8624, aw8624->level);
-		aw8624->rtp_file_num = aw8624->effect_id - 20;
+		aw8624->rtp_file_num =
+		    aw8624->effect_id - AW8624_RTP_FIRST_EFFECT_ID;
 		VIB_DEBUG("aw8624->rtp_file_num =%d", aw8624->rtp_file_num);
-		if (aw8624->rtp_file_num < 0)
-			aw8624->rtp_file_num = 0;
 		if (aw8624->rtp_file_num >
 		    ((sizeof(aw8624_rtp_name) / AW8624_RTP_NAME_MAX) - 1))
 			aw8624->rtp_file_num =
@@ -2811,19 +2842,36 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 			return 0;
 	}
 
-		if (aw8624->effect_id < aw8624->info.effect_id_boundary) {
+		if (aw8624->effect_id <= aw8624->info.effect_id_boundary) {
+			int play_rate_us;
+			unsigned int idx = aw8624->effect_id;
+
 			aw8624->activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_MODE;
 			VIB_DEBUG
 			    ("%s aw8624->effect_id=%d , aw8624->activate_mode = %d",
 			     __func__, aw8624->effect_id,
 			     aw8624->activate_mode);
-			data[1] = aw8624->predefined[aw8624->effect_id].play_rate_us / 1000000;	/*second data */
-			data[2] = aw8624->predefined[aw8624->effect_id].play_rate_us / 1000;	/*millisecond data */
-			VIB_DEBUG
-			    ("aw8624->predefined[aw8624->effect_id].play_rate_us/1000 = %d",
-			     aw8624->predefined[aw8624->effect_id].play_rate_us / 1000);
+			/*
+			 * FF_PERIODIC is rejected above when the DT declares no
+			 * waveforms, but the count can still be smaller than the
+			 * boundary: clamp so predefined[] is never overrun.
+			 */
+			if (idx >= aw8624->effects_count)
+				idx = aw8624->effects_count - 1;
+			play_rate_us = aw8624->predefined[idx].play_rate_us;
+			data[1] = play_rate_us / 1000000;	/*second data */
+			data[2] = play_rate_us / 1000;	/*millisecond data */
+			VIB_DEBUG("play_rate_us/1000 = %d", play_rate_us / 1000);
 	}
-		if (aw8624->effect_id >= aw8624->info.effect_id_boundary) {
+		/*
+		 * The id at vib_effect_id_boundary is still a RAM waveform: the
+		 * DT carries a pattern for it, the loop path uses it, and the
+		 * RTP file names start at effect id 20 (rtp_file_num is
+		 * effect_id - 20).  Routed to RTP, that id can only load the
+		 * calibration blob or nothing at all, which is how the boundary
+		 * effect ended up silent.
+		 */
+		if (aw8624->effect_id > aw8624->info.effect_id_boundary) {
 			aw8624->activate_mode = AW8624_HAPTIC_ACTIVATE_RTP_MODE;
 			VIB_DEBUG
 			    ("aw8624->effect_id=%d , aw8624->activate_mode = %d",
@@ -2856,7 +2904,15 @@ static int aw8624_haptics_playback(struct input_dev *dev, int effect_id,
 
 	VIB_FUNC_ENTER();
 	VIB_DEBUG("effect_id=%d , val = %d", effect_id, val);
-	aw8624->effect_id = effect_id;
+	/*
+	 * effect_id here is the input core's handle for the FF effect, not the
+	 * waveform id the HAL passed in custom_data[0].  upload_effect()
+	 * already stored that id in aw8624->effect_id and used it to select
+	 * the play mode.  Overwriting it here made every predefined effect
+	 * play waveform 1 (the click), and once the handle grew past
+	 * effect_id_boundary it made play_effect_seq() bail out, so those
+	 * effects were completely silent.
+	 */
 	VIB_DEBUG("aw8624->effect_id=%d , aw8624->activate_mode = %d",
 		  aw8624->effect_id, aw8624->activate_mode);
 
