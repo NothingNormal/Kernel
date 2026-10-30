@@ -874,23 +874,28 @@ CONFIG_CGROUP_NET_PRIO=y
 CONFIG_DEFAULT_BBR=y
 
 # ---------------------------------------------------------------------------
-# own commit: BPF 5.15 needs the tracing stack compiled in.
+# own commit: BPF 5.15 needs the tracing stack compiled in, but not kprobes.
 #
-# kernel/trace/bpf_trace.c (kprobe/uprobe/tracepoint/perf program types) is
-# only built when BPF_EVENTS is on, and that needs KPROBES or UPROBES plus
-# PERF_EVENTS. bpf_snprintf() calls bstr_printf(), which lives behind
-# BINARY_PRINTF - TRACING selects it, stated here so a later defconfig edit
-# cannot drop it and turn that into a link error.
+# kernel/trace/bpf_trace.c (uprobe/tracepoint/perf program types) is only
+# built when BPF_EVENTS is on, and that needs (KPROBE_EVENTS || UPROBE_EVENTS)
+# && PERF_EVENTS. UPROBE_EVENTS alone satisfies it, so KPROBES and
+# KPROBE_EVENTS stay off on purpose:
 #
-# KPROBES was deliberately off before this: KernelSU-Next hooks explicit call
-# sites (CONFIG_KSU_MANUAL_HOOK), it never needed kprobes. Enabling it now is
-# for BPF only. Appended rather than edited into the tuning block so the delta
-# stays readable.
+#   * drivers/kernelsu/Kconfig has "config KSU_MANUAL_HOOK ... default y if
+#     !KPROBES". Leaving KPROBES off is what keeps manual hook the automatic
+#     default, so a lost CONFIG_KSU_MANUAL_HOOK line cannot silently flip
+#     KernelSU-Next over to its kprobe hook mode.
+#   * kernel/trace/trace_probe.h supplies static inline stubs for
+#     trace_kprobe_ftrace()/trace_kprobe_error_injectable() when
+#     CONFIG_KPROBE_EVENTS is off, so bpf_trace.c still links.
+#   * attaching a BPF_PROG_TYPE_KPROBE program is refused with -EINVAL, which
+#     is the intended answer on a KernelSU manual-hook kernel.
+#
+# bpf_snprintf() calls bstr_printf(), which is compiled out unless
+# BINARY_PRINTF is set; TRACING selects it, but it is stated here anyway so an
+# edit to this file cannot turn it into a link error.
 # ---------------------------------------------------------------------------
-CONFIG_KPROBES=y
-CONFIG_KRETPROBES=y
 CONFIG_UPROBES=y
-CONFIG_KPROBE_EVENTS=y
 CONFIG_UPROBE_EVENTS=y
 CONFIG_PROBE_EVENTS=y
 CONFIG_STACKTRACE=y
