@@ -1203,7 +1203,7 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 #elif defined(CONFIG_FAKE_UNAME_5_10)
 			strcpy(tmp.release, "5.10.239");
 #elif defined(CONFIG_FAKE_UNAME_5_15)
-			strcpy(tmp.release, "5.15.200");
+			strcpy(tmp.release, "5.15.207");
 #elif defined(CONFIG_FAKE_UNAME_6_1)
 			strcpy(tmp.release, "6.1.200");
 #elif defined(CONFIG_FAKE_UNAME_6_6)
