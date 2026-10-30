@@ -22,6 +22,7 @@
 #include <linux/cdev.h>
 #include <linux/leds.h>
 #include <linux/atomic.h>
+#include <linux/wait.h>
 
 /*********************************************************
  *
@@ -36,6 +37,11 @@
 #define AW8624_RTP_I2C_SINGLE_MAX_NUM       512
 
 #define HAPTIC_MAX_TIMEOUT                  10000
+
+/* Avoid stalling new effects behind a long-running timer. */
+#define AW8624_MAX_EFFECT_WAIT_US           20000
+/* A zero-length constant effect still needs time to be felt. */
+#define AW8624_MIN_PLAYBACK_MS              50
 
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
@@ -309,6 +315,7 @@ struct aw8624 {
 	int enable_pin_control;
 	struct work_struct vibrator_work;
 	struct work_struct rtp_work;
+	struct work_struct gain_work;
 	struct delayed_work ram_work;
 	struct delayed_work stop_work;
 
@@ -347,6 +354,22 @@ struct aw8624 {
 	int ulevel;
 	int f0_value;
 	unsigned char level;
+	u8 applied_gain;
+	/* Input FF gain: 0 is muted, 0xffff is unity. */
+	u16 ff_gain;
+	/* Playback callbacks hold input_dev->event_lock while updating this. */
+	u32 play_generation;
+	ktime_t play_requested_at;
+	bool suspended;
+	bool misc_registered;
+	bool irq_requested;
+	bool wakeup_initialized;
+	u64 bind_generation;
+	/* A nowait firmware request owns private data until its callback exits. */
+	struct mutex firmware_lock;
+	wait_queue_head_t firmware_wait;
+	unsigned int firmware_pending;
+	bool shutting_down;
 
 	unsigned char seq[AW8624_SEQUENCER_SIZE];
 	unsigned char loop[AW8624_SEQUENCER_SIZE];

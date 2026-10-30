@@ -1,0 +1,17 @@
+AW8624 userspace regression tests
+================================
+
+Run from any directory:
+
+  python3 tools/testing/selftests/aw8624/run.py
+  AW8624_TEST_REPEATS=100 python3 tools/testing/selftests/aw8624/run.py
+
+Requires Python 3, a C compiler supporting AddressSanitizer/UBSan, Linux input
+UAPI headers, and pthreads. CC selects the compiler. The runner extracts the
+actual driver functions and RTP table, then compiles them with mocked kernel,
+firmware, timer, input, I2C, and wakeup interfaces. It covers effect routing and
+per-slot publication, gain scaling, timer cancellation, RTP fallback and
+cancellation, firmware callback lifetime, suspend gating, and stale misc FDs.
+
+These are controlled userspace tests. They do not exercise the real kernel
+scheduler, I2C controller, AW8624 chip, Android firmware helper, or a phone.
