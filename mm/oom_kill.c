@@ -18,6 +18,9 @@
  */
 
 #include <linux/oom.h>
+#include <linux/pid.h>
+#include <linux/file.h>
+#include <linux/syscalls.h>
 #include <linux/mm.h>
 #include <linux/err.h>
 #include <linux/gfp.h>
@@ -1123,4 +1126,140 @@ void dump_killed_info(struct task_struct *selected)
 				(long)(PAGE_SIZE / 1024),
 			global_node_page_state(NR_FILE_PAGES) *
 				(long)(PAGE_SIZE / 1024));
+}
+
+#ifdef CONFIG_MMU
+/*
+ * This tree has no generic pidfd_get_pid(), so resolve the descriptor the way
+ * upstream does: only accept an anonymous inode created as a pidfd, which
+ * covers both pidfd_open() and CLONE_PIDFD.  Taking a reference here keeps the
+ * pid alive for the whole call, so pid_task() cannot return a recycled task.
+ */
+static struct pid *mrelease_pidfd_get_pid(int fd)
+{
+	struct pid *pid;
+	struct fd f;
+
+	f = fdget(fd);
+	if (!f.file)
+		return ERR_PTR(-EBADF);
+
+	if (f.file->f_op == &pidfd_fops)
+		pid = get_pid(f.file->private_data);
+	else
+		pid = ERR_PTR(-EBADF);
+
+	fdput(f);
+	return pid;
+}
+#endif
+
+/**
+ * sys_process_mrelease - release the memory of a dying process
+ * @pidfd: pidfd of the process to reap
+ * @flags: must be 0
+ *
+ * Ask the kernel to release the memory of a process that is already exiting
+ * (has passed exit_mm and cannot touch its address space again), instead of
+ * waiting for its mm to be freed through the normal exit path.  Android's
+ * lmkd uses this from its reaper to get memory back sooner on kill.
+ *
+ * Eligibility is deliberately narrow: the target must be scheduled to free its
+ * memory (task_will_free_mem), which rejects live processes, processes with
+ * live CLONE_VM peers, and coredumping ones.
+ */
+SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
+{
+#ifdef CONFIG_MMU
+	struct mm_struct *mm = NULL;
+	struct task_struct *task;
+	struct task_struct *p;
+	bool reap = false;
+	struct pid *pid;
+	long ret = 0;
+
+	if (flags)
+		return -EINVAL;
+
+	pid = mrelease_pidfd_get_pid(pidfd);
+	if (IS_ERR(pid))
+		return PTR_ERR(pid);
+
+	task = get_pid_task(pid, PIDTYPE_TGID);
+	if (!task) {
+		ret = -ESRCH;
+		goto put_pid;
+	}
+
+	/*
+	 * Pick a thread that still has a reference to mm.  During a group exit
+	 * only some threads may still carry it, and find_lock_task_mm() returns
+	 * with the task lock held - task_unlock() below is what releases it.
+	 */
+	p = find_lock_task_mm(task);
+	if (!p) {
+		ret = -ESRCH;
+		goto put_task;
+	}
+
+	/*
+	 * mmget_not_zero() is what makes the mm safe to touch after we drop the
+	 * task lock: it refuses to pin an mm that is already being torn down.
+	 */
+	if (mmget_not_zero(p->mm)) {
+		mm = p->mm;
+		if (task_will_free_mem(p))
+			reap = true;
+		else {
+			/*
+			 * Report failure only when the work has not already been
+			 * done: MMF_OOM_SKIP means the mm has been drained, which
+			 * is success from the caller's point of view.
+			 */
+			if (!test_bit(MMF_OOM_SKIP, &mm->flags))
+				ret = -EINVAL;
+		}
+	}
+	task_unlock(p);
+
+	if (!reap)
+		goto drop_mm;
+
+	/*
+	 * Killable, because this can contend with the dying process's own
+	 * exit_mmap() taking mmap_sem for writing.  MMF_OOM_SKIP is re-checked
+	 * under the semaphore: exit_mmap() sets it under the write side, so the
+	 * check is only meaningful once we hold at least the read side.
+	 */
+	if (down_read_killable(&mm->mmap_sem)) {
+		ret = -EINTR;
+		goto drop_mm;
+	}
+
+	/*
+	 * Notifier-backed address spaces need nonblocking MMU invalidation
+	 * around the unmap, which this tree does not have.  __oom_reap_task_mm()
+	 * here does not do that bookkeeping - its only other caller,
+	 * oom_reap_task_mm(), refuses these mms itself and sleeps instead - so
+	 * refuse them too rather than unmap under a notifier.  Their normal exit
+	 * still releases the memory, just later.
+	 */
+	if (mm_has_notifiers(mm))
+		ret = -EAGAIN;
+	else if (!test_bit(MMF_OOM_SKIP, &mm->flags))
+		__oom_reap_task_mm(mm);
+
+	up_read(&mm->mmap_sem);
+
+drop_mm:
+	if (mm)
+		mmput(mm);
+put_task:
+	put_task_struct(task);
+put_pid:
+	put_pid(pid);
+	return ret;
+#else
+	return -ENOSYS;
+#endif /* CONFIG_MMU */
 }

@@ -502,6 +502,7 @@ asmlinkage long sys_munlock(unsigned long start, size_t len);
 asmlinkage long sys_mlockall(int flags);
 asmlinkage long sys_munlockall(void);
 asmlinkage long sys_madvise(unsigned long start, size_t len, int behavior);
+asmlinkage long sys_process_mrelease(int pidfd, unsigned int flags);
 asmlinkage long sys_mincore(unsigned long start, size_t len,
 				unsigned char __user * vec);
 
