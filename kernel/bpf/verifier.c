@@ -767,13 +767,14 @@ static void *copy_array(void *dst, const void *src, size_t n, size_t size, gfp_t
 {
 	size_t bytes;
 
-	if (ZERO_OR_NULL_PTR(src))
+	if (ZERO_OR_NULL_PTR(src) || !n || !size)
 		goto out;
 
 	if (unlikely(check_mul_overflow(n, size, &bytes)))
 		return NULL;
 
-	if (ksize(dst) < bytes) {
+	/* 4.14 ksize(NULL) warns, unlike the 5.15 verifier's allocator. */
+	if ((dst ? ksize(dst) : 0) < bytes) {
 		kfree(dst);
 		dst = kmalloc_track_caller(bytes, flags);
 		if (!dst)
