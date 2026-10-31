@@ -3024,11 +3024,12 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	param->gpuaddr = (unsigned long)
 		entry->memdesc.gpuaddr + (param->offset & PAGE_MASK);
 
-	KGSL_STATS_ADD(param->len, &kgsl_driver.stats.mapped,
+	/* Detach subtracts the actual mapped size, including imported DMA-BUFs. */
+	KGSL_STATS_ADD(entry->memdesc.size, &kgsl_driver.stats.mapped,
 		&kgsl_driver.stats.mapped_max);
 
 	kgsl_process_add_stats(private,
-			kgsl_memdesc_usermem_type(&entry->memdesc), param->len);
+			kgsl_memdesc_usermem_type(&entry->memdesc), entry->memdesc.size);
 
 	trace_kgsl_mem_map(entry, param->fd);
 
@@ -4883,6 +4884,11 @@ static const struct file_operations kgsl_fops = {
 	.unlocked_ioctl = kgsl_ioctl,
 	.compat_ioctl = kgsl_compat_ioctl,
 };
+
+#if IS_ENABLED(CONFIG_TRACE_GPU_MEM)
+atomic64_t kgsl_gpu_mem_total = ATOMIC64_INIT(0);
+DEFINE_SPINLOCK(kgsl_gpu_mem_lock);
+#endif
 
 struct kgsl_driver kgsl_driver  = {
 	.process_mutex = __MUTEX_INITIALIZER(kgsl_driver.process_mutex),

@@ -528,6 +528,18 @@ static inline void lockdep_on(void)
  */
 struct lock_class_key { };
 
+/*
+ * Dynamic lockdep keys arrived in 5.1; without lockdep they are no-ops, as
+ * upstream. Not provided for CONFIG_LOCKDEP (4.14 cannot register heap keys).
+ */
+static inline void lockdep_register_key(struct lock_class_key *key)
+{
+}
+
+static inline void lockdep_unregister_key(struct lock_class_key *key)
+{
+}
+
 #define lockdep_depth(tsk)	(0)
 
 #define lockdep_is_held_type(l, r)		(1)

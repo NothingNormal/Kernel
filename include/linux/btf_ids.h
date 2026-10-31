@@ -148,6 +148,7 @@ extern struct btf_id_set name;
 #define BTF_ID_UNUSED
 #define BTF_ID_LIST_GLOBAL(name) u32 name[1];
 #define BTF_ID_LIST_SINGLE(name, prefix, typename) static u32 name[1];
+#define BTF_ID_LIST_GLOBAL_SINGLE(name, prefix, typename) u32 name[1];
 #define BTF_SET_START(name) static struct btf_id_set name = { 0 };
 #define BTF_SET_START_GLOBAL(name) static struct btf_id_set name = { 0 };
 #define BTF_SET_END(name)
@@ -183,5 +184,7 @@ MAX_BTF_SOCK_TYPE,
 
 extern u32 btf_sock_ids[];
 #endif
+
+extern u32 btf_task_struct_ids[];
 
 #endif

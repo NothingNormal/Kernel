@@ -490,7 +490,6 @@ struct sk_psock *sk_psock_init(struct sock *sk, int node)
 
 	psock->sk = sk;
 	psock->eval =  __SK_NONE;
-	psock->saved_destroy = prot->destroy;
 
 	INIT_LIST_HEAD(&psock->link);
 	spin_lock_init(&psock->link_lock);
@@ -651,7 +650,6 @@ static int sk_psock_bpf_run(struct sk_psock *psock, struct bpf_prog *prog,
 	int ret;
 
 	skb->sk = psock->sk;
-	bpf_compute_data_end_sk_skb(skb);
 	preempt_disable();
 	ret = BPF_PROG_RUN(prog, skb);
 	preempt_enable();

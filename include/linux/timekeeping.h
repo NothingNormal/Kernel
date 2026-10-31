@@ -99,6 +99,21 @@ static inline ktime_t ktime_get_coarse_clocktai(void)
 	return ktime_get_coarse_with_offset(TK_OFFS_TAI);
 }
 
+static inline ktime_t ktime_get_coarse(void)
+{
+	/*
+	 * 4.14 predates ktime_get_coarse_ts64(); get_monotonic_coarse64() is
+	 * the same clock (CLOCK_MONOTONIC_COARSE) but returns the timespec
+	 * instead of filling a caller buffer.
+	 */
+	return timespec64_to_ktime(get_monotonic_coarse64());
+}
+
+static inline u64 ktime_get_coarse_ns(void)
+{
+	return ktime_to_ns(ktime_get_coarse());
+}
+
 /**
  * ktime_mono_to_real - Convert monotonic time to clock realtime
  */
