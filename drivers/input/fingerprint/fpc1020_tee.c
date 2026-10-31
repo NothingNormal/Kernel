@@ -735,6 +735,20 @@ exit:
 static int fpc1020_remove(struct platform_device *pdev)
 {
 	struct fpc1020_data *fpc1020 = platform_get_drvdata(pdev);
+
+	/*
+	 * Unregister the interrupt first. It was acquired with
+	 * devm_request_threaded_irq(), so it stayed armed until devm
+	 * released it *after* this function returned. The threaded handler
+	 * calls __pm_wakeup_event() on fpc1020->ttw_ws, which takes that
+	 * wakeup_source's lock and re-arms its timer - but the calls below
+	 * trash that same wakeup source and cut the sensor rails. An
+	 * interrupt in that window operates on a removed wakeup_source.
+	 * devm_free_irq() drops the devres action and then calls free_irq(),
+	 * so the release is not repeated at unbind.
+	 */
+	devm_free_irq(&pdev->dev, gpio_to_irq(fpc1020->irq_gpio), fpc1020);
+
 	sysfs_remove_group(&pdev->dev.kobj, &attribute_group);
 	mutex_destroy(&fpc1020->lock);
 	//wake_lock_destroy(&fpc1020->ttw_wl);

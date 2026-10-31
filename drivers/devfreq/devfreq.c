@@ -251,7 +251,7 @@ static int devfreq_notify_transition(struct devfreq *devfreq,
 int update_devfreq(struct devfreq *devfreq)
 {
 	struct devfreq_freqs freqs;
-	unsigned long freq, cur_freq;
+	unsigned long freq, cur_freq, min_freq;
 	int err = 0;
 	u32 flags = 0;
 
@@ -278,11 +278,12 @@ int update_devfreq(struct devfreq *devfreq)
 	 *
 	 * List from the highest priority
 	 * max_freq
-	 * min_freq
+	 * max(min_freq, boost_min_freq)
 	 */
 
-	if (devfreq->min_freq && freq < devfreq->min_freq) {
-		freq = devfreq->min_freq;
+	min_freq = max(devfreq->min_freq, devfreq->boost_min_freq);
+	if (min_freq && freq < min_freq) {
+		freq = min_freq;
 		flags &= ~DEVFREQ_FLAG_LEAST_UPPER_BOUND; /* Use GLB */
 	}
 	if (devfreq->max_freq && freq > devfreq->max_freq) {
@@ -1135,10 +1136,6 @@ static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
 	unsigned long value;
 	int ret;
 	unsigned long max;
-
-	/* Minfreq is managed by devfreq_boost */
-	if (df->is_boost_device)
-		return count;
 
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)

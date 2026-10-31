@@ -277,6 +277,22 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 	if (!sg_policy->tunables->iowait_boost_enable)
 		return;
 
+	/*
+	 * Clear stale boost before processing a new I/O wakeup.  This used to
+	 * live in the !SCHED_CPUFREQ_IOWAIT branch below, so it never ran on
+	 * the wakeups that re-arm the boost: the doubling resumed from a value
+	 * that should already have expired, holding frequency above what the
+	 * load justified.
+	 */
+	if (sg_cpu->iowait_boost) {
+		s64 delta_ns = time - sg_cpu->last_update;
+
+		if (delta_ns > TICK_NSEC) {
+			sg_cpu->iowait_boost = 0;
+			sg_cpu->iowait_boost_pending = false;
+		}
+	}
+
 	if (flags & SCHED_CPUFREQ_IOWAIT) {
 		if (sg_cpu->iowait_boost_pending)
 			return;
@@ -289,14 +305,6 @@ static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
 				sg_cpu->iowait_boost = sg_cpu->iowait_boost_max;
 		} else {
 			sg_cpu->iowait_boost = sg_cpu->sg_policy->policy->min;
-		}
-	} else if (sg_cpu->iowait_boost) {
-		s64 delta_ns = time - sg_cpu->last_update;
-
-		/* Clear iowait_boost if the CPU apprears to have been idle. */
-		if (delta_ns > TICK_NSEC) {
-			sg_cpu->iowait_boost = 0;
-			sg_cpu->iowait_boost_pending = false;
 		}
 	}
 }
@@ -755,7 +763,13 @@ static void sugov_tunables_restore(struct cpufreq_policy *policy)
 
 	tunables->up_rate_limit_us = cached->up_rate_limit_us;
 	tunables->down_rate_limit_us = cached->down_rate_limit_us;
-	update_min_rate_limit_ns(sg_policy);
+	/*
+	 * No update_min_rate_limit_ns() here: this runs from sugov_init()
+	 * before sugov_start() has filled in up_rate_delay_ns and
+	 * down_rate_delay_ns, so it would compute min(0, 0) and leave the new
+	 * policy with a zero minimum interval.  sugov_start() refreshes it
+	 * once the delays actually exist.
+	 */
 }
 
 static int sugov_init(struct cpufreq_policy *policy)
@@ -866,10 +880,20 @@ static int sugov_start(struct cpufreq_policy *policy)
 	struct sugov_policy *sg_policy = policy->governor_data;
 	unsigned int cpu;
 
+	/*
+	 * Read both tunables and derive the minimum under the attribute lock,
+	 * the same lock governor_store() holds while a sysfs write updates
+	 * them.  Without it a write landing between the two reads can leave
+	 * min_rate_limit_ns derived from one old and one new delay.
+	 */
+	mutex_lock(&sg_policy->tunables->attr_set.update_lock);
 	sg_policy->up_rate_delay_ns =
 		sg_policy->tunables->up_rate_limit_us * NSEC_PER_USEC;
 	sg_policy->down_rate_delay_ns =
 		sg_policy->tunables->down_rate_limit_us * NSEC_PER_USEC;
+	update_min_rate_limit_ns(sg_policy);
+	mutex_unlock(&sg_policy->tunables->attr_set.update_lock);
+
 	sg_policy->last_freq_update_time = 0;
 	sg_policy->next_freq = UINT_MAX;
 	sg_policy->work_in_progress = false;

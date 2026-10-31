@@ -30,6 +30,7 @@
 #include <linux/mount.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
+#include <linux/cred.h>
 #include <linux/file.h>
 #include <linux/fcntl.h>
 #include <linux/device_cgroup.h>
@@ -48,6 +49,13 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/namei.h>
+
+/* Make S_VENDOR_HIDDEN entries resolve like absent paths for non-system apps. */
+static inline bool vendor_hidden_denied(const struct inode *inode)
+{
+	return inode && IS_VENDOR_HIDDEN(inode) &&
+	       uid_gt(current_fsuid(), KUIDT_INIT(2000));
+}
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern bool susfs_is_inode_sus_path(struct inode *inode);
@@ -1685,30 +1693,44 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 		struct dentry *base, unsigned int flags)
 {
 	struct dentry *dentry = lookup_dcache(name, base, flags);
+
+	if (dentry) {
+		if (!IS_ERR(dentry) && dentry->d_inode) {
+			bool hidden = vendor_hidden_denied(d_backing_inode(dentry));
+
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	bool found_sus_path = false;
+			hidden = hidden || susfs_is_inode_sus_path(dentry->d_inode);
 #endif
-	if (dentry)
+			if (hidden) {
+				if (!(flags & LOOKUP_RCU))
+					dput(dentry);
+				return ERR_PTR(-ENOENT);
+			}
+		}
 		return dentry;
+	}
 
 	dentry = d_alloc(base, name);
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-retry:
-#endif
 	if (unlikely(!dentry))
 		return ERR_PTR(-ENOMEM);
+
+	/* Check the resolved inode, not the still-negative allocated dentry. */
+	dentry = lookup_real(base->d_inode, dentry, flags);
+	if (dentry && !IS_ERR(dentry) && dentry->d_inode) {
+		bool hidden = vendor_hidden_denied(d_backing_inode(dentry));
+
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode && !found_sus_path && susfs_is_inode_sus_path(dentry->d_inode)) {
-		if (d_in_lookup(dentry))
-			d_lookup_done(dentry);
-		if (!(flags & LOOKUP_RCU))
-			dput(dentry);
-		dentry = d_alloc(base, &susfs_fake_qstr_name);
-		found_sus_path = true;
-		goto retry;
-	}
+		hidden = hidden || susfs_is_inode_sus_path(dentry->d_inode);
 #endif
-	return lookup_real(base->d_inode, dentry, flags);
+		if (hidden) {
+			if (d_in_lookup(dentry))
+				d_lookup_done(dentry);
+			if (!(flags & LOOKUP_RCU))
+				dput(dentry);
+			return ERR_PTR(-ENOENT);
+		}
+	}
+	return dentry;
 }
 
 
@@ -2026,6 +2048,13 @@ static int walk_component(struct nameidata *nd, int flags)
 
 		seq = 0;	/* we are already out of RCU mode */
 		inode = d_backing_inode(path.dentry);
+	}
+
+	if (unlikely(vendor_hidden_denied(inode))) {
+		/* lookup_fast() has no reference to drop in RCU mode. */
+		if (!(nd->flags & LOOKUP_RCU))
+			path_put(&path);
+		return -ENOENT;
 	}
 
 	return step_into(nd, &path, flags, inode, seq);
@@ -3641,6 +3670,12 @@ static int do_last(struct nameidata *nd,
 	 * create/update audit record if it already exists.
 	 */
 	audit_inode(nd->name, path.dentry, 0);
+
+	/* Do not reveal a hidden inode through O_CREAT|O_EXCL's EEXIST. */
+	if (unlikely(vendor_hidden_denied(d_backing_inode(path.dentry)))) {
+		path_to_nameidata(&path, nd);
+		return -ENOENT;
+	}
 
 	if (unlikely((open_flag & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT))) {
 		path_to_nameidata(&path, nd);

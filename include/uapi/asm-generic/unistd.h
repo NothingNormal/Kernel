@@ -743,8 +743,17 @@ __SYSCALL(__NR_close_range, sys_close_range)
 #define __NR_epoll_pwait2 441
 __SC_COMP(__NR_epoll_pwait2, sys_epoll_pwait2, compat_sys_epoll_pwait2)
 
+/*
+ * 437..447 are reserved for syscalls this tree does not carry.  The table
+ * generators fill every slot up to __NR_syscalls - 1 with sys_ni_syscall, so
+ * leaving them unlisted makes them return -ENOSYS rather than shifting
+ * anything, and 448 keeps userspace's fixed numbering.
+ */
+#define __NR_process_mrelease 448
+__SYSCALL(__NR_process_mrelease, sys_process_mrelease)
+
 #undef __NR_syscalls
-#define __NR_syscalls 442
+#define __NR_syscalls 449
 
 /*
  * All syscalls below here should go away really,
