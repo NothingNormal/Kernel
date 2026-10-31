@@ -135,6 +135,42 @@ CONFIG_CPU_FREQ_TIMES=y
 CONFIG_CPU_FREQ_GOV_POWERSAVE=y
 CONFIG_CPU_FREQ_GOV_USERSPACE=y
 CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+
+# ---------------------------------------------------------------------------
+# own commit: restore the stock QTI power knobs (core_ctl, msm_performance,
+# cpu-boost).
+#
+# stock_defconfig and atoll-perf_defconfig all set these three; this file has
+# never carried them, so the ROM's power/thermal userspace has been writing to
+# nodes that do not exist - no core isolation, no userspace min/max freq
+# clamp, no input boost. Each is inert until userspace configures it, which is
+# what makes it safe to turn on here:
+#
+#   SCHED_CORE_CTL - one sleeping SCHED_FIFO thread per cluster plus the
+#     /sys/devices/system/cpu/cpu*/core_ctl/ attributes. Defaults are
+#     min_cpus=1, max_cpus=num_cpus, busy_up/down_thres=0; a zero up-threshold
+#     marks every CPU busy, so eval_need() computes need == num_cpus every
+#     time and apply_limits() clamps it there - nothing is isolated until the
+#     perf HAL writes thresholds. The periodic core_ctl_check() that would
+#     otherwise tick is called only from walt.c, and SCHED_WALT is off here,
+#     so there is no timer either.
+#   MSM_PERFORMANCE - a CPUFREQ_POLICY_NOTIFIER whose per-CPU limits default
+#     to min=0/max=UINT_MAX (cpufreq_verify_within_limits() with no effect)
+#     and a cpuhp callback that only sets a flag for a sleeping kthread. Acts
+#     only after something writes cpu_min_freq/cpu_max_freq in
+#     /sys/module/msm_performance/parameters/.
+#   CPU_BOOST - an input handler that returns immediately unless
+#     input_boost_freq has been written non-zero (input_boost_enabled is false
+#     with the default 0), so it does nothing at all as shipped.
+#     sched_boost_on_input is 0 as well, and with SCHED_WALT off
+#     sched_set_boost() is the inline stub in include/linux/sched.h returning
+#     -EINVAL, so the sched-boost half cannot fire either.
+#
+# Dropping this block reverts all three at once; nothing else depends on them.
+# ---------------------------------------------------------------------------
+CONFIG_SCHED_CORE_CTL=y
+CONFIG_MSM_PERFORMANCE=y
+CONFIG_CPU_BOOST=y
 CONFIG_NET=y
 CONFIG_PACKET=y
 CONFIG_UNIX=y
