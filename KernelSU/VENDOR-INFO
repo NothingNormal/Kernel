@@ -2,11 +2,11 @@ KernelSU (kernel-side driver) — vendored snapshot
 
   source   : https://github.com/backslashxx/KernelSU
   branch   : master
-  commit   : release tag v3.3.1-27, b1f27c0478cae13b1c773f1132b9c4565d4fa901
+  commit   : release tag v3.3.1-32, f8aeac629022114d6b366b17048965a28ff398e8
              (master is periodically rebased; use the release snapshot for
              content comparisons)
   upstream commit date : 2026-08-17 (author date; master is periodically rebased)
-  release published    : 2026-10-29 (v3.3.1-27)
+  release published    : 2026-10-30 (v3.3.1-32)
   vendored on          : 2026-10-22 (709711bd)
   synced               : 2026-10-24 (preinit downstream rework d56bb8e7c-era),
                           2026-10-24 (v3.3.1+23: kallsyms '$' suffix handling,
@@ -58,10 +58,20 @@ KernelSU (kernel-side driver) — vendored snapshot
                           2026-10-29 (v3.3.1-27: KSU_VERSION 32704 -> 32707;
                           preinit.c removes one blank line. UAPI remains 6.
                           The five v3.3.1-26 files already match this tag;
-                          SuSFS and 4.14 integration changes are retained.)
+                          SuSFS and 4.14 integration changes are retained.),
+                          2026-10-31 (v3.3.1-32: compared the upstream
+                          release snapshots by content, modes and symlinks.
+                          kernel/, uapi/ and userspace/ are identical to
+                          v3.3.1-27; the new release changes the manager,
+                          WebUI interfaces and related documentation. The
+                          manager APK versionCode changes 32707 -> 32712;
+                          driver and UAPI stay 32707 and 6 respectively.
+                          Our SuSFS and 4.14 integration remain unchanged.)
 
   driver version       : KSU_VERSION=32707, KERNEL_SU_UAPI_VERSION=6 —
-                          matches manager APK v3.3.1-27 (versionCode 32707).
+                          unchanged in upstream v3.3.1-32. The manager APK
+                          is v3.3.1-32 (versionCode 32712) and uses UAPI 6;
+                          the APK and driver version numbers are independent.
 
   layout   : KernelSU/kernel/ and the shared uapi/ headers are vendored;
              manager/userspace are not needed to build the kernel.
@@ -96,4 +106,4 @@ KernelSU (kernel-side driver) — vendored snapshot
   Kconfig "KernelSU - SUSFS" menu, Makefile SUSFS_VERSION banner.
 - defconfig: CONFIG_KSU_SUSFS=y + all features except SUS_MEMFD.
 - uapi/: backslashxx KernelSU root uapi headers (for custom manager
-  builds; stock APK v3.3.1-27 needs nothing from here).
+  builds; stock APK v3.3.1-32 needs nothing from here).
