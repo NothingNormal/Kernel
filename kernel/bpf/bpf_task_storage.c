@@ -17,14 +17,25 @@
 #include <uapi/linux/btf.h>
 #include <linux/btf_ids.h>
 #include <linux/fdtable.h>
+#include <linux/file.h>
 
-/*
- * 4.14 has no pidfds (pidfd_open is 5.3), so userspace cannot name a task
- * for the map syscalls; BPF programs still use the task storage helpers.
- */
+/* This 4.14 tree already backports pidfds, although it lacks pidfd_get_pid. */
 static struct pid *pidfd_get_pid(unsigned int fd, unsigned int *flags)
 {
-	return ERR_PTR(-EOPNOTSUPP);
+	struct fd f = fdget(fd);
+	struct pid *pid;
+
+	if (!f.file)
+		return ERR_PTR(-EBADF);
+
+	if (f.file->f_op == &pidfd_fops) {
+		pid = get_pid(f.file->private_data);
+		*flags = f.file->f_flags;
+	} else {
+		pid = ERR_PTR(-EBADF);
+	}
+	fdput(f);
+	return pid;
 }
 
 DEFINE_BPF_STORAGE_CACHE(task_cache);
@@ -34,20 +45,20 @@ static DEFINE_PER_CPU(int, bpf_task_storage_busy);
 static void bpf_task_storage_lock(void)
 {
 	migrate_disable();
-	__this_cpu_inc(bpf_task_storage_busy);
+	this_cpu_inc(bpf_task_storage_busy);
 }
 
 static void bpf_task_storage_unlock(void)
 {
-	__this_cpu_dec(bpf_task_storage_busy);
+	this_cpu_dec(bpf_task_storage_busy);
 	migrate_enable();
 }
 
 static bool bpf_task_storage_trylock(void)
 {
 	migrate_disable();
-	if (unlikely(__this_cpu_inc_return(bpf_task_storage_busy) != 1)) {
-		__this_cpu_dec(bpf_task_storage_busy);
+	if (unlikely(this_cpu_inc_return(bpf_task_storage_busy) != 1)) {
+		this_cpu_dec(bpf_task_storage_busy);
 		migrate_enable();
 		return false;
 	}

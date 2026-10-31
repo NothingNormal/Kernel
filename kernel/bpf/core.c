@@ -1836,6 +1836,7 @@ static unsigned int __bpf_prog_ret0_warn(const void *ctx,
 bool bpf_prog_array_compatible(struct bpf_array *array,
 			       const struct bpf_prog *fp)
 {
+	enum bpf_cgroup_storage_type i;
 	bool ret;
 
 	if (fp->kprobe_override)
@@ -1844,15 +1845,27 @@ bool bpf_prog_array_compatible(struct bpf_array *array,
 	spin_lock(&array->aux->owner.lock);
 
 	if (!array->aux->owner.type) {
-		/* There's no owner yet where we could check for
-		 * compatibility.
-		 */
+		/* Claim the array for this program and its cgroup storage maps. */
 		array->aux->owner.type  = fp->type;
 		array->aux->owner.jited = fp->jited;
+		for (i = 0; i < MAX_BPF_CGROUP_STORAGE_TYPE; i++) {
+			struct bpf_map *storage = fp->aux->cgroup_storage[i];
+
+			array->aux->owner.storage_cookie[i] =
+				storage ? storage->cookie : 0;
+		}
 		ret = true;
 	} else {
 		ret = array->aux->owner.type  == fp->type &&
 		      array->aux->owner.jited == fp->jited;
+		for (i = 0; ret && i < MAX_BPF_CGROUP_STORAGE_TYPE; i++) {
+			struct bpf_map *storage = fp->aux->cgroup_storage[i];
+
+			/* A callee without this storage flavor is always safe. */
+			if (storage && array->aux->owner.storage_cookie[i] !=
+			    storage->cookie)
+				ret = false;
+		}
 	}
 	spin_unlock(&array->aux->owner.lock);
 	return ret;
