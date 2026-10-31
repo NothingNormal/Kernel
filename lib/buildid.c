@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include <linux/buildid.h>
+#include <linux/compiler.h>
 #include <linux/elf.h>
 #include <linux/pagemap.h>
 
@@ -16,38 +17,51 @@ static inline int parse_build_id(void *page_addr,
 				 void *note_start,
 				 Elf32_Word note_size)
 {
-	Elf32_Word note_offs = 0, new_offs;
+	const unsigned long page = (unsigned long)page_addr;
+	const unsigned long start = (unsigned long)note_start;
+	u64 note_off = 0;
 
-	/* check for overflow */
-	if (note_start < page_addr || note_start + note_size < note_start)
+	/* Bound the complete note segment before dereferencing any header. */
+	if (start < page || note_size > PAGE_SIZE ||
+	    start - page > PAGE_SIZE - note_size)
 		return -EINVAL;
 
-	/* only supports note that fits in the first page */
-	if (note_start + note_size > page_addr + PAGE_SIZE)
-		return -EINVAL;
+	while (note_off <= note_size &&
+	       note_size - note_off >= sizeof(Elf32_Nhdr)) {
+		Elf32_Nhdr nhdr;
+		u32 raw_name_size, raw_desc_size, note_type;
+		u64 name_off, name_size, desc_size, desc_off;
 
-	while (note_offs + sizeof(Elf32_Nhdr) < note_size) {
-		Elf32_Nhdr *nhdr = (Elf32_Nhdr *)(note_start + note_offs);
+		/* ELF note offsets are untrusted and need not be naturally aligned. */
+		memcpy(&nhdr, note_start + note_off, sizeof(nhdr));
+		raw_name_size = nhdr.n_namesz;
+		raw_desc_size = nhdr.n_descsz;
+		note_type = nhdr.n_type;
+		name_off = note_off + sizeof(nhdr);
+		name_size = ALIGN((u64)raw_name_size, 4);
+		desc_size = ALIGN((u64)raw_desc_size, 4);
 
-		if (nhdr->n_type == BUILD_ID &&
-		    nhdr->n_namesz == sizeof("GNU") &&
-		    nhdr->n_descsz > 0 &&
-		    nhdr->n_descsz <= BUILD_ID_SIZE_MAX) {
-			memcpy(build_id,
-			       note_start + note_offs +
-			       ALIGN(sizeof("GNU"), 4) + sizeof(Elf32_Nhdr),
-			       nhdr->n_descsz);
-			memset(build_id + nhdr->n_descsz, 0,
-			       BUILD_ID_SIZE_MAX - nhdr->n_descsz);
+		/* Check each aligned field with subtraction to avoid wraparound. */
+		if (name_size > note_size - name_off)
+			break;
+		desc_off = name_off + name_size;
+		if (desc_size > note_size - desc_off)
+			break;
+
+		if (note_type == BUILD_ID &&
+		    raw_name_size == sizeof("GNU") &&
+		    !memcmp(note_start + name_off, "GNU", sizeof("GNU")) &&
+		    raw_desc_size > 0 &&
+		    raw_desc_size <= BUILD_ID_SIZE_MAX) {
+			memcpy(build_id, note_start + desc_off, raw_desc_size);
+			memset(build_id + raw_desc_size, 0,
+			       BUILD_ID_SIZE_MAX - raw_desc_size);
 			if (size)
-				*size = nhdr->n_descsz;
+				*size = raw_desc_size;
 			return 0;
 		}
-		new_offs = note_offs + sizeof(Elf32_Nhdr) +
-			ALIGN(nhdr->n_namesz, 4) + ALIGN(nhdr->n_descsz, 4);
-		if (new_offs <= note_offs)  /* overflow */
-			break;
-		note_offs = new_offs;
+
+		note_off = desc_off + desc_size;
 	}
 	return -EINVAL;
 }
@@ -58,20 +72,29 @@ static int get_build_id_32(void *page_addr, unsigned char *build_id,
 {
 	Elf32_Ehdr *ehdr = (Elf32_Ehdr *)page_addr;
 	Elf32_Phdr *phdr;
-	int i;
+	__u32 phnum, i;
 
-	/* only supports phdr that fits in one page */
-	if (ehdr->e_phnum >
+	/* This parser only supports the ELF header and phdr table in page one. */
+	if (READ_ONCE(ehdr->e_phoff) != sizeof(Elf32_Ehdr))
+		return -EINVAL;
+	phnum = READ_ONCE(ehdr->e_phnum);
+	if (phnum >
 	    (PAGE_SIZE - sizeof(Elf32_Ehdr)) / sizeof(Elf32_Phdr))
 		return -EINVAL;
 
 	phdr = (Elf32_Phdr *)(page_addr + sizeof(Elf32_Ehdr));
 
-	for (i = 0; i < ehdr->e_phnum; ++i) {
-		if (phdr[i].p_type == PT_NOTE &&
-		    !parse_build_id(page_addr, build_id, size,
-				    page_addr + phdr[i].p_offset,
-				    phdr[i].p_filesz))
+	for (i = 0; i < phnum; ++i) {
+		Elf32_Word note_off, note_size;
+
+		if (READ_ONCE(phdr[i].p_type) != PT_NOTE)
+			continue;
+		note_off = READ_ONCE(phdr[i].p_offset);
+		note_size = READ_ONCE(phdr[i].p_filesz);
+		if (note_off > PAGE_SIZE || note_size > PAGE_SIZE - note_off)
+			continue;
+		if (!parse_build_id(page_addr, build_id, size,
+				    page_addr + note_off, note_size))
 			return 0;
 	}
 	return -EINVAL;
@@ -83,20 +106,30 @@ static int get_build_id_64(void *page_addr, unsigned char *build_id,
 {
 	Elf64_Ehdr *ehdr = (Elf64_Ehdr *)page_addr;
 	Elf64_Phdr *phdr;
-	int i;
+	__u32 phnum, i;
 
-	/* only supports phdr that fits in one page */
-	if (ehdr->e_phnum >
+	/* This parser only supports the ELF header and phdr table in page one. */
+	if (READ_ONCE(ehdr->e_phoff) != sizeof(Elf64_Ehdr))
+		return -EINVAL;
+	phnum = READ_ONCE(ehdr->e_phnum);
+	if (phnum >
 	    (PAGE_SIZE - sizeof(Elf64_Ehdr)) / sizeof(Elf64_Phdr))
 		return -EINVAL;
 
 	phdr = (Elf64_Phdr *)(page_addr + sizeof(Elf64_Ehdr));
 
-	for (i = 0; i < ehdr->e_phnum; ++i) {
-		if (phdr[i].p_type == PT_NOTE &&
-		    !parse_build_id(page_addr, build_id, size,
-				    page_addr + phdr[i].p_offset,
-				    phdr[i].p_filesz))
+	for (i = 0; i < phnum; ++i) {
+		Elf64_Off note_off;
+		Elf64_Xword note_size;
+
+		if (READ_ONCE(phdr[i].p_type) != PT_NOTE)
+			continue;
+		note_off = READ_ONCE(phdr[i].p_offset);
+		note_size = READ_ONCE(phdr[i].p_filesz);
+		if (note_off > PAGE_SIZE || note_size > PAGE_SIZE - note_off)
+			continue;
+		if (!parse_build_id(page_addr, build_id, size,
+				    page_addr + note_off, note_size))
 			return 0;
 	}
 	return -EINVAL;
