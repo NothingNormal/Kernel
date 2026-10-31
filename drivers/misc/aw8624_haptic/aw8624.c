@@ -4397,7 +4397,13 @@ err_sysfs:
 	}
 	if (gpio_is_valid(aw8624->irq_gpio))
 		devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
-destroy_ff:
+	/*
+	 * Reached by fall-through from err_sysfs, which is where every failure
+	 * after input_ff_create() lands.  input_ff_destroy() is safe on a
+	 * device whose ff was never created - it only clears EV_FF and returns
+	 * when dev->ff is NULL - so the earlier err_irq/err_id targets below
+	 * still skip it correctly by jumping past it.
+	 */
 	input_ff_destroy(aw8624->input_dev);
 err_irq:
 err_id:
