@@ -650,7 +650,10 @@ CONFIG_MSM_PIL_SSR_GENERIC=y
 CONFIG_SETUP_SSR_NOTIF_TIMEOUTS=y
 CONFIG_SSR_SYSMON_NOTIF_TIMEOUT=20000
 CONFIG_SSR_SUBSYS_NOTIF_TIMEOUT=20000
-CONFIG_PANIC_ON_SSR_NOTIF_TIMEOUT=y
+# A subsystem-restart notification timeout during shutdown is a normal race
+# with the modem going down, not a reason to panic.  Panicking here turned it
+# into a spontaneous reboot; let the timeout be logged and the shutdown finish.
+# CONFIG_PANIC_ON_SSR_NOTIF_TIMEOUT is not set
 CONFIG_MSM_BOOT_STATS=y
 CONFIG_QCOM_DCC_V2=y
 CONFIG_QCOM_SECURE_BUFFER=y
