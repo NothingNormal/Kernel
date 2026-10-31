@@ -120,6 +120,7 @@ struct devfreq_dev_profile {
  *		touch this.
  * @min_freq:	Limit minimum frequency requested by user (0: none)
  * @max_freq:	Limit maximum frequency requested by user (0: none)
+ * @boost_min_freq: Temporary boost minimum, capped by max_freq (0: none)
  * @stop_polling:	 devfreq polling status of a device.
  * @total_trans:	Number of devfreq transitions
  * @trans_table:	Statistics of devfreq transitions
@@ -154,7 +155,7 @@ struct devfreq {
 
 	unsigned long min_freq;
 	unsigned long max_freq;
-	bool is_boost_device;
+	unsigned long boost_min_freq;
 	bool max_boost;
 	bool stop_polling;
 

@@ -118,7 +118,6 @@ void devfreq_register_boost_device(enum df_device device, struct devfreq *df)
 
 	b = &d->devices[device];
 	mutex_lock(&devfreq_boost_lock);
-	df->is_boost_device = true;
 	WRITE_ONCE(b->df, df);
 	mutex_unlock(&devfreq_boost_lock);
 	devfreq_update_boosts(b);
@@ -130,11 +129,11 @@ void devfreq_unregister_boost_device(struct devfreq *df)
 	int i;
 
 	/*
-	 * Hold the same lock devfreq_update_boosts() uses across its access to
-	 * b->df, and clear the entry under it.  Once this returns no boost
-	 * update can touch @df, so devbw may free the bus client and the
-	 * devfreq object itself.  Without it a display blank can wake the
-	 * boost thread between those two steps and dereference freed memory.
+	 * Take the same lock devfreq_update_boosts() holds across its use of
+	 * b->df, and clear the device under it.  After this returns no boost
+	 * update can touch @df, so devbw is free to tear down the bus client
+	 * and the devfreq object itself.  Without it a display blank can wake
+	 * the boost thread between those two steps and use a freed @df.
 	 */
 	mutex_lock(&devfreq_boost_lock);
 	for (i = 0; i < DEVFREQ_MAX; i++) {
@@ -172,15 +171,19 @@ static void devfreq_update_boosts(struct boost_dev *b)
 	if (!df)
 		goto unlock;
 
+	/*
+	 * The boost floor is kept in boost_min_freq, never in min_freq.  min_freq
+	 * belongs to whoever writes the sysfs attribute (the power HAL); taking
+	 * it over meant those writes were silently dropped, and clobbering it
+	 * with a boost could also reject a lower max_freq request.
+	 */
 	mutex_lock(&df->lock);
 	state = READ_ONCE(b->state);
 	if (state & BIT(SCREEN_OFF)) {
-		df->min_freq = df->profile->freq_table[0];
+		df->boost_min_freq = 0;
 		df->max_boost = false;
 	} else {
-		df->min_freq = state & BIT(INPUT_BOOST) ?
-			       min(b->boost_freq, df->max_freq) :
-			       df->profile->freq_table[0];
+		df->boost_min_freq = state & BIT(INPUT_BOOST) ? b->boost_freq : 0;
 		df->max_boost = state & BIT(MAX_BOOST);
 	}
 	update_devfreq(df);
