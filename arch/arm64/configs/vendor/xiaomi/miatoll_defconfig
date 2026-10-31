@@ -137,23 +137,13 @@ CONFIG_CPU_FREQ_GOV_USERSPACE=y
 CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
 
 # ---------------------------------------------------------------------------
-# own commit: restore the stock QTI power knobs (core_ctl, msm_performance,
-# cpu-boost).
+# own commit: restore two stock QTI power knobs (msm_performance, cpu-boost).
 #
-# stock_defconfig and atoll-perf_defconfig all set these three; this file has
-# never carried them, so the ROM's power/thermal userspace has been writing to
-# nodes that do not exist - no core isolation, no userspace min/max freq
-# clamp, no input boost. Each is inert until userspace configures it, which is
-# what makes it safe to turn on here:
+# stock_defconfig and atoll-perf_defconfig set these two as well as
+# SCHED_CORE_CTL; core_ctl is deliberately NOT restored here - see below.
+# Both symbols below are inert until userspace configures them, which is what
+# makes them safe to turn on:
 #
-#   SCHED_CORE_CTL - one sleeping SCHED_FIFO thread per cluster plus the
-#     /sys/devices/system/cpu/cpu*/core_ctl/ attributes. Defaults are
-#     min_cpus=1, max_cpus=num_cpus, busy_up/down_thres=0; a zero up-threshold
-#     marks every CPU busy, so eval_need() computes need == num_cpus every
-#     time and apply_limits() clamps it there - nothing is isolated until the
-#     perf HAL writes thresholds. The periodic core_ctl_check() that would
-#     otherwise tick is called only from walt.c, and SCHED_WALT is off here,
-#     so there is no timer either.
 #   MSM_PERFORMANCE - a CPUFREQ_POLICY_NOTIFIER whose per-CPU limits default
 #     to min=0/max=UINT_MAX (cpufreq_verify_within_limits() with no effect)
 #     and a cpuhp callback that only sets a flag for a sleeping kthread. Acts
@@ -166,9 +156,23 @@ CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
 #     sched_set_boost() is the inline stub in include/linux/sched.h returning
 #     -EINVAL, so the sched-boost half cannot fire either.
 #
-# Dropping this block reverts all three at once; nothing else depends on them.
+# SCHED_CORE_CTL was in the first version of this block and failed CI (run
+# 41178558128, "implicit declaration of function 'for_each_sched_cluster'",
+# "incomplete definition of type 'struct sched_cluster'"). Both of those
+# live inside "#ifdef CONFIG_SCHED_WALT": kernel/sched/sched.h:57 opens the
+# block that defines the struct at :88, and kernel/sched/walt.h:17 opens the
+# branch that defines the iteration macro at :267. With SCHED_WALT off -
+# deliberate on this kernel - core_ctl does not compile at all.
+#
+# Its periodic evaluator is coupled the same way: the only caller of
+# core_ctl_check() in the whole tree is kernel/sched/walt.c:3234, so even a
+# successful build would isolate CPUs only on sysfs writes and hotplug, never
+# as load changes. Core isolation therefore requires SCHED_WALT; with that
+# one symbol flipped, core_ctl becomes both buildable and self-driving, and
+# would be added back in the same commit.
+#
+# Nothing else in the tree depends on these two symbols.
 # ---------------------------------------------------------------------------
-CONFIG_SCHED_CORE_CTL=y
 CONFIG_MSM_PERFORMANCE=y
 CONFIG_CPU_BOOST=y
 CONFIG_NET=y
