@@ -903,3 +903,23 @@ CONFIG_FTRACE=y
 CONFIG_BPF_EVENTS=y
 CONFIG_BINARY_PRINTF=y
 CONFIG_BPF_JIT_DEFAULT_ON=y
+
+# ---------------------------------------------------------------------------
+# own commit: finish wiring the BPF data path, and close the unprivileged one.
+#
+# BPF_STREAM_PARSER is what actually builds net/core/sock_map.c and
+# net/core/skmsg.c. Both files are already the 5.15 versions in this tree - the
+# backport put them there - but with the symbol off they were never compiled,
+# so BPF_PROG_TYPE_SK_MSG and BPF_PROG_TYPE_SK_SKB existed in the verifier and
+# in the UAPI enum with no attach path behind them. NET_CLS_ACT, NET_SCH_INGRESS,
+# CGROUPS and INET are all =y above, so the symbol's dependencies are met.
+#
+# BPF_UNPRIV_DEFAULT_OFF makes sysctl_unprivileged_bpf_disabled default to 2
+# (permanently off) rather than 0, which is what GKI and Android ship. Nothing
+# on this device uses the unprivileged bpf() path: bpfloader, netd and
+# KernelSU all run as root. Leaving it open is a JIT-spray surface on a kernel
+# where the interpreter is compiled out (BPF_JIT_ALWAYS_ON), so a JIT refusal
+# is a hard program-load failure, not a fallback.
+# ---------------------------------------------------------------------------
+CONFIG_BPF_STREAM_PARSER=y
+CONFIG_BPF_UNPRIV_DEFAULT_OFF=y
