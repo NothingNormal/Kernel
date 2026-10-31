@@ -1043,6 +1043,7 @@ struct bpf_hrtimer {
 	struct bpf_prog *prog;
 	void __rcu *callback_fn;
 	void *value;
+	struct rcu_head rcu;
 };
 
 /* the actual struct hidden inside uapi struct bpf_timer */
@@ -1070,11 +1071,9 @@ static enum hrtimer_restart bpf_timer_cb(struct hrtimer *hrtimer)
 	if (!callback_fn)
 		goto out;
 
-	/* bpf_timer_cb() runs in hrtimer_run_softirq. It doesn't migrate and
-	 * cannot be preempted by another bpf_timer_cb() on the same cpu.
-	 * Remember the timer this callback is servicing to prevent
-	 * deadlock if callback_fn() calls bpf_timer_cancel() or
-	 * bpf_map_delete_elem() on the same timer.
+	/* Upstream runs this callback in softirq context. The verifier rejects
+	 * timer helpers here until this kernel has softirq hrtimers. Remember the
+	 * timer being serviced to avoid cancelling it from its own callback.
 	 */
 	this_cpu_write(hrtimer_running, t);
 	if (map->map_type == BPF_MAP_TYPE_ARRAY) {
@@ -1122,13 +1121,6 @@ BPF_CALL_3(bpf_timer_init, struct bpf_timer_kern *, timer, struct bpf_map *, map
 		ret = -EBUSY;
 		goto out;
 	}
-	if (!atomic64_read(&map->usercnt)) {
-		/* maps with timers must be either held by user space
-		 * or pinned in bpffs.
-		 */
-		ret = -EPERM;
-		goto out;
-	}
 	/* allocate hrtimer via map_kmalloc to use memcg accounting */
 	t = bpf_map_kmalloc_node(map, sizeof(*t), GFP_ATOMIC, map->numa_node);
 	if (!t) {
@@ -1139,12 +1131,26 @@ BPF_CALL_3(bpf_timer_init, struct bpf_timer_kern *, timer, struct bpf_map *, map
 	t->map = map;
 	t->prog = NULL;
 	rcu_assign_pointer(t->callback_fn, NULL);
-	/* 4.14 has no softirq-expiry hrtimers (4.16); bpf timer callbacks
-	 * run from hardirq here. Map helpers take their locks irqsave.
+	/* 4.14 has no softirq-expiry hrtimers; timer helpers remain disabled
+	 * by the verifier until the correct callback context is available.
 	 */
 	hrtimer_init(&t->timer, clockid, HRTIMER_MODE_REL);
 	t->timer.function = bpf_timer_cb;
-	timer->timer = t;
+	WRITE_ONCE(timer->timer, t);
+	/* Guarantee the order between timer->timer and map->usercnt. So
+	 * when there are concurrent uref release and bpf timer init, either
+	 * bpf_timer_cancel_and_free() called by uref release reads a non-NULL
+	 * timer or atomic64_read() below returns a zero usercnt.
+	 */
+	smp_mb();
+	if (!atomic64_read(&map->usercnt)) {
+		/* maps with timers must be either held by user space
+		 * or pinned in bpffs.
+		 */
+		WRITE_ONCE(timer->timer, NULL);
+		kfree(t);
+		ret = -EPERM;
+	}
 out:
 	__bpf_spin_unlock_irqrestore(&timer->lock);
 	return ret;
@@ -1260,6 +1266,7 @@ BPF_CALL_1(bpf_timer_cancel, struct bpf_timer_kern *, timer)
 
 	if (in_nmi())
 		return -EOPNOTSUPP;
+	rcu_read_lock();
 	__bpf_spin_lock_irqsave(&timer->lock);
 	t = timer->timer;
 	if (!t) {
@@ -1281,6 +1288,7 @@ out:
 	 * if it was running.
 	 */
 	ret = ret ?: hrtimer_cancel(&t->timer);
+	rcu_read_unlock();
 	return ret;
 }
 
@@ -1312,7 +1320,7 @@ void bpf_timer_cancel_and_free(void *val)
 	/* The subsequent bpf_timer_start/cancel() helpers won't be able to use
 	 * this timer, since it won't be initialized.
 	 */
-	timer->timer = NULL;
+	WRITE_ONCE(timer->timer, NULL);
 out:
 	__bpf_spin_unlock_irqrestore(&timer->lock);
 	if (!t)
@@ -1335,7 +1343,7 @@ out:
 	 */
 	if (this_cpu_read(hrtimer_running) != t)
 		hrtimer_cancel(&t->timer);
-	kfree(t);
+	kfree_rcu(t, rcu);
 }
 
 const struct bpf_func_proto bpf_get_current_task_proto __weak;
