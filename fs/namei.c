@@ -30,6 +30,7 @@
 #include <linux/mount.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
+#include <linux/cred.h>
 #include <linux/file.h>
 #include <linux/fcntl.h>
 #include <linux/device_cgroup.h>
@@ -48,6 +49,27 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/namei.h>
+
+/*
+ * S_VENDOR_HIDDEN: an inode flagged this way must be indistinguishable from
+ * one that does not exist for unprivileged callers. The previous checks lived
+ * in do_faccessat(), vfs_open() and vfs_getattr_nosec() only, so the rest of
+ * the syscall surface could still tell the two apart - unlink() and rename()
+ * answered EACCES where open() answered ENOENT, which is an existence oracle.
+ *
+ * Answering -ENOENT from path resolution itself closes that for every caller
+ * at once, and matches what the SUS_PATH hide in __lookup_hash() already does.
+ *
+ * Not covered here, and deliberately left alone: readdir() still lists the
+ * name on the parent directory, because filtering ->iterate_shared() results
+ * is a filesystem-level change and this flag only ever lands on
+ * /system/addon.d. The lookup surface is what this makes consistent.
+ */
+static inline bool vendor_hidden_denied(const struct inode *inode)
+{
+	return inode && IS_VENDOR_HIDDEN(inode) &&
+	       uid_gt(current_fsuid(), KUIDT_INIT(2000));
+}
 
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 extern bool susfs_is_inode_sus_path(struct inode *inode);
@@ -1710,42 +1732,55 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 		return ERR_PTR(-ENOENT);
 #endif
 	dentry = lookup_dcache(name, base, flags);
+	if (unlikely(dentry && !IS_ERR(dentry) &&
+		     vendor_hidden_denied(d_backing_inode(dentry)))) {
+		if (!(flags & LOOKUP_RCU))
+			dput(dentry);
+		return ERR_PTR(-ENOENT);
+	}
 	if (dentry)
 		return dentry;
 
 	dentry = d_alloc(base, name);
 	if (unlikely(!dentry))
 		return ERR_PTR(-ENOMEM);
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	/*
 	 * Check AFTER lookup_real(). A dentry straight out of d_alloc() is
 	 * negative - d_inode is NULL - so testing it before the lookup made
-	 * this hide dead code, and the create/unlink/rename family (which
+	 * any hide here dead code, and the create/unlink/rename family (which
 	 * all reach here with LOOKUP_CREATE) saw hidden names exist.
 	 *
 	 * Returning an error rather than a fake-qstr negative dentry also
 	 * matters: a caller that creates on a negative dentry would
-	 * instantiate a real "..5.u.S" object on disk.
+	 * instantiate a real object on disk.
 	 *
 	 * -ENOENT for every caller, deliberately including the create family.
 	 * -EACCES would be an existence oracle: open(O_CREAT) on a hidden name
 	 * inside a world-writable directory would answer EACCES, telling an app
 	 * that something is there but protected. "No such file" is what a name
 	 * that is not there answers, so that is what we return.
+	 *
+	 * S_VENDOR_HIDDEN is folded in here for the same reason: this helper is
+	 * how the create/unlink/rename/chmod family resolves its final
+	 * component, which never goes through walk_component().
 	 */
 	dentry = lookup_real(base->d_inode, dentry, flags);
-	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode &&
-	    susfs_is_inode_sus_path(dentry->d_inode)) {
-		if (d_in_lookup(dentry))
-			d_lookup_done(dentry);
-		if (!(flags & LOOKUP_RCU))
-			dput(dentry);
-		return ERR_PTR(-ENOENT);
+	if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode) {
+		bool hidden = vendor_hidden_denied(dentry->d_inode) ||
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+			      susfs_is_inode_sus_path(dentry->d_inode) ||
+#endif
+			      false;
+
+		if (hidden) {
+			if (d_in_lookup(dentry))
+				d_lookup_done(dentry);
+			if (!(flags & LOOKUP_RCU))
+				dput(dentry);
+			return ERR_PTR(-ENOENT);
+		}
 	}
 	return dentry;
-#else
-	return lookup_real(base->d_inode, dentry, flags);
-#endif
 }
 
 
@@ -2071,6 +2106,19 @@ static int walk_component(struct nameidata *nd, int flags)
 
 		seq = 0;	/* we are already out of RCU mode */
 		inode = d_backing_inode(path.dentry);
+	}
+
+	if (unlikely(vendor_hidden_denied(inode))) {
+		/*
+		 * Under LOOKUP_RCU @path holds no reference - lookup_fast()
+		 * takes it from __d_lookup_rcu() and the caller still owns the
+		 * RCU read lock - so only the ref-walk case needs releasing.
+		 * Returning -ENOENT here leaves nd->path on the parent, which
+		 * terminate_walk() drops normally.
+		 */
+		if (!(nd->flags & LOOKUP_RCU))
+			path_put(&path);
+		return -ENOENT;
 	}
 
 	return step_into(nd, &path, flags, inode, seq);
@@ -3718,6 +3766,17 @@ static int do_last(struct nameidata *nd,
 	 * create/update audit record if it already exists.
 	 */
 	audit_inode(nd->name, path.dentry, 0);
+
+	/*
+	 * Must come before the O_EXCL check below: a hidden name would answer
+	 * EEXIST there (the dentry is positive) while a name that is really
+	 * absent gets created, which is a textbook existence oracle. vfs_open()
+	 * catches the plain open() case, but O_EXCL returns before it.
+	 */
+	if (unlikely(vendor_hidden_denied(d_backing_inode(path.dentry)))) {
+		path_to_nameidata(&path, nd);
+		return -ENOENT;
+	}
 
 	if (unlikely((open_flag & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT))) {
 		path_to_nameidata(&path, nd);
