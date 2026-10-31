@@ -248,6 +248,8 @@ int devfreq_remove_devbw(struct device *dev)
 {
 	struct dev_data *d = dev_get_drvdata(dev);
 
+	/* Detach from devfreq_boost before the devfreq object and bus client go. */
+	devfreq_unregister_boost_device(d->df);
 	msm_bus_scale_unregister_client(d->bus_client);
 	devfreq_remove_device(d->df);
 	return 0;

@@ -35,6 +35,8 @@ struct df_boost_drv {
 
 static void devfreq_input_unboost(struct work_struct *work);
 static void devfreq_max_unboost(struct work_struct *work);
+static void devfreq_update_boosts(struct boost_dev *b);
+static DEFINE_MUTEX(devfreq_boost_lock);
 
 #define BOOST_DEV_INIT(b, dev, freq) .devices[dev] = {				\
 	.input_unboost =							\
@@ -114,9 +116,32 @@ void devfreq_register_boost_device(enum df_device device, struct devfreq *df)
 	struct df_boost_drv *d = &df_boost_drv_g;
 	struct boost_dev *b;
 
-	df->is_boost_device = true;
 	b = &d->devices[device];
+	mutex_lock(&devfreq_boost_lock);
+	df->is_boost_device = true;
 	WRITE_ONCE(b->df, df);
+	mutex_unlock(&devfreq_boost_lock);
+	devfreq_update_boosts(b);
+}
+
+void devfreq_unregister_boost_device(struct devfreq *df)
+{
+	struct df_boost_drv *d = &df_boost_drv_g;
+	int i;
+
+	/*
+	 * Hold the same lock devfreq_update_boosts() uses across its access to
+	 * b->df, and clear the entry under it.  Once this returns no boost
+	 * update can touch @df, so devbw may free the bus client and the
+	 * devfreq object itself.  Without it a display blank can wake the
+	 * boost thread between those two steps and dereference freed memory.
+	 */
+	mutex_lock(&devfreq_boost_lock);
+	for (i = 0; i < DEVFREQ_MAX; i++) {
+		if (d->devices[i].df == df)
+			WRITE_ONCE(d->devices[i].df, NULL);
+	}
+	mutex_unlock(&devfreq_boost_lock);
 }
 
 static void devfreq_input_unboost(struct work_struct *work)
@@ -137,11 +162,18 @@ static void devfreq_max_unboost(struct work_struct *work)
 	wake_up(&b->boost_waitq);
 }
 
-static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
+static void devfreq_update_boosts(struct boost_dev *b)
 {
-	struct devfreq *df = b->df;
+	struct devfreq *df;
+	unsigned long state;
+
+	mutex_lock(&devfreq_boost_lock);
+	df = b->df;
+	if (!df)
+		goto unlock;
 
 	mutex_lock(&df->lock);
+	state = READ_ONCE(b->state);
 	if (state & BIT(SCREEN_OFF)) {
 		df->min_freq = df->profile->freq_table[0];
 		df->max_boost = false;
@@ -153,6 +185,8 @@ static void devfreq_update_boosts(struct boost_dev *b, unsigned long state)
 	}
 	update_devfreq(df);
 	mutex_unlock(&df->lock);
+unlock:
+	mutex_unlock(&devfreq_boost_lock);
 }
 
 static int devfreq_boost_thread(void *data)
@@ -177,7 +211,7 @@ static int devfreq_boost_thread(void *data)
 			break;
 
 		if (old_state != curr_state) {
-			devfreq_update_boosts(b, curr_state);
+			devfreq_update_boosts(b);
 			old_state = curr_state;
 		}
 	}
