@@ -2,11 +2,11 @@ KernelSU (kernel-side driver) — vendored snapshot
 
   source   : https://github.com/backslashxx/KernelSU
   branch   : master
-  commit   : release tag v3.3.1-32, f8aeac629022114d6b366b17048965a28ff398e8
+  commit   : release tag v3.3.1-35, a9f3e2dd767ad77ac40f3874da39a7002998071f
              (master is periodically rebased; use the release snapshot for
              content comparisons)
   upstream commit date : 2026-08-17 (author date; master is periodically rebased)
-  release published    : 2026-10-30 (v3.3.1-32)
+  release published    : 2026-10-31 (v3.3.1-35)
   vendored on          : 2026-10-22 (709711bd)
   synced               : 2026-10-24 (preinit downstream rework d56bb8e7c-era),
                           2026-10-24 (v3.3.1+23: kallsyms '$' suffix handling,
@@ -66,12 +66,20 @@ KernelSU (kernel-side driver) — vendored snapshot
                           WebUI interfaces and related documentation. The
                           manager APK versionCode changes 32707 -> 32712;
                           driver and UAPI stay 32707 and 6 respectively.
-                          Our SuSFS and 4.14 integration remain unchanged.)
+                          Our SuSFS and 4.14 integration remain unchanged.),
+                          2026-11-01 (v3.3.1-35: updated driver to
+                          KSU_VERSION 32715; UAPI remains 6. Ported the
+                          file-wrapper reference leak fix, rate-limited ioctl
+                          diagnostics, removed allowlist UID/package dump
+                          logging, and stopped forcing hosts redirection in
+                          OOT builds so Kconfig controls it. Retained the
+                          4.14 SELinux/SuSFS glue and exported umount hooks;
+                          excluded the upstream 6.6-only SELinux blob workaround.)
 
-  driver version       : KSU_VERSION=32707, KERNEL_SU_UAPI_VERSION=6 —
-                          unchanged in upstream v3.3.1-32. The manager APK
-                          is v3.3.1-32 (versionCode 32712) and uses UAPI 6;
-                          the APK and driver version numbers are independent.
+  driver version       : KSU_VERSION=32715, KERNEL_SU_UAPI_VERSION=6 —
+                          matches upstream v3.3.1-35. Its manager APK is
+                          versionCode 32715 and uses UAPI 6; the APK and driver
+                          version numbers are separate release values.
 
   layout   : KernelSU/kernel/ and the shared uapi/ headers are vendored;
              manager/userspace are not needed to build the kernel.
@@ -106,4 +114,4 @@ KernelSU (kernel-side driver) — vendored snapshot
   Kconfig "KernelSU - SUSFS" menu, Makefile SUSFS_VERSION banner.
 - defconfig: CONFIG_KSU_SUSFS=y + all features except SUS_MEMFD.
 - uapi/: backslashxx KernelSU root uapi headers (for custom manager
-  builds; stock APK v3.3.1-32 needs nothing from here).
+  builds; stock APK v3.3.1-35 needs nothing from here).
