@@ -1213,16 +1213,29 @@ static int16_t aw8624_haptic_effect_strength(struct aw8624 *aw8624,
 {
 	u32 level;
 
-	/* Interpolate HAL magnitudes, but do not assume headroom above unity. */
-	magnitude = min_t(u16, magnitude, AW8624_STRONG_MAGNITUDE);
-	if (magnitude <= AW8624_LIGHT_MAGNITUDE)
-		level = DIV_ROUND_CLOSEST((u32)magnitude * 0x50,
+	/*
+	 * The HAL sends the LIGHT/MEDIUM/STRONG magnitude tokens.  Scaling them
+	 * to 0x50..0x80 made a strong effect no harder than a light one, which
+	 * is what the sibling arena branch fixed by moving the anchors to
+	 * 0x80/0xa0/0xc0.  Keep the interpolation so magnitudes between the
+	 * tokens still land in between, but use those anchors.
+	 */
+	if (magnitude <= AW8624_LIGHT_MAGNITUDE) {
+		level = DIV_ROUND_CLOSEST((u32)magnitude * 0x80,
 					  AW8624_LIGHT_MAGNITUDE);
-	else
-		level = 0x50 + DIV_ROUND_CLOSEST(
-			(u32)(magnitude - AW8624_LIGHT_MAGNITUDE) * 0x30,
-			AW8624_STRONG_MAGNITUDE - AW8624_LIGHT_MAGNITUDE);
-	aw8624->level = min_t(u32, level, AW8624_GAIN_FULL);
+	} else if (magnitude <= AW8624_MEDIUM_MAGNITUDE) {
+		level = 0x80 + DIV_ROUND_CLOSEST(
+			(u32)(magnitude - AW8624_LIGHT_MAGNITUDE) * 0x20,
+			AW8624_MEDIUM_MAGNITUDE - AW8624_LIGHT_MAGNITUDE);
+	} else if (magnitude <= AW8624_STRONG_MAGNITUDE) {
+		level = 0xa0 + DIV_ROUND_CLOSEST(
+			(u32)(magnitude - AW8624_MEDIUM_MAGNITUDE) * 0x20,
+			AW8624_STRONG_MAGNITUDE - AW8624_MEDIUM_MAGNITUDE);
+	} else {
+		level = 0xc0;
+	}
+
+	aw8624->level = min_t(u32, level, 0xc0);
 	return 0;
 }
 
