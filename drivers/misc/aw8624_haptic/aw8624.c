@@ -689,6 +689,28 @@ static int aw8624_haptic_stop_delay(struct aw8624 *aw8624)
 	return -ETIMEDOUT;
 }
 
+static void aw8624_recover_work(struct work_struct *work);
+
+/*
+ * The controller keeps its firmware in RAM and has no reset detection of its
+ * own, so a brownout or a wedged playback engine leaves it answering I2C while
+ * driving nothing - the "vibrator is dead until reboot" state.  A stop that
+ * never reaches standby is the one reliable symptom we can observe, so use it
+ * to rebuild the chip.  Rate-limited: a transient I2C error must not turn into
+ * a reset storm.
+ */
+static void aw8624_schedule_recovery(struct aw8624 *aw8624)
+{
+	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
+		return;
+	if (time_before(jiffies, aw8624->recover_after))
+		return;
+
+	aw8624->recover_after =
+	    jiffies + msecs_to_jiffies(AW8624_RECOVER_INTERVAL_MS);
+	queue_work(aw8624->work_queue, &aw8624->recover_work);
+}
+
 static int aw8624_haptic_stop(struct aw8624 *aw8624)
 {
 	int ret;
@@ -698,6 +720,8 @@ static int aw8624_haptic_stop(struct aw8624 *aw8624)
 	aw8624_haptic_play_go(aw8624, false);
 	ret = aw8624_haptic_stop_delay(aw8624);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_STANDBY_MODE);
+	if (ret < 0)
+		aw8624_schedule_recovery(aw8624);
 
 	return ret;
 }
@@ -2201,31 +2225,12 @@ static struct miscdevice aw8624_haptic_misc = {
 	.fops = &fops,
 };
 
-static int aw8624_haptic_init(struct aw8624 *aw8624)
+static int aw8624_haptic_chip_init(struct aw8624 *aw8624)
 {
 	int ret = 0;
 	unsigned char i = 0;
 	unsigned char reg_val = 0, reg_flag = 0;
 	unsigned char bemf_config = 0;
-
-	pr_debug("%s enter\n", __func__);
-	ret = misc_register(&aw8624_haptic_misc);
-	if (ret) {
-		dev_err(aw8624->dev, "%s: misc fail: %d\n", __func__, ret);
-		return ret;
-	}
-	aw8624->misc_registered = true;
-
-	/* haptic audio */
-	aw8624->haptic_audio.delay_val = 1;
-	aw8624->haptic_audio.timer_val = 21318;
-
-	hrtimer_init(&aw8624->haptic_audio.timer, CLOCK_MONOTONIC,
-		     HRTIMER_MODE_REL);
-	aw8624->haptic_audio.timer.function = aw8624_haptic_audio_timer_func;
-	INIT_WORK(&aw8624->haptic_audio.work, aw8624_haptic_audio_work_routine);
-
-	mutex_init(&aw8624->haptic_audio.lock);
 
 	/* haptic init */
 	mutex_lock(&aw8624->lock);
@@ -2307,6 +2312,32 @@ static int aw8624_haptic_init(struct aw8624 *aw8624)
 	aw8624_i2c_write(aw8624, AW8624_REG_BEMF_VTHL_L, bemf_config);
 	mutex_unlock(&aw8624->lock);
 	return 0;
+}
+
+static int aw8624_haptic_init(struct aw8624 *aw8624)
+{
+	int ret;
+
+	pr_debug("%s enter\n", __func__);
+	ret = misc_register(&aw8624_haptic_misc);
+	if (ret) {
+		dev_err(aw8624->dev, "%s: misc fail: %d\n", __func__, ret);
+		return ret;
+	}
+	aw8624->misc_registered = true;
+
+	/* haptic audio */
+	aw8624->haptic_audio.delay_val = 1;
+	aw8624->haptic_audio.timer_val = 21318;
+
+	hrtimer_init(&aw8624->haptic_audio.timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_REL);
+	aw8624->haptic_audio.timer.function = aw8624_haptic_audio_timer_func;
+	INIT_WORK(&aw8624->haptic_audio.work, aw8624_haptic_audio_work_routine);
+
+	mutex_init(&aw8624->haptic_audio.lock);
+
+	return aw8624_haptic_chip_init(aw8624);
 }
 
 /*****************************************************
@@ -2431,6 +2462,7 @@ static int aw8624_vibrator_init(struct aw8624 *aw8624)
 	INIT_WORK(&aw8624->vibrator_work, aw8624_vibrator_work_routine);
 	INIT_WORK(&aw8624->rtp_work, aw8624_rtp_work_routine);
 	INIT_WORK(&aw8624->gain_work, aw8624_gain_work_routine);
+	INIT_WORK(&aw8624->recover_work, aw8624_recover_work);
 	mutex_init(&aw8624->firmware_lock);
 	init_waitqueue_head(&aw8624->firmware_wait);
 
@@ -4295,6 +4327,7 @@ static void aw8624_quiesce(struct aw8624 *aw8624)
 	cancel_work_sync(&aw8624->rtp_work);
 	cancel_work_sync(&aw8624->gain_work);
 	cancel_work_sync(&aw8624->haptic_audio.work);
+	cancel_work_sync(&aw8624->recover_work);
 	/* A worker already running at the first cancellation can arm a timer. */
 	hrtimer_cancel(&aw8624->timer);
 	hrtimer_cancel(&aw8624->haptic_audio.timer);
@@ -4310,6 +4343,66 @@ static void aw8624_quiesce(struct aw8624 *aw8624)
 	wake_up_interruptible(&aw8624->stop_wait_q);
 	pm_relax(aw8624->dev);
 	mutex_unlock(&aw8624->lock);
+}
+
+/*
+ * Rebuild the controller after a stop that never reached standby.
+ *
+ * The firmware lives in the chip's RAM and the driver has no way to notice a
+ * brownout, so a reset leaves the part answering I2C while driving nothing:
+ * every later playback is a silent no-op until the phone is rebooted.  A hard
+ * reset plus a full register init and firmware reload is the only way back.
+ *
+ * This runs on the ordered workqueue, so playback work cannot overlap it.  The
+ * rate limit is re-armed before touching the chip so a failure inside the
+ * rebuild cannot queue another attempt immediately.
+ */
+static void aw8624_recover_work(struct work_struct *work)
+{
+	struct aw8624 *aw8624 =
+	    container_of(work, struct aw8624, recover_work);
+	int ret;
+
+	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
+		return;
+
+	/* A rebuild already in flight owns the chip; drop the duplicate. */
+	if (atomic_xchg(&aw8624->recovering, 1))
+		return;
+
+	aw8624->recover_after =
+	    jiffies + msecs_to_jiffies(AW8624_RECOVER_INTERVAL_MS);
+
+	dev_warn(aw8624->dev,
+		 "%s: haptic controller missed standby, rebuilding it\n",
+		 __func__);
+
+	/*
+	 * The IRQ is a threaded handler that reads and writes the same
+	 * registers, so park it for the duration of the rebuild.
+	 */
+	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
+		disable_irq(gpio_to_irq(aw8624->irq_gpio));
+
+	/* Discard any half-uploaded RTP stream before resetting the part. */
+	mutex_lock(&aw8624->rtp_lock);
+	aw8624->rtp_init = 0;
+	aw8624->rtp_cnt = 0;
+	aw8624_haptic_set_rtp_aei(aw8624, false);
+	mutex_unlock(&aw8624->rtp_lock);
+
+	aw8624_hw_reset(aw8624);
+	aw8624_haptic_softreset(aw8624);
+	aw8624_haptic_chip_init(aw8624);
+	ret = aw8624_ram_update(aw8624);
+	if (ret)
+		dev_err(aw8624->dev, "%s: firmware reload failed: %d\n",
+			__func__, ret);
+
+	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
+		enable_irq(gpio_to_irq(aw8624->irq_gpio));
+
+	atomic_set(&aw8624->recovering, 0);
 }
 
 static void aw8624_shutdown_firmware(struct aw8624 *aw8624)

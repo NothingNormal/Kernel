@@ -42,6 +42,8 @@
 #define AW8624_MAX_EFFECT_WAIT_US           20000
 /* A zero-length constant effect still needs time to be felt. */
 #define AW8624_MIN_PLAYBACK_MS              50
+/* Never rebuild the chip more often than this, even if stops keep failing. */
+#define AW8624_RECOVER_INTERVAL_MS          5000
 
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
@@ -318,6 +320,7 @@ struct aw8624 {
 	struct work_struct vibrator_work;
 	struct work_struct rtp_work;
 	struct work_struct gain_work;
+	struct work_struct recover_work;
 	struct delayed_work ram_work;
 	struct delayed_work stop_work;
 
@@ -403,6 +406,8 @@ struct aw8624 {
 	wait_queue_head_t stop_wait_q;	//wait queue for stop rtp mode
 	atomic_t is_in_irq;
 	atomic_t exit_in_irq;
+	atomic_t recovering;
+	unsigned long recover_after;
 	struct workqueue_struct *work_queue;
 
 #ifdef INPUT_DEV
