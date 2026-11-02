@@ -703,6 +703,8 @@ static void aw8624_schedule_recovery(struct aw8624 *aw8624)
 {
 	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
 		return;
+	if (READ_ONCE(aw8624->recover_disabled))
+		return;
 	if (time_before(jiffies, aw8624->recover_after))
 		return;
 
@@ -720,8 +722,17 @@ static int aw8624_haptic_stop(struct aw8624 *aw8624)
 	aw8624_haptic_play_go(aw8624, false);
 	ret = aw8624_haptic_stop_delay(aw8624);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_STANDBY_MODE);
-	if (ret < 0)
+	if (ret < 0) {
 		aw8624_schedule_recovery(aw8624);
+	} else {
+		/*
+		 * The chip reached standby on its own, so whatever the last
+		 * rebuild did worked.  Forget the failures, and allow a future
+		 * one to be retried.
+		 */
+		aw8624->recover_attempts = 0;
+		WRITE_ONCE(aw8624->recover_disabled, false);
+	}
 
 	return ret;
 }
@@ -4395,9 +4406,25 @@ static void aw8624_recover_work(struct work_struct *work)
 	aw8624_haptic_softreset(aw8624);
 	aw8624_haptic_chip_init(aw8624);
 	ret = aw8624_ram_update(aw8624);
-	if (ret)
+	if (ret) {
 		dev_err(aw8624->dev, "%s: firmware reload failed: %d\n",
 			__func__, ret);
+	} else {
+		/*
+		 * A clean reload is not proof the part is back: standby is, and
+		 * aw8624_haptic_stop() resets the count when it sees it.  Guard
+		 * against an endless reset storm in the meantime - a wedged or
+		 * browned-out part that firmware cannot revive must not keep
+		 * rebuilding every five seconds.  That kept the CPU awake (no
+		 * deep sleep, device warm) and reset the chip out from under
+		 * every playback, which is what made haptics drop out.
+		 */
+		if (++aw8624->recover_attempts >= AW8624_RECOVER_MAX_ATTEMPTS) {
+			WRITE_ONCE(aw8624->recover_disabled, true);
+			dev_warn(aw8624->dev, "%s: giving up after %u rebuilds\n",
+				 __func__, aw8624->recover_attempts);
+		}
+	}
 
 	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
 		enable_irq(gpio_to_irq(aw8624->irq_gpio));
