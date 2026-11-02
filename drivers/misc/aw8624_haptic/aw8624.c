@@ -669,32 +669,37 @@ static int aw8624_haptic_play_go(struct aw8624 *aw8624, bool flag)
 static int aw8624_haptic_stop_delay(struct aw8624 *aw8624)
 {
 	unsigned char reg_val = 0;
-	unsigned int cnt = 100;
+	unsigned int cnt;
+	int ret;
 
-	while (cnt--) {
-		aw8624_i2c_read(aw8624, AW8624_REG_GLB_STATE, &reg_val);
-		if ((reg_val & 0x0f) == 0x00) {
+	for (cnt = 0; cnt < 100; cnt++) {
+		ret = aw8624_i2c_read(aw8624, AW8624_REG_GLB_STATE, &reg_val);
+		if (ret < 0)
+			return ret;
+		if ((reg_val & 0x0f) == 0x00)
 			return 0;
 
-			msleep(2);
-		}
 		pr_debug("%s wait for standby, reg glb_state=0x%02x\n",
 			 __func__, reg_val);
+		if (cnt < 99)
+			msleep(2);
 	}
 	pr_err("%s do not enter standby automatically\n", __func__);
 
-	return 0;
+	return -ETIMEDOUT;
 }
 
 static int aw8624_haptic_stop(struct aw8624 *aw8624)
 {
+	int ret;
+
 	pr_debug("%s enter\n", __func__);
 
 	aw8624_haptic_play_go(aw8624, false);
-	aw8624_haptic_stop_delay(aw8624);
+	ret = aw8624_haptic_stop_delay(aw8624);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_STANDBY_MODE);
 
-	return 0;
+	return ret;
 }
 
 static int aw8624_haptic_start(struct aw8624 *aw8624)

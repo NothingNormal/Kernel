@@ -73,11 +73,13 @@ typedef int atomic_t;
 #define AW8624_FALLBACK_MAX_DELAY_MS 250
 #define AW8624_RTP_MIN_SAMPLE_RATE 12000
 #define AW8624_RTP_WAKE_MARGIN_MS 1000
+#define AW8624_HAPTIC_STANDBY_MODE 0
 #define AW8624_HAPTIC_RAM_MODE 1
 #define AW8624_HAPTIC_RTP_MODE 2
 #define AW8624_HAPTIC_ACTIVATE_RAM_MODE 0
 #define AW8624_HAPTIC_ACTIVATE_RTP_MODE 2
 #define AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE 3
+#define AW8624_REG_GLB_STATE 0x01
 #define CUSTOM_DATA_LEN 3
 #define OSC_CALI 1
 
@@ -148,6 +150,8 @@ struct aw8624 {
 static struct aw8624_container *aw8624_rtp;
 static int mock_copy_from_error, mock_copy_to_error, mock_wait_error;
 static int slept_us, start_count, stop_count, wavseq, written_gain;
+static unsigned int stop_active_reads, stop_reads, stop_sleeps;
+static int stop_read_error;
 static bool timer_fires_on_cancel, rearm_timer_on_cancel_work;
 static int wake_active, relaxed, rtp_result, preload_streaming;
 static int fw_error, fw_delay_ms, fw_action, fail_vmalloc, fw_calls;
@@ -192,6 +196,21 @@ static void usleep_range(s64 min, s64 max)
 {
 	assert(max == min + 100);
 	slept_us = min;
+}
+static void msleep(unsigned int ms)
+{
+	assert(ms == 2);
+	stop_sleeps++;
+}
+static int aw8624_i2c_read(struct aw8624 *a, unsigned char reg, unsigned char *value)
+{
+	(void)a;
+	assert(reg == AW8624_REG_GLB_STATE);
+	stop_reads++;
+	if (stop_read_error)
+		return stop_read_error;
+	*value = stop_reads <= stop_active_reads ? 1 : 0;
+	return 0;
 }
 static int hrtimer_cancel(struct hrtimer *t)
 {
@@ -293,9 +312,16 @@ static void aw8624_haptic_set_wav_loop(struct aw8624 *a, int n, int v)
 	(void)n;
 	(void)v;
 }
-static void aw8624_haptic_play_mode(struct aw8624 *a, int mode)
+static int aw8624_haptic_play_mode(struct aw8624 *a, int mode)
 {
 	a->play_mode = mode;
+	return 0;
+}
+static int aw8624_haptic_play_go(struct aw8624 *a, bool on)
+{
+	(void)a;
+	(void)on;
+	return 0;
 }
 static void aw8624_haptic_set_repeat_wav_seq(struct aw8624 *a, int seq)
 {
@@ -330,17 +356,14 @@ static void aw8624_interrupt_clear(struct aw8624 *a)
 {
 	(void)a;
 }
-static void aw8624_haptic_stop(struct aw8624 *a)
-{
-	(void)a;
-	stop_count++;
-}
 static int aw8624_haptic_rtp_init(struct aw8624 *a)
 {
 	a->rtp_init = preload_streaming;
 	return rtp_result;
 }
 
+/* EXTRACT aw8624_haptic_stop_delay */
+/* EXTRACT aw8624_haptic_stop */
 /* EXTRACT aw8624_haptic_set_level */
 static void aw8624_haptic_set_gain(struct aw8624 *a, u8 gain)
 {
@@ -395,6 +418,8 @@ static void setup(void)
 		a.info.rtp_time[i] = 1234 + i;
 	mock_copy_from_error = mock_copy_to_error = mock_wait_error = 0;
 	slept_us = start_count = stop_count = written_gain = wake_active = relaxed = 0;
+	stop_active_reads = stop_reads = stop_sleeps = 0;
+	stop_read_error = 0;
 	fw_error = fw_delay_ms = fw_action = fake_clock = rtp_result = preload_streaming =
 	    fail_vmalloc = fw_calls = 0;
 	replace_before_request = false;
@@ -426,6 +451,27 @@ static void play(int slot, int value)
 	pthread_mutex_lock(&input.event_lock);
 	assert(aw8624_haptics_playback(&input, slot, value) == 0);
 	pthread_mutex_unlock(&input.event_lock);
+}
+static void test_stop_delay(void)
+{
+	setup();
+	stop_active_reads = 2;
+	assert(aw8624_haptic_stop(&a) == 0);
+	assert(stop_reads == 3 && stop_sleeps == 2);
+	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
+
+	stop_reads = stop_sleeps = 0;
+	stop_active_reads = 1000;
+	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
+	assert(stop_reads == 100 && stop_sleeps == 99);
+	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
+
+	stop_reads = stop_sleeps = 0;
+	stop_read_error = -EIO;
+	assert(aw8624_haptic_stop(&a) == -EIO);
+	assert(stop_reads == 1 && stop_sleeps == 0);
+	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
+	cleanup();
 }
 static void test_routing(void)
 {
@@ -646,6 +692,7 @@ static void test_quiesce(void)
 }
 int main(void)
 {
+	test_stop_delay();
 	test_routing();
 	test_gain_and_slots();
 	test_firmware_worker();
