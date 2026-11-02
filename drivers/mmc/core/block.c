@@ -1595,7 +1595,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 		mmc_retune_recheck(card->host);
 
 		prev_cmd_status_valid = false;
-		pr_err("%s: error %d sending status command, %sing\n",
+		pr_err_ratelimited("%s: error %d sending status command, %sing\n",
 		       req->rq_disk->disk_name, err, retry ? "retry" : "abort");
 	}
 
@@ -1633,7 +1633,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 			DIV_ROUND_UP(brq->data.timeout_ns, 1000000),
 			req, gen_err, &stop_status);
 		if (err) {
-			pr_err("%s: error %d sending stop command\n",
+			pr_err_ratelimited("%s: error %d sending stop command\n",
 			       req->rq_disk->disk_name, err);
 			/*
 			 * If the stop cmd also timed out, the card is probably

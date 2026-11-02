@@ -899,8 +899,10 @@ static int ncm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		if (ncm->port.in_ep->enabled) {
 			DBG(cdev, "reset ncm\n");
 			ncm->timer_stopping = true;
-			ncm->netdev = NULL;
+			hrtimer_cancel(&ncm->task_timer);
+			tasklet_kill(&ncm->tx_tasklet);
 			gether_disconnect(&ncm->port);
+			ncm->netdev = NULL;
 			ncm_reset_values(ncm);
 		}
 
@@ -1111,9 +1113,10 @@ static struct sk_buff *ncm_wrap_ntb(struct gether *port,
 			/* Note: we skip opts->next_ndp_index */
 		}
 
-		/* Delay the timer. */
-		hrtimer_start(&ncm->task_timer, TX_TIMEOUT_NSECS,
-			      HRTIMER_MODE_REL);
+		/* Delay the timer, but only while the link is still up. */
+		if (!ncm->timer_stopping && ncm->is_open && ncm->netdev)
+			hrtimer_start(&ncm->task_timer, TX_TIMEOUT_NSECS,
+				      HRTIMER_MODE_REL);
 
 		/* Add the datagram position entries */
 		ntb_ndp = skb_put_zero(ncm->skb_tx_ndp, dgram_idx_len);
@@ -1189,7 +1192,15 @@ static void ncm_tx_tasklet(unsigned long data)
 static enum hrtimer_restart ncm_tx_timeout(struct hrtimer *data)
 {
 	struct f_ncm *ncm = container_of(data, struct f_ncm, task_timer);
-	tasklet_schedule(&ncm->tx_tasklet);
+
+	/* The link can be torn down while this timer is still pending. */
+	if (!ncm->is_open || ncm->timer_stopping || !ncm->netdev)
+		return HRTIMER_NORESTART;
+
+	/* Only schedule the tasklet when there is something to send. */
+	if (ncm->skb_tx_data)
+		tasklet_schedule(&ncm->tx_tasklet);
+
 	return HRTIMER_NORESTART;
 }
 
@@ -1242,6 +1253,13 @@ parse_ntb:
 	}
 
 	ndp_index = get_ncm(&tmp, opts->ndp_index);
+
+	/* Reject a malformed NTB before walking the datagram table. */
+	if (block_len == 0 || ndp_index == 0 ||
+	    ndp_index < opts->nth_size || ndp_index >= block_len) {
+		INFO(port->func.config->cdev, "Invalid NTB structure\n");
+		goto err;
+	}
 
 	/* Run through all the NDP's in the NTB */
 	do {
@@ -1398,8 +1416,10 @@ static void ncm_disable(struct usb_function *f)
 
 	if (ncm->port.in_ep->enabled) {
 		ncm->timer_stopping = true;
-		ncm->netdev = NULL;
+		hrtimer_cancel(&ncm->task_timer);
+		tasklet_kill(&ncm->tx_tasklet);
 		gether_disconnect(&ncm->port);
+		ncm->netdev = NULL;
 	}
 
 	if (ncm->notify->enabled) {
