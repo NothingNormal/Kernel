@@ -31,7 +31,7 @@ static void set_tcp_default(void)
 
 /*sysctl handler for tcp_ack realted master control */
 int tcp_proc_delayed_ack_control(struct ctl_table *table, int write,
-				 void *buffer, size_t *length,
+				 void __user *buffer, size_t *length,
 				 loff_t *ppos)
 {
 	int ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
@@ -45,7 +45,7 @@ int tcp_proc_delayed_ack_control(struct ctl_table *table, int write,
 
 /*sysctl handler for tcp_ack realted master control */
 int tcp_use_userconfig_sysctl_handler(struct ctl_table *table, int write,
-				      void *buffer, size_t *length,
+				      void __user *buffer, size_t *length,
 				      loff_t *ppos)
 {
 	int ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
@@ -295,14 +295,14 @@ void tcp_delack_timer_handler(struct sock *sk)
 	icsk->icsk_ack.pending &= ~ICSK_ACK_TIMER;
 
 	if (inet_csk_ack_scheduled(sk)) {
-		if (!icsk->icsk_ack.pingpong) {
+		if (!inet_csk_in_pingpong_mode(sk)) {
 			/* Delayed ACK missed: inflate ATO. */
 			icsk->icsk_ack.ato = min(icsk->icsk_ack.ato << 1, icsk->icsk_rto);
 		} else {
 			/* Delayed ACK missed: leave pingpong mode and
 			 * deflate ATO.
 			 */
-			icsk->icsk_ack.pingpong = 0;
+			inet_csk_exit_pingpong_mode(sk);
 			icsk->icsk_ack.ato      = TCP_ATO_MIN;
 		}
 		tcp_mstamp_refresh(tcp_sk(sk));
@@ -617,6 +617,7 @@ void tcp_write_timer_handler(struct sock *sk)
 		goto out;
 	}
 
+	tcp_rate_check_app_limited(sk);
 	tcp_mstamp_refresh(tcp_sk(sk));
 	event = icsk->icsk_pending;
 
