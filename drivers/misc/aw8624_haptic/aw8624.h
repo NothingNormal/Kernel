@@ -22,6 +22,7 @@
 #include <linux/cdev.h>
 #include <linux/leds.h>
 #include <linux/atomic.h>
+#include <linux/wait.h>
 
 /*********************************************************
  *
@@ -37,24 +38,18 @@
 
 #define HAPTIC_MAX_TIMEOUT                  10000
 
-/*
- * Longest a new effect waits for the previous one to clear.  Effects are
- * short (a click is well under this); anything longer, such as a ringtone
- * pattern, is cut loose instead of stalling the caller.
- */
+/* Avoid stalling new effects behind a long-running timer. */
 #define AW8624_MAX_EFFECT_WAIT_US           20000
-
-/*
- * Shortest run time for an effect that is stopped by a timer rather than by
- * the end of its waveform.  A predefined effect (long press, screenshot,
- * confirm) arrives as FF_CONSTANT and the loop waveform plays until stopped,
- * so a zero length means the stop fires before anything is felt.
- */
+/* A zero-length constant effect still needs time to be felt. */
 #define AW8624_MIN_PLAYBACK_MS              50
+/* Never rebuild the chip more often than this, even if stops keep failing. */
+#define AW8624_RECOVER_INTERVAL_MS          5000
 
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
 #define AW8624_VBAT_MAX                     4500
+/* VBAT conversion settles in a few milliseconds; poll it with a delay. */
+#define AW8624_VBAT_POLL_TRIES              100
 #define ENABLE_PIN_CONTROL
 
 #define HAP_BRAKE_PATTERN_MAX       4
@@ -85,18 +80,7 @@ static int wf_s_repeat[4] = { 1, 2, 4, 8 };
  *        first edge
  *                   second edge
  */
-/* trig config */
-/*dts config
-* default_level -> 1: high level; 0: low level
-* dual_edge     -> 1: dual edge; 0: first edge
-*vib_trig_config = <
-*       1   1              1          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*       1   1              2          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*       1   1              3          1           2
-*  enable   default_level  dual_edge  first_seq   second_seq
-*/
+/* Number of trigger descriptors exposed by the factory sysfs node. */
 #define AW8624_TRIG_NUM                     3
 
 enum aw8624_flags {
@@ -243,7 +227,6 @@ struct aw8624_dts_info {
 	unsigned int effect_id_boundary;
 	unsigned int effect_max;
 	unsigned int rtp_time[175];
-	unsigned int trig_config[3][5];
 };
 
 #ifdef INPUT_DEV
@@ -281,12 +264,22 @@ struct qti_hap_effect {
 	int pattern_length;
 	u16 play_rate_us;
 	u16 vmax_mv;
+	u8 level;
 	u8 wf_repeat_n;
 	u8 wf_s_repeat_n;
 	u8 brake[HAP_BRAKE_PATTERN_MAX];
 	int brake_pattern_length;
 	bool brake_en;
 	bool lra_auto_res_disable;
+};
+
+/* Driver-specific data associated with an input force-feedback slot. */
+struct aw8624_ff_effect {
+	int effect_type;
+	int effect_id;
+	int duration;
+	unsigned char activate_mode;
+	u16 vmax_mv;
 };
 
 struct qti_hap_play_info {
@@ -326,6 +319,8 @@ struct aw8624 {
 	int enable_pin_control;
 	struct work_struct vibrator_work;
 	struct work_struct rtp_work;
+	struct work_struct gain_work;
+	struct work_struct recover_work;
 	struct delayed_work ram_work;
 	struct delayed_work stop_work;
 
@@ -364,8 +359,22 @@ struct aw8624 {
 	int ulevel;
 	int f0_value;
 	unsigned char level;
-	/* Android FF_GAIN, 0 .. 0xffff; scales the final drive level. */
+	u8 applied_gain;
+	/* Input FF gain: 0 is muted, 0xffff is unity. */
 	u16 ff_gain;
+	/* Playback callbacks hold input_dev->event_lock while updating this. */
+	u32 play_generation;
+	ktime_t play_requested_at;
+	bool suspended;
+	bool misc_registered;
+	bool irq_requested;
+	bool wakeup_initialized;
+	u64 bind_generation;
+	/* A nowait firmware request owns private data until its callback exits. */
+	struct mutex firmware_lock;
+	wait_queue_head_t firmware_wait;
+	unsigned int firmware_pending;
+	bool shutting_down;
 
 	unsigned char seq[AW8624_SEQUENCER_SIZE];
 	unsigned char loop[AW8624_SEQUENCER_SIZE];
@@ -397,8 +406,9 @@ struct aw8624 {
 	wait_queue_head_t stop_wait_q;	//wait queue for stop rtp mode
 	atomic_t is_in_irq;
 	atomic_t exit_in_irq;
+	atomic_t recovering;
+	unsigned long recover_after;
 	struct workqueue_struct *work_queue;
-	bool misc_registered;
 
 #ifdef INPUT_DEV
 	struct platform_device *pdev;
@@ -408,6 +418,7 @@ struct aw8624 {
 	struct pwm_device *pwm_dev;
 	struct qti_hap_config config;
 	struct qti_hap_play_info play;
+	struct aw8624_ff_effect *ff_effects;
 	struct qti_hap_effect *predefined;
 	struct qti_hap_effect constant;
 	struct regulator *vdd_supply;
