@@ -48,16 +48,6 @@ typedef int atomic_t;
 #define mutex_unlock(l) assert(pthread_mutex_unlock(l) == 0)
 #define atomic_read(a) (*(a))
 #define atomic_set(a, v) (*(a) = (v))
-#define atomic_xchg(a, v) __atomic_exchange_n((a), (v), __ATOMIC_SEQ_CST)
-/*
- * Recovery is driven by aw8624_haptic_stop(); the tests care about the stop
- * behaviour, not the rebuild, so keep the timer state monotonic and let
- * aw8624_schedule_recovery() queue onto the mocked workqueue as usual.
- */
-#define jiffies ((unsigned long)mock_jiffies)
-#define msecs_to_jiffies(ms) ((unsigned long)((ms) / 4))
-#define time_before(a, b) ((long)((a) - (b)) < 0)
-#define AW8624_RECOVER_INTERVAL_MS 5000
 #define wait_event_interruptible(q, condition) (mock_wait(q, !!(condition)))
 #define wake_up_interruptible(q) ((void)(q))
 #define VIB_FUNC_ENTER()                                                                           \
@@ -74,11 +64,14 @@ typedef int atomic_t;
 	} while (0)
 #define MSEC_PER_SEC 1000
 #define AW8624_GAIN_FULL 0x80
-/* Ceiling of aw8624_haptic_effect_strength()'s scale. */
-#define AW8624_GAIN_MAX 0xC0
+/* Strongest drive level the magnitude scale may produce. */
+#define AW8624_GAIN_MAX 0xc0
 #define AW8624_LIGHT_MAGNITUDE 0x3fff
 #define AW8624_MEDIUM_MAGNITUDE 0x5fff
 #define AW8624_STRONG_MAGNITUDE 0x7fff
+#define AW8624_RECOVER_INTERVAL_MS 5000
+#define msecs_to_jiffies(ms) ((unsigned long)(ms))
+#define time_before(a, b) ((long)((a) - (b)) < 0)
 #define AW8624_MAX_EFFECT_WAIT_US 20000
 #define AW8624_RTP_EFFECT_BASE 20
 #define AW8624_RTP_FIRST_EFFECT_ID 21
@@ -146,9 +139,6 @@ struct aw8624 {
 	struct { struct hrtimer timer; struct work_struct work; } haptic_audio;
 	struct work_struct vibrator_work, rtp_work, gain_work, recover_work;
 	void *work_queue, *dev;
-	bool shutting_down;
-	atomic_t recovering;
-	unsigned long recover_after;
 	int effects_count, osc_cali_run, effect_type, effect_id, duration;
 	int activate_mode, state, play_mode, ulevel;
 	unsigned int rtp_file_num, rtp_cnt;
@@ -156,14 +146,14 @@ struct aw8624 {
 	ktime_t play_requested_at;
 	u16 ff_gain;
 	u8 level, applied_gain, rtp_init, ram_init;
-	bool suspended;
-	atomic_t exit_in_rtp_loop, is_in_irq;
+	bool suspended, shutting_down;
+	unsigned long recover_after;
+	atomic_t exit_in_rtp_loop, is_in_irq, recovering;
 	int wait_q, stop_wait_q;
 };
 #define AW8624_RTP_NAME_MAX 64
 /* EXTRACT_RTP_TABLE */
 static struct aw8624_container *aw8624_rtp;
-static unsigned long mock_jiffies;
 static int mock_copy_from_error, mock_copy_to_error, mock_wait_error;
 static int slept_us, start_count, stop_count, wavseq, written_gain;
 static unsigned int stop_active_reads, stop_reads, stop_sleeps;
@@ -176,6 +166,7 @@ static u8 fw_data[200] = {1, 2, 3};
 static struct firmware valid_fw = {.size = sizeof(fw_data), .data = fw_data};
 static ktime_t fake_clock;
 static struct aw8624 *fw_device;
+static unsigned long jiffies;
 
 enum { FW_NONE, FW_STOP, FW_REPLACE, FW_SUSPEND };
 static void *input_get_drvdata(struct input_dev *d)
@@ -378,8 +369,8 @@ static int aw8624_haptic_rtp_init(struct aw8624 *a)
 	return rtp_result;
 }
 
-/* EXTRACT aw8624_schedule_recovery */
 /* EXTRACT aw8624_haptic_stop_delay */
+/* EXTRACT aw8624_schedule_recovery */
 /* EXTRACT aw8624_haptic_stop */
 /* EXTRACT aw8624_haptic_set_level */
 static void aw8624_haptic_set_gain(struct aw8624 *a, u8 gain)
@@ -437,6 +428,7 @@ static void setup(void)
 	slept_us = start_count = stop_count = written_gain = wake_active = relaxed = 0;
 	stop_active_reads = stop_reads = stop_sleeps = 0;
 	stop_read_error = 0;
+	jiffies = 0;
 	fw_error = fw_delay_ms = fw_action = fake_clock = rtp_result = preload_streaming =
 	    fail_vmalloc = fw_calls = 0;
 	replace_before_request = false;
@@ -482,12 +474,23 @@ static void test_stop_delay(void)
 	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
 	assert(stop_reads == 100 && stop_sleeps == 99);
 	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
+	/* A missed standby must ask for exactly one rebuild. */
+	assert(a.recover_work.queued == 1);
 
+	/* Inside the rate-limit window a second failure must not queue again. */
+	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
+	assert(a.recover_work.queued == 1);
+	jiffies += AW8624_RECOVER_INTERVAL_MS;
+	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
+	assert(a.recover_work.queued == 2);
+
+	/* An I2C error inside the same window is suppressed as well. */
 	stop_reads = stop_sleeps = 0;
 	stop_read_error = -EIO;
 	assert(aw8624_haptic_stop(&a) == -EIO);
 	assert(stop_reads == 1 && stop_sleeps == 0);
 	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
+	assert(a.recover_work.queued == 2);
 	cleanup();
 }
 static void test_routing(void)
@@ -558,7 +561,7 @@ static void test_gain_and_slots(void)
 		assert(a.level >= previous && a.level <= AW8624_GAIN_MAX);
 		previous = a.level;
 	}
-	/* Anchors follow the driver's 0x80/0xa0/0xc0 scale. */
+	/* Anchors are 0x80/0xa0/0xc0 so "strong" really drives harder. */
 	aw8624_haptic_effect_strength(&a, AW8624_LIGHT_MAGNITUDE);
 	assert(a.level == 0x80);
 	aw8624_haptic_effect_strength(&a, AW8624_MEDIUM_MAGNITUDE);
@@ -589,11 +592,7 @@ static void test_gain_and_slots(void)
 	assert(a.vibrator_work.queued == 1);
 	pre[10].level = 64;
 	aw8624_haptic_play_effect_seq(&a, true);
-	/*
-	 * Strong magnitude scales to 0xc0 on the current driver, and play_ram()
-	 * multiplies that by the per-effect calibration pre[10].level / GAIN_FULL:
-	 * 0xc0 * 64 / 0x80 == 96.
-	 */
+	/* 0xc0 * 64 / 0x80: the DT per-effect level still scales the new anchor. */
 	assert(wavseq == 11 && written_gain == 96 && start_count == 1);
 	play(7, 0);
 	assert(a.state == 0 && a.exit_in_rtp_loop == 1);
