@@ -3,7 +3,6 @@
  * Copyright (c) 2019 The Linux Foundation. All rights reserved.
  * Copyright (C) 2020 XiaoMi, Inc.
  */
-#define DEBUG
 #define pr_fmt(fmt) "SMB1398: %s: " fmt, __func__
 
 #include <linux/device.h>
@@ -768,7 +767,7 @@ unlock:
 	mutex_unlock(&chip->die_chan_lock);
 	if (rc >= 0) {
 		*isns_ua = calculate_div2_cp_isns_ua(temp);
-		pr_err("smb1398 master isns = %duA\n", *isns_ua);
+		pr_debug("smb1398 master isns = %duA\n", *isns_ua);
 	}
 
 	return rc;
@@ -1545,6 +1544,19 @@ static void smb1398_status_change_work(struct work_struct *work)
 	static int trigger_taper_count = 0;
 
 	if (!is_psy_voter_available(chip))
+		goto out;
+
+	/*
+	 * LazyExec: on battery every battery psy update (QG, every few
+	 * seconds) ran all the "no CP charging" votes below again, and the
+	 * resulting charge_pump_master psy notifications were the top wakeup
+	 * source (~900 wakeups in 7 h, charger off). With no charger present
+	 * and the CP already disabled by SRC_VOTER there is nothing to change.
+	 */
+	rc = power_supply_get_property(chip->usb_psy,
+			POWER_SUPPLY_PROP_PRESENT, &pval);
+	if (!rc && !pval.intval &&
+	    is_client_vote_enabled(chip->div2_cp_disable_votable, SRC_VOTER))
 		goto out;
 
 	if (!is_adapter_in_cc_mode(chip))
