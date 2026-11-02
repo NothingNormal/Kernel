@@ -895,8 +895,12 @@ static int aw8624_haptic_read_f0(struct aw8624 *aw8624)
 	pr_debug("%s enter\n", __func__);
 
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_F_LRA_F0_H, &reg_val);
+	if (ret < 0)
+		return ret;
 	f0_reg = (reg_val << 8);
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_F_LRA_F0_L, &reg_val);
+	if (ret < 0)
+		return ret;
 	f0_reg |= (reg_val << 0);
 	if (!f0_reg) {
 		pr_debug("%s: not get f0_reg value is 0!\n", __func__);
@@ -919,8 +923,12 @@ static int aw8624_haptic_read_cont_f0(struct aw8624 *aw8624)
 	pr_debug("%s enter\n", __func__);
 
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_F_LRA_CONT_H, &reg_val);
+	if (ret < 0)
+		return ret;
 	f0_reg = (reg_val << 8);
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_F_LRA_CONT_L, &reg_val);
+	if (ret < 0)
+		return ret;
 	f0_reg |= (reg_val << 0);
 	if (!f0_reg) {
 		pr_debug("%s: not get f0_reg value is 0!\n", __func__);
@@ -952,7 +960,8 @@ static int aw8624_haptic_read_beme(struct aw8624 *aw8624)
 static int aw8624_haptic_get_vbat(struct aw8624 *aw8624)
 {
 	unsigned char reg_val = 0;
-	unsigned int cont = 2000;
+	unsigned int cont;
+	int ret;
 
 	aw8624_i2c_write_bits(aw8624, AW8624_REG_SYSCTRL,
 			      AW8624_BIT_SYSCTRL_RAMINIT_MASK,
@@ -961,14 +970,26 @@ static int aw8624_haptic_get_vbat(struct aw8624 *aw8624)
 			      AW8624_BIT_DETCTRL_VBAT_GO_MASK,
 			      AW8624_BIT_DETCTRL_VABT_GO_ENABLE);
 
-	while (1) {
-		aw8624_i2c_read(aw8624, AW8624_REG_DETCTRL, &reg_val);
-		if ((reg_val & 0x02) == 0 || cont == 0)
+	/*
+	 * The conversion takes a diagnostic slot, so the old 2000-iteration
+	 * loop hammered the shared I2C bus on every vbat-compensated playback
+	 * and blocked it for as long as the chip needed.  Give the converter a
+	 * millisecond between polls and bail out with the error instead of
+	 * leaving SYSCTRL in RAM-init mode.
+	 */
+	for (cont = 0; cont < AW8624_VBAT_POLL_TRIES; cont++) {
+		ret = aw8624_i2c_read(aw8624, AW8624_REG_DETCTRL, &reg_val);
+		if (ret < 0)
+			goto out;
+		if ((reg_val & 0x02) == 0)
 			break;
-		cont--;
+		usleep_range(1000, 1500);
 	}
 
-	aw8624_i2c_read(aw8624, AW8624_REG_VBATDET, &reg_val);
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_VBATDET, &reg_val);
+	if (ret < 0)
+		goto out;
+
 	aw8624->vbat = 6100 * reg_val / 256;
 	if (aw8624->vbat > AW8624_VBAT_MAX) {
 		aw8624->vbat = AW8624_VBAT_MAX;
@@ -978,12 +999,14 @@ static int aw8624_haptic_get_vbat(struct aw8624 *aw8624)
 		aw8624->vbat = AW8624_VBAT_MIN;
 		pr_debug("%s vbat min limit = %dmV\n", __func__, aw8624->vbat);
 	}
+	ret = 0;
 
+out:
 	aw8624_i2c_write_bits(aw8624, AW8624_REG_SYSCTRL,
 			      AW8624_BIT_SYSCTRL_RAMINIT_MASK,
 			      AW8624_BIT_SYSCTRL_RAMINIT_OFF);
 
-	return 0;
+	return ret;
 }
 
 /*****************************************************
@@ -998,11 +1021,24 @@ static int aw8624_lra_resistance_detector(struct aw8624 *aw8624)
 	unsigned char reg_val_anactrl = 0;
 	unsigned char reg_val_d2scfg = 0;
 	unsigned int r_lra = 0;
+	int ret;
 
 	mutex_lock(&aw8624->lock);
-	aw8624_i2c_read(aw8624, AW8624_REG_SYSCTRL, &reg_val_sysctrl);
-	aw8624_i2c_read(aw8624, AW8624_REG_ANACTRL, &reg_val_anactrl);
-	aw8624_i2c_read(aw8624, AW8624_REG_D2SCFG, &reg_val_d2scfg);
+	/*
+	 * These three registers are restored verbatim at the end.  If a read
+	 * fails, reg_val_* stays zero and the restore would write that zero
+	 * over live chip configuration, so refuse to run instead.
+	 */
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_SYSCTRL, &reg_val_sysctrl);
+	if (ret < 0)
+		goto out;
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_ANACTRL, &reg_val_anactrl);
+	if (ret < 0)
+		goto out;
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_D2SCFG, &reg_val_d2scfg);
+	if (ret < 0)
+		goto out;
+
 	aw8624_haptic_stop(aw8624);
 	aw8624_i2c_write_bits(aw8624,
 			      AW8624_REG_SYSCTRL,
@@ -1028,16 +1064,23 @@ static int aw8624_lra_resistance_detector(struct aw8624 *aw8624)
 			      AW8624_BIT_DETCTRL_DIAG_GO_MASK,
 			      AW8624_BIT_DETCTRL_DIAG_GO_ENABLE);
 	mdelay(3);
-	aw8624_i2c_read(aw8624, AW8624_REG_RLDET, &reg_val);
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_RLDET, &reg_val);
+	if (ret < 0)
+		goto out_restore;
 	r_lra = 298 * reg_val;
 
+out_restore:
 	aw8624_i2c_write(aw8624, AW8624_REG_D2SCFG, reg_val_d2scfg);
 	aw8624_i2c_write(aw8624, AW8624_REG_ANACTRL, reg_val_anactrl);
 	aw8624_i2c_write(aw8624, AW8624_REG_SYSCTRL, reg_val_sysctrl);
+	if (ret < 0)
+		goto out;
 
+	ret = r_lra;
+out:
 	mutex_unlock(&aw8624->lock);
 
-	return r_lra;
+	return ret;
 }
 
 static int aw8624_haptic_ram_vbat_comp(struct aw8624 *aw8624, bool flag)
@@ -3509,15 +3552,19 @@ static ssize_t aw8624_seq_store(struct device *dev,
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
 	unsigned int databuf[2] = { 0, 0 };
 
-	if (2 == sscanf(buf, "%x %x", &databuf[0], &databuf[1])) {
-		pr_debug("%s: seq%d=0x%x\n", __FUNCTION__, databuf[0],
-			 databuf[1]);
-		mutex_lock(&aw8624->lock);
-		aw8624->seq[databuf[0]] = (unsigned char)databuf[1];
-		aw8624_haptic_set_wav_seq(aw8624, (unsigned char)databuf[0],
-					  aw8624->seq[databuf[0]]);
-		mutex_unlock(&aw8624->lock);
-	}
+	if (2 != sscanf(buf, "%x %x", &databuf[0], &databuf[1]))
+		return -EINVAL;
+	/* databuf[0] is caller-controlled; keep it inside seq[]. */
+	if (databuf[0] >= AW8624_SEQUENCER_SIZE)
+		return -ERANGE;
+
+	pr_debug("%s: seq%d=0x%x\n", __FUNCTION__, databuf[0],
+		 databuf[1]);
+	mutex_lock(&aw8624->lock);
+	aw8624->seq[databuf[0]] = (unsigned char)databuf[1];
+	aw8624_haptic_set_wav_seq(aw8624, (unsigned char)databuf[0],
+				  aw8624->seq[databuf[0]]);
+	mutex_unlock(&aw8624->lock);
 	return count;
 }
 
@@ -3552,15 +3599,19 @@ static ssize_t aw8624_loop_store(struct device *dev,
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
 	unsigned int databuf[2] = { 0, 0 };
 
-	if (2 == sscanf(buf, "%x %x", &databuf[0], &databuf[1])) {
-		pr_debug("%s: seq%d loop=0x%x\n", __FUNCTION__, databuf[0],
-			 databuf[1]);
-		mutex_lock(&aw8624->lock);
-		aw8624->loop[databuf[0]] = (unsigned char)databuf[1];
-		aw8624_haptic_set_wav_loop(aw8624, (unsigned char)databuf[0],
-					   aw8624->loop[databuf[0]]);
-		mutex_unlock(&aw8624->lock);
-	}
+	if (2 != sscanf(buf, "%x %x", &databuf[0], &databuf[1]))
+		return -EINVAL;
+	/* databuf[0] is caller-controlled; keep it inside loop[]. */
+	if (databuf[0] >= AW8624_SEQUENCER_SIZE)
+		return -ERANGE;
+
+	pr_debug("%s: seq%d loop=0x%x\n", __FUNCTION__, databuf[0],
+		 databuf[1]);
+	mutex_lock(&aw8624->lock);
+	aw8624->loop[databuf[0]] = (unsigned char)databuf[1];
+	aw8624_haptic_set_wav_loop(aw8624, (unsigned char)databuf[0],
+				   aw8624->loop[databuf[0]]);
+	mutex_unlock(&aw8624->lock);
 
 	return count;
 }

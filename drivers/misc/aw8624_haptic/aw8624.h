@@ -46,6 +46,8 @@
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
 #define AW8624_VBAT_MAX                     4500
+/* VBAT conversion settles in a few milliseconds; poll it with a delay. */
+#define AW8624_VBAT_POLL_TRIES              100
 #define ENABLE_PIN_CONTROL
 
 #define HAP_BRAKE_PATTERN_MAX       4
