@@ -173,17 +173,27 @@ CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
 #
 # Nothing else in the tree depends on these two symbols.
 #
-# Both are now off. They are only inert while userspace leaves them alone,
-# and on a ROM whose power HAL does write them - input_boost_freq,
-# cpu_min_freq/cpu_max_freq - they are not inert at all: MSM_PERFORMANCE
-# clamps the policy on every notification and CPU_BOOST runs a per-cluster
-# threads at elevated priority on every input event.
+# They were first turned off together, as a suspected cause of jank. That was
+# half right, and the half that was wrong matters:
 #
-# Opening them was the only power/scheduling difference between this build
-# and the one reported good before this batch, and the sibling branch never
-# enabled them and does not lag. They are turned back off together.
+#   CPU_BOOST raises policy->min to input_boost_freq on every input event
+#     (cpu-boost.c boost_adjust_notify()). It can only ever *raise* the
+#     frequency, so it cannot cause jank - its cost is heat and battery.
+#     Staying off.
+#
+#   MSM_PERFORMANCE only clamps the policy to [cpu_min_freq, cpu_max_freq],
+#     and since SCHED_WALT is off its core_ctl notifier is inert, so that
+#     clamp is its only live path. Those parameters are written by the ROM's
+#     perfd / thermal-engine. Turning the driver off therefore does not remove
+#     a jank source - it removes the *thermostat*, so nothing caps CPU
+#     frequency when the SoC gets hot. That is why the jank went away and the
+#     device started running warm. Turned back on: a kernel with no thermal
+#     clamp is not a fix for anything.
+#
+# If jank returns with it enabled, the jank was thermal throttling, and the
+# real bug is whatever is heating the SoC - not this clamp.
 # ---------------------------------------------------------------------------
-# CONFIG_MSM_PERFORMANCE is not set
+CONFIG_MSM_PERFORMANCE=y
 # CONFIG_CPU_BOOST is not set
 CONFIG_NET=y
 CONFIG_PACKET=y
