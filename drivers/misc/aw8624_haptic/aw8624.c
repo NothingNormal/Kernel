@@ -1444,8 +1444,18 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 	 * be true.  Low ids are handled below by falling back to a RAM
 	 * waveform.
 	 */
-	if (aw8624->effect_id > aw8624->info.effect_max)
+	if (aw8624->effect_id > aw8624->info.effect_max) {
+		/*
+		 * Release any upload_effect() waiter before bailing out.
+		 * playback() arms exit_in_rtp_loop for this very work item and
+		 * upload_effect() spins on it, so returning here without
+		 * clearing it stranded the flag and wedged every subsequent
+		 * upload until the device rebooted.
+		 */
+		atomic_set(&aw8624->exit_in_rtp_loop, 0);
+		wake_up_interruptible(&aw8624->stop_wait_q);
 		return;
+	}
 	VIB_DEBUG("effect_id =%d state=%d", aw8624->effect_id, aw8624->state);
 
 	mutex_lock(&aw8624->lock);
@@ -2793,12 +2803,23 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 	while (atomic_read(&aw8624->exit_in_rtp_loop)) {
 		pr_debug("goint to waiting rtp  exit\n");
 		mutex_unlock(&aw8624->lock);
-		ret = wait_event_interruptible(aw8624->stop_wait_q,
-					       atomic_read(&aw8624->exit_in_rtp_loop) == 0);
+		/*
+		 * Bounded wait.  rtp_work_routine() is what clears this flag,
+		 * so if that work bails out before the clear - or the ordered
+		 * worker is wedged behind something - an unbounded wait here
+		 * made every later upload block until a signal arrived, which
+		 * is what made vibration die until a reboot.  Give the worker
+		 * a second, then clear the flag ourselves and carry on.
+		 */
+		ret = wait_event_interruptible_timeout(aw8624->stop_wait_q,
+				!atomic_read(&aw8624->exit_in_rtp_loop),
+				msecs_to_jiffies(1000));
 		pr_debug("%s  wakeup \n", __func__);
-		if (ret) {
-			pr_err("%s wake up by signal return erro\n", __func__);
-			return ret;
+		if (ret <= 0) {
+			pr_err("%s rtp loop did not exit (ret=%d), recovering\n",
+			       __func__, ret);
+			atomic_set(&aw8624->exit_in_rtp_loop, 0);
+			wake_up_interruptible(&aw8624->stop_wait_q);
 		}
 		mutex_lock(&aw8624->lock);
 	}
@@ -2838,9 +2859,16 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 
 		if (aw8624->effect_id < 0 ||
 		    aw8624->effect_id > aw8624->info.effect_max) {
+			/*
+			 * Reject the effect without leaving a waveform id or an
+			 * activate_mode behind: playback() keys off both, and a
+			 * stale RTP activate_mode with an out-of-range id used
+			 * to queue rtp_work that bailed out immediately.
+			 */
+			aw8624->effect_type = 0;
 			mutex_unlock(&aw8624->lock);
 			return 0;
-	}
+		}
 
 		if (aw8624->effect_id <= aw8624->info.effect_id_boundary) {
 			int play_rate_us;
