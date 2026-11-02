@@ -415,7 +415,7 @@ struct aw8624 {
 	atomic_t exit_in_irq;
 	atomic_t recovering;
 	unsigned long recover_after;
-	unsigned int recover_attempts;
+	atomic_t recover_attempts;
 	bool recover_disabled;
 	struct workqueue_struct *work_queue;
 

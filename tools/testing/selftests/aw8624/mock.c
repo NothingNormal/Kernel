@@ -48,6 +48,7 @@ typedef int atomic_t;
 #define mutex_unlock(l) assert(pthread_mutex_unlock(l) == 0)
 #define atomic_read(a) (*(a))
 #define atomic_set(a, v) (*(a) = (v))
+#define atomic_inc_return(a) (++*(a))
 #define wait_event_interruptible(q, condition) (mock_wait(q, !!(condition)))
 #define wake_up_interruptible(q) ((void)(q))
 #define VIB_FUNC_ENTER()                                                                           \
@@ -149,7 +150,7 @@ struct aw8624 {
 	u8 level, applied_gain, rtp_init, ram_init;
 	bool suspended, shutting_down;
 	unsigned long recover_after;
-	unsigned int recover_attempts;
+	atomic_t recover_attempts;
 	bool recover_disabled;
 	atomic_t exit_in_rtp_loop, is_in_irq, recovering;
 	int wait_q, stop_wait_q;
@@ -511,7 +512,7 @@ static void test_stop_delay(void)
 	stop_active_reads = 0;
 	a.recover_attempts = AW8624_RECOVER_MAX_ATTEMPTS;
 	assert(aw8624_haptic_stop(&a) == 0);
-	assert(!a.recover_disabled && a.recover_attempts == 0);
+	assert(!a.recover_disabled && atomic_read(&a.recover_attempts) == 0);
 	cleanup();
 }
 static void test_routing(void)
