@@ -917,12 +917,12 @@ CONFIG_CGROUP_NET_PRIO=y
 CONFIG_DEFAULT_BBR=y
 
 # ---------------------------------------------------------------------------
-# own commit: BPF 5.15 core only - no tracing program types, no kprobes.
+# own commit: BPF 5.15 needs the tracing stack compiled in, but not kprobes.
 #
-# kernel/trace/bpf_trace.c (tracepoint/perf/uprobe/kprobe program types) is
-# only built when BPF_EVENTS is on, and that needs (KPROBE_EVENTS ||
-# UPROBE_EVENTS) && PERF_EVENTS. Both event sources are off on purpose, so
-# BPF_EVENTS stays off and only the 5.15 BPF core is built:
+# kernel/trace/bpf_trace.c (uprobe/tracepoint/perf program types) is only
+# built when BPF_EVENTS is on, and that needs (KPROBE_EVENTS || UPROBE_EVENTS)
+# && PERF_EVENTS. UPROBE_EVENTS alone satisfies it, so KPROBES and
+# KPROBE_EVENTS stay off on purpose:
 #
 #   * drivers/kernelsu/Kconfig has "config KSU_MANUAL_HOOK ... default y if
 #     !KPROBES". Leaving KPROBES off is what keeps manual hook the automatic
@@ -937,27 +937,15 @@ CONFIG_DEFAULT_BBR=y
 # bpf_snprintf() calls bstr_printf(), which is compiled out unless
 # BINARY_PRINTF is set; TRACING selects it, but it is stated here anyway so an
 # edit to this file cannot turn it into a link error.
-#
-# A CONFIG_BPF_EVENTS line here would do nothing in either direction, because
-# it is a hidden symbol; UPROBE_EVENTS is the switch that was turning the whole
-# tracing-BPF stack on. Why that matters at runtime, not just at build time:
-#
-#   BPF_EVENTS is what builds kernel/trace/bpf_trace.c, i.e. the
-#   BPF_PROG_TYPE_TRACEPOINT / PERF_EVENT / UPROBE program types. With it off
-#   those loads fail and Android's bpfloader silently skips its tracing
-#   programs; with it on they attach and run on hot tracepoints (gpu_mem,
-#   gpu_work_period, time_in_state), which is per-event work the kernel did
-#   not previously do at all.
-#
-# The 5.15 BPF core - maps, verifier, JIT, sockmap/skmsg - does not need any
-# of this and stays enabled. Turning these back on only re-adds the tracing
-# program types.
 # ---------------------------------------------------------------------------
-# CONFIG_UPROBES is not set
-# CONFIG_UPROBE_EVENTS is not set
+CONFIG_UPROBES=y
+CONFIG_UPROBE_EVENTS=y
+CONFIG_PROBE_EVENTS=y
 CONFIG_STACKTRACE=y
 CONFIG_FTRACE=y
+CONFIG_BPF_EVENTS=y
 CONFIG_BINARY_PRINTF=y
+CONFIG_BPF_JIT_DEFAULT_ON=y
 
 # ---------------------------------------------------------------------------
 # own commit: finish wiring the BPF data path, and close the unprivileged one.
