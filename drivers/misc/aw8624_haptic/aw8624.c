@@ -1070,6 +1070,19 @@ static int aw8624_haptic_rtp_init(struct aw8624 *aw8624)
 	pm_qos_add_request(&pm_qos_req_vb, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_VALUE_VB);
 	aw8624->rtp_cnt = 0;
+	/*
+	 * Hold rtp_lock for the same reason the IRQ thread does, and check
+	 * for NULL: the buffer is replaced under this lock and a failed
+	 * vmalloc leaves it NULL, but this loop dereferenced it either way
+	 * and streamed from freed or NULL memory into the chip.
+	 */
+	mutex_lock(&aw8624->rtp_lock);
+	if (!aw8624_rtp) {
+		pr_err("%s: rtp buffer is gone\n", __func__);
+		mutex_unlock(&aw8624->rtp_lock);
+		pm_qos_remove_request(&pm_qos_req_vb);
+		return -ENODEV;
+	}
 	while ((!aw8624_haptic_rtp_get_fifo_afi(aw8624)) &&
 	       (aw8624->play_mode == AW8624_HAPTIC_RTP_MODE) &&
 	       !atomic_read(&aw8624->exit_in_rtp_loop)) {
@@ -1101,6 +1114,7 @@ static int aw8624_haptic_rtp_init(struct aw8624 *aw8624)
 	    && !atomic_read(&aw8624->exit_in_rtp_loop)) {
 		aw8624_haptic_set_rtp_aei(aw8624, true);
 	}
+	mutex_unlock(&aw8624->rtp_lock);
 
 	pr_debug("%s exit\n", __func__);
 	pm_qos_remove_request(&pm_qos_req_vb);
@@ -1524,10 +1538,20 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 			mutex_unlock(&aw8624->lock);
 			return;
 		}
+		/*
+		 * The threaded IRQ handler streams from this global under
+		 * rtp_lock, so replacing it has to happen under the same lock.
+		 * Freeing it unlocked let the IRQ thread read from pages that
+		 * had already gone back to the allocator, which corrupted the
+		 * RTP stream on every effect and could take the vibrator out
+		 * until the next reboot.
+		 */
 		aw8624->rtp_init = 0;
+		mutex_lock(&aw8624->rtp_lock);
 		vfree(aw8624_rtp);
 		aw8624_rtp = vmalloc(rtp_file->size + sizeof(int));
 		if (!aw8624_rtp) {
+			mutex_unlock(&aw8624->rtp_lock);
 			release_firmware(rtp_file);
 			pr_err("%s: error allocating memory\n", __func__);
 			aw8624_haptic_ram_fallback(aw8624);
@@ -1539,6 +1563,7 @@ static void aw8624_rtp_work_routine(struct work_struct *work)
 		pr_debug("%s: rtp file [%s] size = %d\n", __func__,
 			aw8624_rtp_name[aw8624->rtp_file_num], aw8624_rtp->len);
 		memcpy(aw8624_rtp->data, rtp_file->data, rtp_file->size);
+		mutex_unlock(&aw8624->rtp_lock);
 		release_firmware(rtp_file);
 
 		aw8624->rtp_init = 1;
@@ -2329,6 +2354,13 @@ static int aw8624_vibrator_init(struct aw8624 *aw8624)
 	INIT_WORK(&aw8624->rtp_work, aw8624_rtp_work_routine);
 
 	mutex_init(&aw8624->lock);
+	/*
+	 * rtp_lock guards the aw8624_rtp buffer between the workqueue and the
+	 * threaded IRQ handler.  It was never initialised, so it only worked
+	 * because devm_kzalloc() left it zeroed and a zeroed mutex happens to
+	 * look unlocked on this configuration.
+	 */
+	mutex_init(&aw8624->rtp_lock);
 	atomic_set(&aw8624->is_in_rtp_loop, 0);
 	atomic_set(&aw8624->exit_in_rtp_loop, 0);
 	init_waitqueue_head(&aw8624->wait_q);
@@ -4207,6 +4239,7 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	struct device_node *np = i2c->dev.of_node;
 	int irq_flags = 0;
 	int ret = -1;
+	bool input_registered = false;
 #ifdef ENABLE_PIN_CONTROL
 	int i;
 #endif
@@ -4395,6 +4428,7 @@ aw8624_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 		ret = rc;
 		goto err_sysfs;
 	}
+	input_registered = true;
 
 	dev_set_drvdata(&i2c->dev, aw8624);
 	ret =
@@ -4426,13 +4460,17 @@ err_sysfs:
 	if (gpio_is_valid(aw8624->irq_gpio))
 		devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
 	/*
-	 * Reached by fall-through from err_sysfs, which is where every failure
-	 * after input_ff_create() lands.  input_ff_destroy() is safe on a
-	 * device whose ff was never created - it only clears EV_FF and returns
-	 * when dev->ff is NULL - so the earlier err_irq/err_id targets below
-	 * still skip it correctly by jumping past it.
+	 * err_sysfs is reached both before and after input_register_device().
+	 * Once the device is registered the input core owns it, and
+	 * unregistering tears the FF state down itself; calling
+	 * input_ff_destroy() there left a registered input device pointing at
+	 * freed FF data that userspace could still open.  Before registration
+	 * there is nothing to unregister and the FF state is ours to free.
 	 */
-	input_ff_destroy(aw8624->input_dev);
+	if (input_registered)
+		input_unregister_device(aw8624->input_dev);
+	else
+		input_ff_destroy(aw8624->input_dev);
 err_irq:
 err_id:
 	if (gpio_is_valid(aw8624->irq_gpio))
@@ -4501,6 +4539,13 @@ static int aw8624_i2c_remove(struct i2c_client *i2c)
 		devm_gpio_free(&i2c->dev, aw8624->reset_gpio);
 
 	destroy_workqueue(aw8624->work_queue);
+
+	/* The queue is gone, so nothing can replace the buffer underneath us. */
+	mutex_lock(&aw8624->rtp_lock);
+	vfree(aw8624_rtp);
+	aw8624_rtp = NULL;
+	mutex_unlock(&aw8624->rtp_lock);
+
 	device_init_wakeup(aw8624->dev, false);
 	g_aw8624 = NULL;
 	devm_kfree(&i2c->dev, aw8624);
