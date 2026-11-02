@@ -172,9 +172,19 @@ CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
 # would be added back in the same commit.
 #
 # Nothing else in the tree depends on these two symbols.
+#
+# Both are now off. They are only inert while userspace leaves them alone,
+# and on a ROM whose power HAL does write them - input_boost_freq,
+# cpu_min_freq/cpu_max_freq - they are not inert at all: MSM_PERFORMANCE
+# clamps the policy on every notification and CPU_BOOST runs a per-cluster
+# threads at elevated priority on every input event.
+#
+# Opening them was the only power/scheduling difference between this build
+# and the one reported good before this batch, and the sibling branch never
+# enabled them and does not lag. They are turned back off together.
 # ---------------------------------------------------------------------------
-CONFIG_MSM_PERFORMANCE=y
-CONFIG_CPU_BOOST=y
+# CONFIG_MSM_PERFORMANCE is not set
+# CONFIG_CPU_BOOST is not set
 CONFIG_NET=y
 CONFIG_PACKET=y
 CONFIG_UNIX=y
@@ -963,6 +973,12 @@ CONFIG_BPF_JIT_DEFAULT_ON=y
 # KernelSU all run as root. Leaving it open is a JIT-spray surface on a kernel
 # where the interpreter is compiled out (BPF_JIT_ALWAYS_ON), so a JIT refusal
 # is a hard program-load failure, not a fallback.
+#
+# It is left off anyway. The assumption that "nothing uses the unprivileged
+# bpf() path" is the one thing here that cannot be checked from the kernel
+# side, and it is the piece the sibling branch never added - and that branch
+# does not lag. A value of 2 also makes the sysctl unwritable, so a ROM that
+# expects to set it to 1 during boot silently fails. Default 0 it is.
 # ---------------------------------------------------------------------------
 CONFIG_BPF_STREAM_PARSER=y
-CONFIG_BPF_UNPRIV_DEFAULT_OFF=y
+# CONFIG_BPF_UNPRIV_DEFAULT_OFF is not set
