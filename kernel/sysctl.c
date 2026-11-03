@@ -122,6 +122,9 @@ static int sixty = 60;
 
 static int __maybe_unused neg_one = -1;
 static int __maybe_unused neg_three = -3;
+#ifndef CONFIG_SCHED_WALT
+static int sysctl_sched_boost_stub;
+#endif
 
 static int zero;
 static int __maybe_unused one = 1;
@@ -493,6 +496,20 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= sched_little_cluster_coloc_fmin_khz_handler,
 		.extra1		= &zero,
 		.extra2		= &two_million,
+	},
+#else
+	{
+		/*
+		 * Placeholder for the vendor perf HAL. Without WALT there is no
+		 * boost placement; the value is stored and otherwise ignored.
+		 */
+		.procname	= "sched_boost",
+		.data		= &sysctl_sched_boost_stub,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &neg_three,
+		.extra2		= &three,
 	},
 #endif
 	{
