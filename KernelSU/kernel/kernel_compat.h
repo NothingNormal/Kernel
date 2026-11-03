@@ -111,7 +111,7 @@ __weak long copy_from_user_nofault(void *dst, const void __user *src, size_t siz
 
 	/**
 	 * normally theres an access_ok check here
-	 * but for what we use it, it will always be true. 
+	 * but for what we use it, it will always be true.
 	 * we skip it.
 	 */
 	pagefault_disable();
@@ -361,8 +361,8 @@ static ssize_t ksu_strscpy(char *dest, const char *src, size_t count)
 	if (!end)
 		goto no_null_term;
 
-	size_t copy_len = end - src + 1; // +1 to copy \0
-	__builtin_memcpy(dest, src, copy_len);
+	size_t copy_len = end - src;
+	__builtin_memcpy(dest, src, copy_len + 1); // +1 to copy \0
 	return copy_len;
 
 no_null_term:
@@ -489,8 +489,8 @@ __weak unsigned long vm_mmap(struct file *file, unsigned long addr, unsigned lon
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION (3, 9, 0)
 static inline int __must_check ksu_kref_get_unless_zero(struct kref *kref)
-{ 
-	return atomic_add_unless(&kref->refcount, 1, 0); 
+{
+	return atomic_add_unless(&kref->refcount, 1, 0);
 }
 #define kref_get_unless_zero ksu_kref_get_unless_zero
 #endif // < 3.9
