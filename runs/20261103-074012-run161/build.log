@@ -1,0 +1,355 @@
+Downloading Neutron Clang 06092026 ...
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0  0      0   0      0   0      0      0      0                              0
+  0      0   0      0   0      0      0      0                              0100 74.16M 100 74.16M   0      0 118.8M      0                              0100 74.16M 100 74.16M   0      0 118.8M      0                              0100 74.16M 100 74.16M   0      0 118.7M      0                              0
+Using Neutron Clang toolchain: /home/runner/neutron-clang/bin
+Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+Target: x86_64-unknown-linux-gnu
+ccache enabled: ccache version 4.12.3
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+#
+# configuration written to .config
+#
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+scripts/kconfig/conf  --silentoldconfig Kconfig
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+-- KDIR: 
+-- MDIR: /home/runner/work/Kernel/Kernel/KernelSU/kernel
+-- KernelSU Manager package name: me.weishu.kernelsu
+-- KernelSU Manager signature size: 0x033b
+-- KernelSU Manager signature hash: c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6
+-- KernelSU/compat: iterate_dir found!
+-- KernelSU/compat: f_op->read_iter found!
+
+-- SUSFS_VERSION: v2.3.0
+  Using .. as source for kernel
+  WRAP    arch/arm64/include/generated/asm/bugs.h
+  WRAP    arch/arm64/include/generated/asm/clkdev.h
+  WRAP    arch/arm64/include/generated/asm/delay.h
+  WRAP    arch/arm64/include/generated/asm/div64.h
+  WRAP    arch/arm64/include/generated/asm/dma.h
+  WRAP    arch/arm64/include/generated/asm/dma-contiguous.h
+  WRAP    arch/arm64/include/generated/asm/early_ioremap.h
+  WRAP    arch/arm64/include/generated/asm/emergency-restart.h
+  WRAP    arch/arm64/include/generated/asm/hw_irq.h
+  WRAP    arch/arm64/include/generated/asm/irq_regs.h
+  WRAP    arch/arm64/include/generated/asm/kdebug.h
+  WRAP    arch/arm64/include/generated/asm/kmap_types.h
+  WRAP    arch/arm64/include/generated/asm/local.h
+  WRAP    arch/arm64/include/generated/asm/local64.h
+  WRAP    arch/arm64/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/arm64/include/generated/asm/mm-arch-hooks.h
+  WRAP    arch/arm64/include/generated/asm/msi.h
+  WRAP    arch/arm64/include/generated/asm/preempt.h
+  WRAP    arch/arm64/include/generated/asm/qrwlock.h
+  WRAP    arch/arm64/include/generated/asm/rwsem.h
+  WRAP    arch/arm64/include/generated/asm/segment.h
+  WRAP    arch/arm64/include/generated/asm/serial.h
+  WRAP    arch/arm64/include/generated/asm/set_memory.h
+  WRAP    arch/arm64/include/generated/asm/sizes.h
+  WRAP    arch/arm64/include/generated/asm/switch_to.h
+  WRAP    arch/arm64/include/generated/asm/trace_clock.h
+  WRAP    arch/arm64/include/generated/asm/unaligned.h
+  WRAP    arch/arm64/include/generated/asm/user.h
+  WRAP    arch/arm64/include/generated/asm/vga.h
+  WRAP    arch/arm64/include/generated/asm/xor.h
+  LDS     scripts/module-lto.lds
+  HOSTCC  scripts/dtc/dtc.o
+  HOSTCC  scripts/dtc/flattree.o
+  HOSTCC  scripts/dtc/fstree.o
+  HOSTCC  scripts/dtc/data.o
+  CC      scripts/mod/empty.o
+  HOSTCC  scripts/dtc/livetree.o
+  HOSTCC  scripts/dtc/treesource.o
+  HOSTCC  scripts/mod/mk_elfconfig
+  HOSTCC  scripts/dtc/srcpos.o
+  HOSTCC  scripts/dtc/checks.o
+  HOSTCC  scripts/dtc/util.o
+  SHIPPED scripts/dtc/dtc-lexer.lex.c
+  CC      scripts/mod/devicetable-offsets.s
+  SHIPPED scripts/dtc/dtc-parser.tab.h
+  SHIPPED scripts/dtc/dtc-parser.tab.c
+  HOSTCC  scripts/dtc/dtc-lexer.lex.o
+  HOSTCC  scripts/dtc/dtc-parser.tab.o
+  MKELF   scripts/mod/elfconfig.h
+  CHK     scripts/mod/devicetable-offsets.h
+  UPD     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/mod/sumversion.o
+  HOSTLD  scripts/dtc/dtc
+  HOSTCC  scripts/mod/modpost.o
+  HOSTCC  scripts/selinux/genheaders/genheaders
+  HOSTCC  scripts/mod/file2alias.o
+  HOSTLD  scripts/mod/modpost
+  CC      kernel/bounds.s
+  HOSTCC  scripts/selinux/mdp/mdp
+  HOSTCC  scripts/kallsyms
+  CHK     include/generated/timeconst.h
+  UPD     include/generated/timeconst.h
+  CHK     include/generated/bounds.h
+  UPD     include/generated/bounds.h
+  CC      arch/arm64/kernel/asm-offsets.s
+  HOSTCC  scripts/conmakehash
+  HOSTCC  scripts/sortextable
+  HOSTCC  scripts/asn1_compiler
+  HOSTCC  scripts/extract-cert
+  CHK     include/generated/asm-offsets.h
+  UPD     include/generated/asm-offsets.h
+  CALL    ../scripts/checksyscalls.sh
+  LDS     arch/arm64/kernel/vdso/vdso.lds
+  VDSOA   arch/arm64/kernel/vdso/gettimeofday.o
+  VDSOA   arch/arm64/kernel/vdso/note.o
+  VDSOA   arch/arm64/kernel/vdso/sigreturn.o
+  LD      arch/arm64/kernel/vdso/vdso.so.dbg
+  VDSOSYM include/generated/vdso-offsets.h
+  CC      init/main.o
+  CHK     include/generated/compile.h
+  CC      init/do_mounts.o
+  CC      init/do_mounts_rd.o
+  CC      init/do_mounts_initrd.o
+  UPD     include/generated/compile.h
+  CC      init/do_mounts_dm.o
+  HOSTCC  usr/gen_init_cpio
+  GEN     usr/initramfs_data.cpio
+  AS      usr/initramfs_data.o
+  AR      usr/built-in.a
+  CC      init/noinitramfs.o
+  CC      arch/arm64/kernel/debug-monitors.o
+  CC      init/initramfs.o
+  CC      init/calibrate.o
+  AS      arch/arm64/kernel/entry.o
+  CC      arch/arm64/kernel/irq.o
+  CC      arch/arm64/mm/dma-mapping.o
+  CC      arch/arm64/net/bpf_jit_comp.o
+  CC      arch/arm64/kernel/fpsimd.o
+  CC      arch/arm64/mm/extable.o
+  AS      arch/arm64/kernel/entry-fpsimd.o
+  CC      init/init_task.o
+  CC      arch/arm64/kernel/process.o
+  AR      arch/arm64/net/built-in.a
+  CC      arch/arm64/crypto/sha1-ce-glue.o
+  CC      arch/arm64/kernel/ptrace.o
+  CC      arch/arm64/mm/fault.o
+  CC      kernel/fork.o
+  CC      init/version.o
+  CC      arch/arm64/mm/init.o
+  AR      init/mounts.o
+  AS      arch/arm64/crypto/sha1-ce-core.o
+  CC      arch/arm64/crypto/sha2-ce-glue.o
+  AR      init/built-in.a
+  AS      arch/arm64/mm/cache.o
+  CC      arch/arm64/kernel/setup.o
+  CC      certs/system_keyring.o
+  CC      mm/filemap.o
+../kernel/fork.c:2309:3: error: expected identifier or '('
+ 2309 |                 if (IS_ENABLED(CONFIG_LRU_GEN) && !(clone_flags & CLONE_VM)) {
+      |                 ^
+1 error generated.
+make[2]: *** [../scripts/Makefile.build:364: kernel/fork.o] Error 1
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1286: kernel] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  AS      arch/arm64/crypto/sha2-ce-core.o
+  CC      mm/mempool.o
+  EXTRACT_CERTS   
+  AS      certs/system_certificates.o
+  CC      arch/arm64/crypto/ghash-ce-glue.o
+  AR      certs/built-in.a
+  CC      arch/arm64/kernel/signal.o
+  CC      arch/arm64/mm/copypage.o
+  CC      arch/arm64/kernel/sys.o
+  CC      mm/oom_kill.o
+  AS      arch/arm64/crypto/ghash-ce-core.o
+  AS      arch/arm64/crypto/aes-ce-core.o
+  CC      arch/arm64/crypto/aes-ce-glue.o
+  CC      arch/arm64/mm/flush.o
+  CC      mm/maccess.o
+  CC      arch/arm64/mm/ioremap.o
+  CC      mm/page_alloc.o
+  CC      arch/arm64/crypto/aes-ce-ccm-glue.o
+  CC      arch/arm64/kernel/stacktrace.o
+  CC      mm/page-writeback.o
+  CC      mm/readahead.o
+  CC      arch/arm64/kernel/time.o
+  CC      arch/arm64/mm/mmap.o
+  AS      arch/arm64/crypto/aes-ce-ccm-core.o
+  CC      arch/arm64/crypto/aes-glue-ce.o
+  CC      mm/swap.o
+  CC      arch/arm64/mm/pgd.o
+  CC      arch/arm64/kernel/traps.o
+  AS      arch/arm64/crypto/aes-ce.o
+  CC      arch/arm64/crypto/aes-glue-neon.o
+  AS      arch/arm64/crypto/aes-neon.o
+  CC      arch/arm64/mm/mmu.o
+  CC      arch/arm64/crypto/sha256-glue.o
+  CC      arch/arm64/kernel/io.o
+  SHIPPED arch/arm64/crypto/sha256-core.S
+  AS      arch/arm64/crypto/aes-cipher-core.o
+  CC      arch/arm64/kernel/vdso.o
+  CC      arch/arm64/crypto/aes-cipher-glue.o
+  CC      arch/arm64/mm/context.o
+  AS      arch/arm64/kernel/hyp-stub.o
+  CC      mm/truncate.o
+  CC      arch/arm64/kernel/psci.o
+  CC      arch/arm64/kernel/cpu_ops.o
+  AR      arch/arm64/crypto/sha1-ce.o
+  AR      arch/arm64/crypto/sha2-ce.o
+  AR      arch/arm64/crypto/ghash-ce.o
+  AR      arch/arm64/crypto/aes-ce-cipher.o
+  CC      arch/arm64/kernel/insn.o
+  AR      arch/arm64/crypto/aes-ce-ccm.o
+  AS      arch/arm64/mm/proc.o
+  AR      arch/arm64/crypto/aes-ce-blk.o
+  AR      arch/arm64/crypto/aes-neon-blk.o
+  CC      mm/vmscan.o
+  AS      arch/arm64/crypto/sha256-core.o
+  CC      arch/arm64/mm/pageattr.o
+  AR      arch/arm64/crypto/aes-arm64.o
+  AR      arch/arm64/crypto/sha256-arm64.o
+  AR      arch/arm64/crypto/built-in.a
+  CC      arch/arm64/kernel/return_address.o
+  CC      mm/shmem.o
+  CC      arch/arm64/kernel/cpuinfo.o
+  CC      mm/util.o
+  CC      arch/arm64/kernel/cpu_errata.o
+  CC      arch/arm64/kernel/cpufeature.o
+  AR      arch/arm64/mm/built-in.a
+  CC      mm/mmzone.o
+  CC      mm/vmstat.o
+  CC      mm/backing-dev.o
+  CC      arch/arm64/kernel/alternative.o
+  CC      mm/mm_init.o
+  CC      arch/arm64/kernel/cacheinfo.o
+  CC      arch/arm64/kernel/smp.o
+  CC      mm/mmu_context.o
+  CC      arch/arm64/kernel/smp_spin_table.o
+  CC      arch/arm64/kernel/topology.o
+  CC      mm/percpu.o
+  CC      mm/slab_common.o
+  CC      mm/compaction.o
+  AS      arch/arm64/kernel/smccc-call.o
+  CC      mm/vmacache.o
+  CC      arch/arm64/kernel/sys32.o
+  AS      arch/arm64/kernel/kuser32.o
+  CC      mm/swap_slots.o
+  CC      mm/interval_tree.o
+  CC      arch/arm64/kernel/signal32.o
+  CC      arch/arm64/kernel/sys_compat.o
+  CC      mm/list_lru.o
+  CC      mm/workingset.o
+  CC      mm/debug.o
+  CC      mm/gup.o
+  CC      mm/highmem.o
+  AS      arch/arm64/kernel/entry32.o
+  CC      arch/arm64/kernel/arm64ksyms.o
+  CC      mm/memory.o
+  CC      arch/arm64/kernel/module.o
+  CC      arch/arm64/kernel/module-plts.o
+  CC      mm/mincore.o
+  CC      mm/mlock.o
+  CC      arch/arm64/kernel/perf_regs.o
+  CC      mm/mmap.o
+  CC      arch/arm64/kernel/perf_callchain.o
+  CC      mm/mmu_gather.o
+  CC      arch/arm64/kernel/perf_event.o
+  CC      arch/arm64/kernel/hw_breakpoint.o
+  CC      mm/mprotect.o
+  AS      arch/arm64/kernel/sleep.o
+  CC      arch/arm64/kernel/suspend.o
+  CC      mm/mremap.o
+  CC      mm/msync.o
+  CC      arch/arm64/kernel/cpuidle.o
+  CC      arch/arm64/kernel/jump_label.o
+  CC      arch/arm64/kernel/armv8_deprecated.o
+  CC      mm/page_vma_mapped.o
+  CC      mm/pagewalk.o
+  CC      arch/arm64/kernel/kaslr.o
+  CC      mm/pgtable-generic.o
+  CC      mm/rmap.o
+  CC      arch/arm64/kernel/ssbd.o
+  CC      arch/arm64/kernel/scs.o
+  CC      mm/vmalloc.o
+  CC      mm/process_vm_access.o
+  CC      arch/arm64/kernel/probes/uprobes.o
+  CC      mm/showmem.o
+  CC      mm/vmpressure.o
+  CC      mm/init-mm.o
+  CC      mm/nobootmem.o
+  CC      mm/fadvise.o
+  CC      arch/arm64/kernel/probes/decode-insn.o
+  CC      mm/madvise.o
+  CC      mm/memblock.o
+  CC      mm/page_io.o
+  OBJCOPY arch/arm64/kernel/vdso/vdso.so
+  AS      arch/arm64/kernel/vdso/vdso.o
+  CC      arch/arm64/kernel/probes/simulate-insn.o
+  AS      arch/arm64/kernel/head.o
+  AR      arch/arm64/kernel/vdso/built-in.a
+  LDS     arch/arm64/kernel/vmlinux.lds
+  CC      mm/swap_state.o
+  CC      mm/swapfile.o
+  CC      mm/swap_ratio.o
+  AR      arch/arm64/kernel/probes/built-in.a
+  AR      arch/arm64/kernel/built-in.a
+  CC      mm/dmapool.o
+  CC      mm/sparse.o
+  CC      mm/sparse-vmemmap.o
+  CC      mm/slub.o
+  CC      mm/migrate.o
+  CC      mm/page_counter.o
+  CC      mm/memcontrol.o
+  CC      mm/swap_cgroup.o
+  CC      mm/page_isolation.o
+  CC      mm/zsmalloc.o
+  CC      mm/early_ioremap.o
+  CC      mm/cma.o
+  CC      mm/userfaultfd.o
+  CC      mm/frame_vector.o
+  CC      mm/usercopy.o
+  AR      mm/built-in.a
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   300 / 774 (38.76%)
+  Hits:            154 / 300 (51.33%)
+    Direct:        124 / 154 (80.52%)
+    Preprocessed:   30 / 154 (19.48%)
+  Misses:          146 / 300 (48.67%)
+Uncacheable calls: 474 / 774 (61.24%)
+Local storage:
+  Cache size (GB): 0.7 / 8.0 ( 9.34%)
+  Hits:            154 / 300 (51.33%)
+  Misses:          146 / 300 (48.67%)
+ Kernel build failed (make exit code 2)
