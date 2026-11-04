@@ -161,11 +161,16 @@ rm -rf AnyKernel
 # not do: --filter=blob:none keeps the full commit history without the blobs.
 # ---------------------------------------------------------------------------
 KSU_REPO="${KSU_REPO:-https://github.com/Baka-SU/BakaSU}"
-KSU_REF="${KSU_REF:-d5e9e025}"
+KSU_REF="${KSU_REF:-516d3e87fbc986ccefdde2c2765f1700612441a9}"
 if [ ! -e KernelSU/.git ]; then
     rm -rf KernelSU
     git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }
-    git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out BakaSU $KSU_REF"; exit 1; }
+fi
+# CI checks out its own BakaSU pin before calling this script. Re-align to
+# $KSU_REF here so both entry points compile the same driver; otherwise the
+# build silently uses the workflow pin and disagrees with the local default.
+if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_REF^{commit}" 2>/dev/null)" ]; then
+    git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out BakaSU $KSU_REF (shallow clone? rm -rf KernelSU)"; exit 1; }
 fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2
