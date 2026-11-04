@@ -1728,17 +1728,24 @@ static struct dentry *lookup_real(struct inode *dir, struct dentry *dentry,
 static struct dentry *__lookup_hash(const struct qstr *name,
 		struct dentry *base, unsigned int flags)
 {
-	struct dentry *dentry;
+	struct dentry *dentry = lookup_dcache(name, base, flags);
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	/* Reserved hide name: never resolve it. */
-	if (susfs_name_is_fake_qstr(name))
-		return ERR_PTR(-ENOENT);
+	bool found_sus_path = false;
 #endif
 
+	if (unlikely(dentry && !IS_ERR(dentry) &&
+		     vendor_hidden_denied(d_backing_inode(dentry)))) {
+		if (!(flags & LOOKUP_RCU))
+			dput(dentry);
+		return ERR_PTR(-ENOENT);
+	}
 	if (dentry)
 		return dentry;
 
 	dentry = d_alloc(base, name);
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+retry:
+#endif
 	if (unlikely(!dentry))
 		return ERR_PTR(-ENOMEM);
 
