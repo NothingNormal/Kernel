@@ -1768,7 +1768,6 @@ static int exec_binprm(struct linux_binprm *bprm)
 
 #ifdef CONFIG_KSU_SUSFS
 extern struct static_key_true ksu_su_compat_enabled;
-extern bool __ksu_is_allow_uid_for_current(uid_t uid);
 extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
 			       void *argv, void *envp, int *flags);
 extern int ksu_handle_post_execveat_sucompat(int *fd,
@@ -1798,12 +1797,15 @@ static int __do_execve_file(int fd, struct filename *filename,
 	if (!filename || likely(susfs_is_current_proc_no_su()))
 		goto orig_flow;
 
-	if (static_branch_likely(&ksu_su_compat_enabled)) {
-		if (unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
-			is_su_session =
-				!ksu_handle_execveat(&fd, &filename, &argv,
-						     &envp, &flags);
-	}
+	/*
+	 * No uid gate here, unlike faccessat/stat: ksu_handle_execveat() also
+	 * handles init executing ksud (escape to root) and adb root, where the
+	 * caller is not an allow-listed app uid at all.
+	 */
+	if (static_branch_likely(&ksu_su_compat_enabled))
+		is_su_session =
+			!ksu_handle_execveat(&fd, &filename, &argv, &envp,
+					     &flags);
 
 orig_flow:
 #endif
