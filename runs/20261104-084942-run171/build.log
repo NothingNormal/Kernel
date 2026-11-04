@@ -1,0 +1,648 @@
+Using Neutron Clang toolchain: /home/runner/neutron-clang/bin
+Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+Target: x86_64-unknown-linux-gnu
+ccache enabled: ccache version 4.12.3
+BakaSU: d5e9e025 kernel: limit code generators on CONFIG_KSU (#639) (4552 commits)
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  SHIPPED scripts/kconfig/zconf.tab.c
+  SHIPPED scripts/kconfig/zconf.lex.c
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+#
+# configuration written to .config
+#
+  HOSTCC  scripts/basic/fixdep
+  GEN     ./Makefile
+  HOSTCC  scripts/kconfig/conf.o
+  HOSTCC  scripts/kconfig/zconf.tab.o
+  HOSTLD  scripts/kconfig/conf
+scripts/kconfig/conf  --silentoldconfig Kconfig
+  CHK     include/config/kernel.release
+  UPD     include/config/kernel.release
+  GEN     ./Makefile
+  WRAP    arch/arm64/include/generated/uapi/asm/errno.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctl.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ioctls.h
+  WRAP    arch/arm64/include/generated/uapi/asm/ipcbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/kvm_para.h
+  WRAP    arch/arm64/include/generated/uapi/asm/mman.h
+  WRAP    arch/arm64/include/generated/uapi/asm/msgbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/poll.h
+  WRAP    arch/arm64/include/generated/uapi/asm/resource.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sembuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/shmbuf.h
+  WRAP    arch/arm64/include/generated/uapi/asm/socket.h
+  WRAP    arch/arm64/include/generated/uapi/asm/sockios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/swab.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termbits.h
+  WRAP    arch/arm64/include/generated/uapi/asm/termios.h
+  WRAP    arch/arm64/include/generated/uapi/asm/types.h
+  CHK     include/generated/uapi/linux/version.h
+  UPD     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  UPD     include/generated/utsrelease.h
+  HOSTCC  scripts/basic/fixdep
+  HOSTCC  scripts/basic/bin2c
+  Using .. as source for kernel
+  WRAP    arch/arm64/include/generated/asm/bugs.h
+  WRAP    arch/arm64/include/generated/asm/clkdev.h
+  WRAP    arch/arm64/include/generated/asm/delay.h
+  WRAP    arch/arm64/include/generated/asm/div64.h
+  WRAP    arch/arm64/include/generated/asm/dma.h
+  WRAP    arch/arm64/include/generated/asm/dma-contiguous.h
+  WRAP    arch/arm64/include/generated/asm/early_ioremap.h
+  WRAP    arch/arm64/include/generated/asm/emergency-restart.h
+  WRAP    arch/arm64/include/generated/asm/hw_irq.h
+  WRAP    arch/arm64/include/generated/asm/irq_regs.h
+  WRAP    arch/arm64/include/generated/asm/kdebug.h
+  WRAP    arch/arm64/include/generated/asm/kmap_types.h
+  WRAP    arch/arm64/include/generated/asm/local.h
+  WRAP    arch/arm64/include/generated/asm/local64.h
+  WRAP    arch/arm64/include/generated/asm/mcs_spinlock.h
+  WRAP    arch/arm64/include/generated/asm/mm-arch-hooks.h
+  WRAP    arch/arm64/include/generated/asm/msi.h
+  WRAP    arch/arm64/include/generated/asm/preempt.h
+  WRAP    arch/arm64/include/generated/asm/qrwlock.h
+  WRAP    arch/arm64/include/generated/asm/segment.h
+  WRAP    arch/arm64/include/generated/asm/rwsem.h
+  WRAP    arch/arm64/include/generated/asm/serial.h
+  WRAP    arch/arm64/include/generated/asm/set_memory.h
+  WRAP    arch/arm64/include/generated/asm/sizes.h
+  WRAP    arch/arm64/include/generated/asm/switch_to.h
+  WRAP    arch/arm64/include/generated/asm/trace_clock.h
+  WRAP    arch/arm64/include/generated/asm/unaligned.h
+  WRAP    arch/arm64/include/generated/asm/user.h
+  WRAP    arch/arm64/include/generated/asm/vga.h
+  WRAP    arch/arm64/include/generated/asm/xor.h
+-- BakaSU version code: 35252
+-- BakaSU version name: v4.2.0-rc3-d5e9e025
+-- Supported Managers: KernelSU Official, KOWSU, BakaSU 
+-- KERNEL_VERSION: 4.14
+-- KERNEL_TYPE: Non-GKI
+-- BakaSU: using SuSFS Inline hook
+-- You are using SUSFS, if you face any issues, please MAKE SURE you are using LATEST SUSFS KERNEL SIDE before submit issue to BakaSU.
+-- We keep tracking simonpunk's latest changes, and don't maintain ANY backward compatibility for old version of susfs.
+-- BakaSU/susfs_inline: ksu_handle_setresuid found
+-- BakaSU/susfs_inline: ksu_handle_execveat found
+-- BakaSU/susfs_inline: ksu_handle_faccessat found
+-- BakaSU/susfs_inline: ksu_handle_sys_read found
+-- BakaSU/susfs_inline: ksu_handle_stat found
+-- BakaSU/susfs_inline: ksu_handle_sys_reboot found
+-- BakaSU/susfs_inline: ksu_handle_input_handle_event found
+-- BakaSU/susfs_feature_check: selinux_hide manual hook found
+
+-- SUSFS_VERSION: v2.3.0
+-- BakaSU/compat: current_sid found
+-- BakaSU/compat: selinux_state found
+-- BakaSU/compat: strncpy found
+-- BakaSU/compat: kernel_read found
+-- BakaSU/compat: kernel_write found
+-- BakaSU/compat: selinux_inode found
+-- BakaSU/compat: selinux_cred found
+-- BakaSU/compat: seccomp_filter_count found
+-- BakaSU/compat: security_inode_init_security_anon found
+-- BakaSU/compat: file_inode() found
+  LDS     scripts/module-lto.lds
+-- BakaSU/compat: ns_get_path found
+-- BakaSU/compat: modern dentry_open found
+-- BakaSU/compat: ext4_unregister_sysfs found
+-- BakaSU/compat: f_op->read_iter found
+-- BakaSU/compat: iterate_dir found
+-- BakaSU/compat: modern static_key_interface found
+-- BakaSU/compat: d_inode found
+-- BakaSU/compat: inode_lock found
+-- BakaSU/compat: modern errno file found
+-- BakaSU/compat: overflow.h found
+-- BakaSU/compat: modern proc ns header file found
+-- BakaSU/compat: android spec POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE found!!
+-- BakaSU/compat: android spec POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH found!!
+  HOSTCC  scripts/dtc/dtc.o
+-- BakaSU/compat: found sidtab as reference
+-- BakaSU/compat: found hlist in security_hook_list
+  HOSTCC  scripts/dtc/flattree.o
+-- BakaSU/compat: found required provide lsm name
+  HOSTCC  scripts/dtc/fstree.o
+  CC      scripts/mod/empty.o
+-- BakaSU/compat: found security_add_hooks
+  HOSTCC  scripts/mod/mk_elfconfig
+  CC      scripts/mod/devicetable-offsets.s
+  HOSTCC  scripts/dtc/data.o
+  HOSTCC  scripts/dtc/livetree.o
+-- BakaSU/compat: modern dentry_open found
+-- BakaSU/compat: extended_perms found
+-- BakaSU/compat: stricter mls_context_to_sid found
+  HOSTCC  scripts/dtc/treesource.o
+-- BakaSU/compat: found hash indexed sidtab
+-- BakaSU/compat: found KERNEL_PARAM_OPS_FL_NOARG
+  HOSTCC  scripts/dtc/srcpos.o
+  CHK     scripts/mod/devicetable-offsets.h
+  HOSTCC  scripts/dtc/checks.o
+  UPD     scripts/mod/devicetable-offsets.h
+  MKELF   scripts/mod/elfconfig.h
+  HOSTCC  scripts/mod/modpost.o
+  HOSTCC  scripts/dtc/util.o
+  SHIPPED scripts/dtc/dtc-lexer.lex.c
+  SHIPPED scripts/dtc/dtc-parser.tab.h
+  SHIPPED scripts/dtc/dtc-parser.tab.c
+  HOSTCC  scripts/mod/file2alias.o
+  HOSTCC  scripts/dtc/dtc-lexer.lex.o
+  HOSTCC  scripts/mod/sumversion.o
+  HOSTCC  scripts/dtc/dtc-parser.tab.o
+  HOSTLD  scripts/mod/modpost
+  HOSTLD  scripts/dtc/dtc
+  HOSTCC  scripts/selinux/genheaders/genheaders
+  CC      kernel/bounds.s
+  CHK     include/generated/timeconst.h
+  UPD     include/generated/timeconst.h
+  CHK     include/generated/bounds.h
+  UPD     include/generated/bounds.h
+  CC      arch/arm64/kernel/asm-offsets.s
+  HOSTCC  scripts/selinux/mdp/mdp
+  HOSTCC  scripts/kallsyms
+  HOSTCC  scripts/pnmtologo
+  HOSTCC  scripts/conmakehash
+  CHK     include/generated/asm-offsets.h
+  UPD     include/generated/asm-offsets.h
+  CALL    ../scripts/checksyscalls.sh
+  HOSTCC  scripts/sortextable
+  HOSTCC  scripts/asn1_compiler
+  LDS     arch/arm64/kernel/vdso/vdso.lds
+  HOSTCC  scripts/extract-cert
+  VDSOA   arch/arm64/kernel/vdso/gettimeofday.o
+  VDSOA   arch/arm64/kernel/vdso/note.o
+  VDSOA   arch/arm64/kernel/vdso/sigreturn.o
+  LD      arch/arm64/kernel/vdso/vdso.so.dbg
+  VDSOSYM include/generated/vdso-offsets.h
+  CC      init/main.o
+  CHK     include/generated/compile.h
+  CC      init/do_mounts.o
+  HOSTCC  usr/gen_init_cpio
+  UPD     include/generated/compile.h
+  CC      init/do_mounts_rd.o
+  GEN     usr/initramfs_data.cpio
+  AS      usr/initramfs_data.o
+  AR      usr/built-in.a
+  CC      arch/arm64/kernel/debug-monitors.o
+  CC      init/do_mounts_initrd.o
+  CC      arch/arm64/mm/dma-mapping.o
+  AS      arch/arm64/kernel/entry.o
+  CC      arch/arm64/kernel/irq.o
+  CC      arch/arm64/net/bpf_jit_comp.o
+  CC      arch/arm64/mm/extable.o
+  CC      init/do_mounts_dm.o
+  CC      arch/arm64/kernel/fpsimd.o
+  CC      arch/arm64/mm/fault.o
+  CC      arch/arm64/crypto/sha1-ce-glue.o
+  AR      arch/arm64/net/built-in.a
+  AS      arch/arm64/crypto/sha1-ce-core.o
+  CC      arch/arm64/crypto/sha2-ce-glue.o
+  AS      arch/arm64/kernel/entry-fpsimd.o
+  CC      arch/arm64/kernel/process.o
+  CC      init/noinitramfs.o
+  CC      arch/arm64/mm/init.o
+  AS      arch/arm64/crypto/sha2-ce-core.o
+  CC      arch/arm64/crypto/ghash-ce-glue.o
+  CC      arch/arm64/kernel/ptrace.o
+  CC      kernel/fork.o
+  CC      init/initramfs.o
+  AS      arch/arm64/mm/cache.o
+  CC      arch/arm64/mm/copypage.o
+  AS      arch/arm64/crypto/ghash-ce-core.o
+  AS      arch/arm64/crypto/aes-ce-core.o
+  CC      arch/arm64/crypto/aes-ce-glue.o
+  CC      init/calibrate.o
+  CC      init/init_task.o
+  CC      arch/arm64/kernel/setup.o
+  CC      arch/arm64/mm/flush.o
+  CC      arch/arm64/crypto/aes-ce-ccm-glue.o
+  CC      kernel/exec_domain.o
+  CC      arch/arm64/mm/ioremap.o
+  CC      arch/arm64/kernel/signal.o
+  CC      init/version.o
+  AS      arch/arm64/crypto/aes-ce-ccm-core.o
+  CC      kernel/panic.o
+  CC      arch/arm64/mm/mmap.o
+  CC      arch/arm64/crypto/aes-glue-ce.o
+  AR      init/mounts.o
+  AR      init/built-in.a
+  AS      arch/arm64/crypto/aes-ce.o
+  CC      arch/arm64/crypto/aes-glue-neon.o
+  CC      arch/arm64/kernel/sys.o
+  CC      kernel/cpu.o
+  CC      kernel/exit.o
+  AS      arch/arm64/crypto/aes-neon.o
+  CC      arch/arm64/crypto/sha256-glue.o
+  CC      arch/arm64/mm/pgd.o
+  CC      arch/arm64/mm/mmu.o
+  CC      arch/arm64/kernel/stacktrace.o
+  SHIPPED arch/arm64/crypto/sha256-core.S
+  AS      arch/arm64/crypto/aes-cipher-core.o
+  CC      arch/arm64/crypto/aes-cipher-glue.o
+  CC      arch/arm64/kernel/time.o
+  AR      arch/arm64/crypto/sha1-ce.o
+  AR      arch/arm64/crypto/sha2-ce.o
+  CC      arch/arm64/mm/context.o
+  CC      kernel/softirq.o
+  AR      arch/arm64/crypto/ghash-ce.o
+  AR      arch/arm64/crypto/aes-ce-cipher.o
+  AR      arch/arm64/crypto/aes-ce-ccm.o
+  AR      arch/arm64/crypto/aes-ce-blk.o
+  AR      arch/arm64/crypto/aes-neon-blk.o
+  AS      arch/arm64/crypto/sha256-core.o
+  AR      arch/arm64/crypto/aes-arm64.o
+  AR      arch/arm64/crypto/sha256-arm64.o
+  AR      arch/arm64/crypto/built-in.a
+  AS      arch/arm64/mm/proc.o
+  CC      arch/arm64/kernel/traps.o
+  CC      kernel/resource.o
+  CC      arch/arm64/mm/pageattr.o
+  CC      certs/system_keyring.o
+  CC      kernel/sysctl.o
+  AR      arch/arm64/mm/built-in.a
+  EXTRACT_CERTS   
+  AS      certs/system_certificates.o
+  CC      arch/arm64/kernel/io.o
+  AR      certs/built-in.a
+  CC      kernel/sysctl_binary.o
+  CC      arch/arm64/kernel/vdso.o
+  CC      mm/filemap.o
+  AS      arch/arm64/kernel/hyp-stub.o
+  CC      arch/arm64/kernel/psci.o
+  CC      kernel/capability.o
+  CC      mm/mempool.o
+  CC      arch/arm64/kernel/cpu_ops.o
+  CC      mm/oom_kill.o
+  CC      fs/open.o
+  CC      kernel/ptrace.o
+  CC      arch/arm64/kernel/insn.o
+  CC      mm/maccess.o
+  CC      fs/read_write.o
+  CC      ipc/compat.o
+  CC      arch/arm64/kernel/return_address.o
+  CC      kernel/user.o
+  CC      mm/page_alloc.o
+  CC      kernel/signal.o
+  CC      arch/arm64/kernel/cpuinfo.o
+  CC      ipc/util.o
+  CC      fs/file_table.o
+  CC      arch/arm64/kernel/cpu_errata.o
+  CC      ipc/msgutil.o
+  CC      arch/arm64/kernel/cpufeature.o
+  CC      fs/super.o
+  CC      kernel/sys.o
+  CC      mm/page-writeback.o
+  CC      ipc/msg.o
+  CC      arch/arm64/kernel/alternative.o
+  CC      fs/char_dev.o
+  CC      ipc/sem.o
+  CC      kernel/umh.o
+  CC      mm/readahead.o
+  CC      arch/arm64/kernel/cacheinfo.o
+  CC      arch/arm64/kernel/smp.o
+  CC      fs/stat.o
+  CC      ipc/shm.o
+  CC      kernel/workqueue.o
+  CC      mm/swap.o
+  CC      ipc/syscall.o
+  CC      arch/arm64/kernel/smp_spin_table.o
+  CC      fs/exec.o
+  CC      mm/truncate.o
+  CC      ipc/ipc_sysctl.o
+  CC      arch/arm64/kernel/topology.o
+  CC      fs/pipe.o
+  CC      kernel/pid.o
+  CC      ipc/mqueue.o
+  CC      mm/vmscan.o
+  AS      arch/arm64/kernel/smccc-call.o
+  CC      arch/arm64/kernel/sys32.o
+  CC      kernel/task_work.o
+  CC      fs/namei.o
+  AS      arch/arm64/kernel/kuser32.o
+  CC      arch/arm64/kernel/signal32.o
+  CC      kernel/extable.o
+  CC      ipc/namespace.o
+../fs/namei.c:1748:65: error: use of undeclared identifier 'found_sus_path'
+ 1748 |         if (unlikely(dentry) && !IS_ERR(dentry) && dentry->d_inode && !found_sus_path && susfs_is_inode_sus_path(dentry->d_inode)) {
+      |                                                                        ^~~~~~~~~~~~~~
+../fs/namei.c:1763:3: error: use of undeclared identifier 'found_sus_path'
+ 1763 |                 found_sus_path = true;
+      |                 ^~~~~~~~~~~~~~
+../fs/namei.c:1764:8: error: use of undeclared label 'retry'
+ 1764 |                 goto retry;
+      |                      ^
+3 errors generated.
+make[2]: *** [../scripts/Makefile.build:364: fs/namei.o] Error 1
+make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1341: fs] Error 2
+make[1]: *** Waiting for unfinished jobs....
+  CC      mm/shmem.o
+  CC      arch/arm64/kernel/sys_compat.o
+  CC      kernel/params.o
+  CC      ipc/mq_sysctl.o
+  CC      kernel/kthread.o
+  AR      ipc/built-in.a
+  CC      mm/util.o
+  AS      arch/arm64/kernel/entry32.o
+  CC      arch/arm64/kernel/arm64ksyms.o
+  CC      kernel/sys_ni.o
+  CC      kernel/nsproxy.o
+  CC      mm/mmzone.o
+  CC      arch/arm64/kernel/module.o
+  CC      kernel/notifier.o
+  CC      mm/vmstat.o
+  CC      kernel/ksysfs.o
+  CC      arch/arm64/kernel/module-plts.o
+  CC      arch/arm64/kernel/perf_regs.o
+  CC      kernel/cred.o
+  CC      kernel/reboot.o
+  CC      mm/backing-dev.o
+  CC      arch/arm64/kernel/perf_callchain.o
+  CC      mm/mm_init.o
+  CC      kernel/async.o
+  CC      mm/mmu_context.o
+  CC      arch/arm64/kernel/perf_event.o
+  CC      arch/arm64/kernel/hw_breakpoint.o
+  CC      mm/percpu.o
+  AS      arch/arm64/kernel/sleep.o
+  CC      kernel/range.o
+  CC      kernel/smpboot.o
+  CC      arch/arm64/kernel/suspend.o
+  CC      kernel/ucount.o
+  CC      arch/arm64/kernel/cpuidle.o
+  CC      mm/slab_common.o
+  CC      mm/compaction.o
+  CC      kernel/kmod.o
+  CC      arch/arm64/kernel/jump_label.o
+  CC      arch/arm64/kernel/armv8_deprecated.o
+  CC      arch/arm64/kernel/kaslr.o
+  CC      kernel/groups.o
+  CC      mm/vmacache.o
+  CC      kernel/bpf/core.o
+  CC      arch/arm64/kernel/ssbd.o
+  CC      kernel/cgroup/cgroup.o
+  CC      mm/swap_slots.o
+  CC      arch/arm64/kernel/scs.o
+  CC      kernel/bpf/syscall.o
+  CC      arch/arm64/kernel/probes/uprobes.o
+  CC      mm/interval_tree.o
+  CC      kernel/bpf/verifier.o
+  CC      arch/arm64/kernel/probes/decode-insn.o
+  CC      mm/list_lru.o
+  CC      arch/arm64/kernel/probes/simulate-insn.o
+  OBJCOPY arch/arm64/kernel/vdso/vdso.so
+  AS      arch/arm64/kernel/vdso/vdso.o
+  AR      arch/arm64/kernel/vdso/built-in.a
+  CC      mm/workingset.o
+  AS      arch/arm64/kernel/head.o
+  CC      kernel/cgroup/namespace.o
+  AR      arch/arm64/kernel/probes/built-in.a
+  LDS     arch/arm64/kernel/vmlinux.lds
+  AR      arch/arm64/kernel/built-in.a
+  CC      kernel/bpf/inode.o
+  CC      kernel/cgroup/cgroup-v1.o
+  CC      kernel/events/core.o
+  CC      mm/debug.o
+  CC      kernel/irq/irqdesc.o
+  CC      kernel/bpf/helpers.o
+  CC      mm/gup.o
+  CC      kernel/cgroup/freezer.o
+  CC      kernel/bpf/tnum.o
+  CC      kernel/irq/handle.o
+  AR      kernel/livepatch/built-in.a
+  CC      kernel/locking/mutex.o
+  CC      mm/highmem.o
+  CC      kernel/cgroup/legacy_freezer.o
+  CC      kernel/bpf/bpf_iter.o
+  CC      kernel/irq/manage.o
+  CC      mm/memory.o
+  CC      kernel/locking/semaphore.o
+  CC      kernel/cgroup/pids.o
+  CC      kernel/events/ring_buffer.o
+  CC      kernel/bpf/map_iter.o
+  CC      kernel/irq/spurious.o
+  CC      kernel/locking/rwsem.o
+  CC      kernel/cgroup/cpuset.o
+  CC      mm/mincore.o
+  CC      kernel/locking/percpu-rwsem.o
+  CC      kernel/irq/resend.o
+  CC      kernel/locking/spinlock.o
+  CC      kernel/locking/osq_lock.o
+  CC      kernel/events/callchain.o
+  CC      kernel/irq/chip.o
+  CC      mm/mlock.o
+  CC      kernel/bpf/task_iter.o
+  CC      kernel/locking/rtmutex.o
+  CC      kernel/events/hw_breakpoint.o
+  CC      kernel/locking/rwsem-xadd.o
+  CC      kernel/irq/dummychip.o
+  AR      kernel/cgroup/built-in.a
+  CC      mm/mmap.o
+  CC      kernel/power/qos.o
+  CC      kernel/bpf/prog_iter.o
+  CC      kernel/events/uprobes.o
+  CC      kernel/locking/qrwlock.o
+  AR      kernel/locking/built-in.a
+  CC      kernel/printk/printk.o
+  CC      kernel/irq/devres.o
+  CC      kernel/bpf/hashtab.o
+  CC      kernel/power/main.o
+  AR      kernel/events/built-in.a
+  CC      kernel/irq/autoprobe.o
+  CC      kernel/rcu/update.o
+  CC      mm/mmu_gather.o
+  CC      kernel/power/console.o
+  CC      kernel/rcu/sync.o
+  CC      kernel/printk/printk_safe.o
+  CC      kernel/irq/irqdomain.o
+  AR      kernel/printk/built-in.a
+  CC      kernel/sched/core.o
+  CC      mm/mprotect.o
+  CC      kernel/bpf/arraymap.o
+  CC      kernel/rcu/srcutree.o
+  CC      kernel/irq/proc.o
+  CC      kernel/power/process.o
+  CC      kernel/bpf/percpu_freelist.o
+  CC      mm/mremap.o
+  CC      kernel/bpf/bpf_lru_list.o
+  CC      kernel/bpf/lpm_trie.o
+  CC      kernel/rcu/tree.o
+  CC      kernel/irq/cpuhotplug.o
+  CC      mm/msync.o
+  CC      kernel/power/suspend.o
+  CC      kernel/irq/pm.o
+  CC      kernel/bpf/map_in_map.o
+  CC      kernel/sched/loadavg.o
+  CC      mm/page_vma_mapped.o
+  CC      kernel/power/wakelock.o
+  CC      kernel/bpf/local_storage.o
+  CC      kernel/irq/affinity.o
+  CC      kernel/rcu/rcu_segcblist.o
+  CC      kernel/sched/clock.o
+  AR      kernel/rcu/built-in.a
+  CC      kernel/power/poweroff.o
+  CC      mm/pagewalk.o
+  AR      kernel/irq/built-in.a
+  CC      mm/pgtable-generic.o
+  CC      kernel/time/time.o
+  CC      kernel/sched/cputime.o
+  CC      kernel/bpf/queue_stack_maps.o
+  CC      kernel/power/wakeup_reason.o
+  CC      mm/rmap.o
+  CC      kernel/time/timer.o
+  CC      kernel/bpf/ringbuf.o
+  AR      kernel/power/built-in.a
+  CC      kernel/sched/idle_task.o
+  CC      kernel/trace/trace_clock.o
+  CC      kernel/sched/fair.o
+  CC      mm/vmalloc.o
+  CC      kernel/trace/ring_buffer.o
+  CC      kernel/bpf/bpf_local_storage.o
+  CC      kernel/time/hrtimer.o
+  CC      kernel/time/timekeeping.o
+  CC      kernel/time/ntp.o
+  CC      mm/process_vm_access.o
+  CC      kernel/trace/trace.o
+  CC      kernel/freezer.o
+  CC      kernel/bpf/bpf_task_storage.o
+  CC      kernel/time/clocksource.o
+  CC      kernel/sched/rt.o
+  CC      mm/showmem.o
+  CC      kernel/profile.o
+  CC      kernel/time/jiffies.o
+  CC      mm/vmpressure.o
+  CC      kernel/bpf/disasm.o
+  CC      kernel/trace/trace_output.o
+  CC      kernel/sched/deadline.o
+  CC      kernel/time/timer_list.o
+  CC      kernel/stacktrace.o
+  CC      mm/init-mm.o
+  CC      kernel/bpf/trampoline.o
+  CC      kernel/time/timeconv.o
+  CC      kernel/futex.o
+  CC      mm/nobootmem.o
+  CC      kernel/trace/trace_seq.o
+  CC      kernel/sched/wait.o
+  CC      kernel/time/timecounter.o
+  CC      kernel/time/alarmtimer.o
+  CC      kernel/bpf/btf.o
+  CC      mm/fadvise.o
+  CC      kernel/trace/trace_stat.o
+  CC      kernel/sched/wait_bit.o
+  CC      kernel/time/posix-timers.o
+  CC      kernel/trace/trace_printk.o
+  CC      mm/madvise.o
+  CC      kernel/sched/swait.o
+  CC      kernel/time/posix-cpu-timers.o
+  CC      kernel/trace/trace_sched_switch.o
+  CC      kernel/sched/completion.o
+  CC      kernel/bpf/dispatcher.o
+  CC      kernel/time/posix-clock.o
+  CC      kernel/time/itimer.o
+  CC      kernel/sched/idle.o
+  CC      mm/memblock.o
+  CC      kernel/smp.o
+  CC      kernel/trace/trace_nop.o
+  CC      kernel/time/clockevents.o
+  CC      kernel/bpf/devmap.o
+  CC      mm/page_io.o
+  CC      kernel/sched/cpupri.o
+  CC      kernel/module.o
+  CC      kernel/time/tick-common.o
+  CC      kernel/trace/blktrace.o
+  CC      kernel/sched/cpudeadline.o
+  CC      kernel/bpf/cpumap.o
+  CC      mm/swap_state.o
+  CC      kernel/sched/topology.o
+  CC      kernel/time/tick-broadcast.o
+  CC      kernel/trace/trace_events.o
+  CC      mm/swapfile.o
+  CC      kernel/uid16.o
+  CC      kernel/sched/stop_task.o
+  CC      kernel/time/tick-broadcast-hrtimer.o
+  CC      kernel/bpf/offload.o
+  CC      kernel/time/sched_clock.o
+  CC      kernel/sched/sched_avg.o
+  CC      kernel/kallsyms.o
+  CC      kernel/trace/trace_export.o
+  CC      mm/swap_ratio.o
+  CC      kernel/time/tick-oneshot.o
+  CC      kernel/bpf/net_namespace.o
+  CC      kernel/time/tick-sched.o
+  CC      kernel/sched/energy.o
+  CC      kernel/sched/tune.o
+  CC      kernel/trace/trace_event_perf.o
+  CC      mm/dmapool.o
+  CC      kernel/compat.o
+  CC      kernel/sched/cpuacct.o
+  AR      kernel/time/built-in.a
+  CC      kernel/bpf/stackmap.o
+  CC      mm/sparse.o
+  CC      kernel/bpf/cgroup.o
+  CC      kernel/trace/trace_events_filter.o
+  CC      mm/sparse-vmemmap.o
+  CC      kernel/utsname.o
+  CC      kernel/sched/cpufreq.o
+  CC      kernel/bpf/reuseport_array.o
+  CC      kernel/bpf/bpf_struct_ops.o
+  CC      kernel/trace/trace_events_trigger.o
+  CC      mm/slub.o
+  CC      kernel/sched/cpufreq_schedutil.o
+  CC      kernel/user_namespace.o
+  CC      mm/migrate.o
+  CC      kernel/trace/bpf_trace.o
+  CC      kernel/sched/membarrier.o
+  AR      kernel/bpf/built-in.a
+  CC      kernel/trace/error_report-traces.o
+  CC      kernel/pid_namespace.o
+  CC      kernel/trace/power-traces.o
+  CC      mm/page_counter.o
+  CC      mm/memcontrol.o
+  CC      kernel/sched/psi.o
+  GZIP    kernel/config_data.gz
+  CC      kernel/trace/rpm-traces.o
+  CC      mm/page_isolation.o
+  CC      kernel/trace/trace_probe.o
+  CC      kernel/stop_machine.o
+  AR      kernel/sched/built-in.a
+  CC      kernel/audit.o
+  CC      mm/zsmalloc.o
+  CC      kernel/trace/trace_uprobe.o
+  CC      mm/early_ioremap.o
+  CC      kernel/auditfilter.o
+  CC      mm/cma.o
+  CC      mm/userfaultfd.o
+  CC      kernel/auditsc.o
+  CC      kernel/audit_watch.o
+  AR      kernel/trace/built-in.a
+  CC      mm/frame_vector.o
+  CC      kernel/audit_fsnotify.o
+  CC      mm/usercopy.o
+  CC      kernel/audit_tree.o
+  CC      kernel/seccomp.o
+  CC      kernel/utsname_sysctl.o
+  CC      kernel/taskstats.o
+  CC      kernel/tsacct.o
+  CC      kernel/tracepoint.o
+  AR      mm/built-in.a
+  CC      kernel/irq_work.o
+  CC      kernel/cpu_pm.o
+  CC      kernel/scs.o
+  CC      kernel/jump_label.o
+  CC      kernel/memremap.o
+  CHK     kernel/config_data.h
+  UPD     kernel/config_data.h
+  CC      kernel/configs.o
+  AR      kernel/built-in.a
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   5207 / 7172 (72.60%)
+  Hits:            1057 / 5207 (20.30%)
+    Direct:        1032 / 1057 (97.63%)
+    Preprocessed:    25 / 1057 ( 2.37%)
+  Misses:          4150 / 5207 (79.70%)
+Uncacheable calls: 1965 / 7172 (27.40%)
+Local storage:
+  Cache size (GB):  0.2 /  4.0 ( 4.99%)
+  Hits:            1057 / 5207 (20.30%)
+  Misses:          4150 / 5207 (79.70%)
+ Kernel build failed (make exit code 2)
