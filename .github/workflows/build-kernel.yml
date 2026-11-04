@@ -4,6 +4,12 @@
 #   * KernelSU-Next (manual hook) + SUSFS v2.3.0 are built in  -> artifact,
 #     job and zip names say KSUN, matching build.sh
 #     (Sixfaced-V5-KSUN-*.zip)
+#
+# bakasu branch only: builds on this branch additionally publish
+# Sixfaced-miatoll-BakaSU.zip as a NEW asset on the "latest" release.
+# The KSU and KSUN publishing path is untouched; BakaSU is only uploaded
+# when both of those assets are already present, and the upload can never
+# clobber them because its file name is distinct.
 #   * toolchain is Neutron Clang -> cached between runs and verified for
 #     Polly support *before* a multi-hour build starts, because
 #     CONFIG_LLVM_POLLY=y makes kbuild pass ~14 -mllvm -polly* flags
@@ -435,7 +441,7 @@ jobs:
       # asset and leaves the release title, notes, tag and any other asset
       # (e.g. the KSU variant) untouched.
       - name: Publish zip to the 'latest' release
-        if: success()
+        if: success() && github.ref != 'refs/heads/bakasu'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -446,6 +452,35 @@ jobs:
           ls -lh "$SRC" "$OUT"
           # the release must already exist - do NOT create or edit it here
           gh release view latest --json tagName -q '.tagName'
+          gh release upload latest "$OUT" --clobber
+          gh release view latest --json assets \
+            -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
+
+      # bakasu branch only. Adds a third, independently named asset to the same
+      # release. It runs only after verifying that both existing root-solution
+      # zips are already on the release, and --clobber can only replace an
+      # asset whose name matches, so KSU and KSUN are never touched.
+      - name: Publish BakaSU zip to the 'latest' release
+        if: success() && github.ref == 'refs/heads/bakasu'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mapfile -t ASSETS < <(gh release view latest --json assets -q '.assets[].name')
+          printf 'existing assets:\n'
+          printf '  %s\n' "${ASSETS[@]}"
+          for want in Sixfaced-miatoll-KSU.zip Sixfaced-miatoll-KSUN.zip; do
+            if printf '%s\n' "${ASSETS[@]}" | grep -qx "$want"; then
+              echo "  ok   $want is present"
+            else
+              echo "::error::latest release is missing $want; refusing to add BakaSU"
+              exit 1
+            fi
+          done
+          SRC=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
+          OUT="$RUNNER_TEMP/Sixfaced-miatoll-BakaSU.zip"
+          cp "$SRC" "$OUT"
+          ls -lh "$SRC" "$OUT"
           gh release upload latest "$OUT" --clobber
           gh release view latest --json assets \
             -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
