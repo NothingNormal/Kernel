@@ -277,9 +277,9 @@ static DEFINE_MUTEX(reboot_mutex);
  *
  * reboot doesn't sync: do that yourself before calling this.
  */
+
 #ifdef CONFIG_KSU_SUSFS
-extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
-				 void __user **arg);
+extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
 #endif
 
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
@@ -291,11 +291,17 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 
 #ifdef CONFIG_KSU_SUSFS
 	/*
-	 * KernelSU supercall channel. Runs before the magic checks below,
-	 * which would otherwise reject KSU_INSTALL_MAGIC1; ksud is root, and
-	 * the handler re-checks privileges per command.
+	 * LazyExec: a real reboot (LINUX_REBOOT_MAGIC1) never goes to KernelSU,
+	 * so the early return below can only swallow KernelSU's own supercalls.
 	 */
-	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
+	if (magic1 == LINUX_REBOOT_MAGIC1)
+		goto orig_flow;
+	ret = ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
+	if (ret) {
+		goto orig_flow;
+	}
+	return ret;
+orig_flow:
 #endif
 
 	/* We only trust the superuser with rebooting the system. */

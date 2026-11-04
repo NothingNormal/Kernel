@@ -4349,6 +4349,7 @@ int __access_remote_vm(struct task_struct *tsk, struct mm_struct *mm,
 	int write = gup_flags & FOLL_WRITE;
 
 	down_read(&mm->mmap_sem);
+
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 	vma = find_vma(mm, addr);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP

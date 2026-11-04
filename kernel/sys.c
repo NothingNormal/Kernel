@@ -1191,7 +1191,8 @@ static int override_release(char __user *release, size_t len)
 }
 
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-extern void susfs_spoof_uname(struct new_utsname *tmp);
+extern struct static_key_false susfs_is_uname_spoof_buffer_set;
+extern void susfs_spoof_uname(struct new_utsname* tmp);
 #endif
 
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
@@ -1200,7 +1201,11 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
-#ifndef CONFIG_FAKE_UNAME_NONE
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+	/* before the LazyExec BPF release spoof, so the bpf loaders keep seeing it */
+	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
+		susfs_spoof_uname(&tmp);
+#endif
 	if (!strncmp(current->comm, "bpfloader", 9) ||
 	    !strncmp(current->comm, "netbpfload", 10) ||
 	    !strncmp(current->comm, "netd", 4) ||
@@ -1226,11 +1231,6 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 				 current->comm, current->pid);
 		}
 	}
-#endif
-#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-	/* runs after the vendor fake-uname chain above, so SUSFS wins */
-	susfs_spoof_uname(&tmp);
-#endif
 	up_read(&uts_sem);
 	if (copy_to_user(name, &tmp, sizeof(tmp)))
 		return -EFAULT;

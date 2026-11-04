@@ -1768,12 +1768,14 @@ static int exec_binprm(struct linux_binprm *bprm)
 
 #ifdef CONFIG_KSU_SUSFS
 extern struct static_key_true ksu_su_compat_enabled;
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
-			       void *argv, void *envp, int *flags);
-extern int ksu_handle_post_execveat_sucompat(int *fd,
-					     struct filename **filename_ptr,
-					     void *argv, void *envp,
-					     int *flags, int *retval);
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+			void *envp, int *flags);
+extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
+				void *envp, int *flags);
+extern int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
+				void *envp, int *flags, int *retval);
 #endif
 
 static int __do_execve_file(int fd, struct filename *filename,
@@ -1787,7 +1789,7 @@ static int __do_execve_file(int fd, struct filename *filename,
 	int retval;
 #ifdef CONFIG_KSU_SUSFS
 	bool is_su_session = false;
-#endif
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
@@ -1797,15 +1799,13 @@ static int __do_execve_file(int fd, struct filename *filename,
 	if (!filename || likely(susfs_is_current_proc_no_su()))
 		goto orig_flow;
 
-	/*
-	 * No uid gate here, unlike faccessat/stat: ksu_handle_execveat() also
-	 * handles init executing ksud (escape to root) and adb root, where the
-	 * caller is not an allow-listed app uid at all.
-	 */
-	if (static_branch_likely(&ksu_su_compat_enabled))
-		is_su_session =
-			!ksu_handle_execveat(&fd, &filename, &argv, &envp,
-					     &flags);
+	if (static_branch_likely(&ksu_su_compat_enabled)) {
+		if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
+			is_su_session = !ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+		} else {
+			is_su_session = !ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
+		}
+	}
 
 orig_flow:
 #endif
@@ -1925,10 +1925,8 @@ orig_flow:
 	retval = exec_binprm(bprm);
 #ifdef CONFIG_KSU_SUSFS
 	if (unlikely(is_su_session))
-		(void)ksu_handle_post_execveat_sucompat(&fd, &filename, &argv,
-							&envp, &flags,
-							&retval);
-#endif
+		(void)ksu_handle_post_execveat_sucompat(&fd, &filename, &argv, &envp, &flags, &retval);
+#endif // #ifdef CONFIG_KSU_SUSFS
 	if (retval < 0)
 		goto out;
 

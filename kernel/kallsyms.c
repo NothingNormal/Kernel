@@ -23,6 +23,9 @@
 #include <linux/slab.h>
 #include <linux/filter.h>
 #include <linux/compiler.h>
+#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+#include <linux/susfs_def.h>
+#endif // #ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
 
 /*
  * These will be re-linked against their real values
@@ -592,10 +595,6 @@ static void s_stop(struct seq_file *m, void *p)
 {
 }
 
-#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-extern bool susfs_starts_with(const char *str, const char *prefix);
-#endif
-
 static int s_show(struct seq_file *m, void *p)
 {
 	struct kallsym_iter *iter = m->private;
@@ -615,57 +614,37 @@ static int s_show(struct seq_file *m, void *p)
 					tolower(iter->type);
 		seq_printf(m, "%pK %c %s\t[%s]\n", (void *)iter->value,
 			   type, iter->name, iter->module_name);
-	} else {
-#ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-		/* hide every symbol that would betray KernelSU/SUSFS presence */
+	} else
+#ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+		seq_printf(m, "%pK %c %s\n", (void *)iter->value,
+			   iter->type, iter->name);
+#else
+	{
 		if (susfs_starts_with(iter->name, "ksu_") ||
-		    susfs_starts_with(iter->name, "__ksu_") ||
-		    susfs_starts_with(iter->name, "susfs_") ||
-		    susfs_starts_with(iter->name, "ksud") ||
-		    susfs_starts_with(iter->name, "is_ksu_") ||
-		    susfs_starts_with(iter->name, "is_task_ksu_domain") ||
-		    susfs_starts_with(iter->name, "is_manager_") ||
-		    susfs_starts_with(iter->name, "escape_to_") ||
-		    susfs_starts_with(iter->name, "setup_selinux") ||
-		    susfs_starts_with(iter->name, "track_throne") ||
-		    susfs_starts_with(iter->name, "on_post_fs_data") ||
-		    susfs_starts_with(iter->name, "try_umount") ||
-		    susfs_starts_with(iter->name, "kernelsu") ||
-		    susfs_starts_with(iter->name, "__initcall__kmod_kernelsu") ||
-		    susfs_starts_with(iter->name, "apply_kernelsu") ||
-		    susfs_starts_with(iter->name, "handle_sepolicy") ||
-		    susfs_starts_with(iter->name, "getenforce") ||
-		    susfs_starts_with(iter->name, "setenforce") ||
-		    susfs_starts_with(iter->name, "is_zygote") ||
-		    /*
-		     * Remaining KSU globals that are compiled in (=y) and therefore
-		     * appear here by name even with kptr_restrict. None of these
-		     * collide with a non-KSU symbol (checked tree-wide).
-		     */
-		    susfs_starts_with(iter->name, "allowed_for_su") ||
-		    susfs_starts_with(iter->name, "always_allow") ||
-		    susfs_starts_with(iter->name, "only_manager") ||
-		    susfs_starts_with(iter->name, "only_root") ||
-		    susfs_starts_with(iter->name, "manager_or_root") ||
-		    susfs_starts_with(iter->name, "cache_sid") ||
-		    susfs_starts_with(iter->name, "is_adbd") ||
-		    susfs_starts_with(iter->name, "is_init") ||
-		    susfs_starts_with(iter->name, "setup_ksu_cred") ||
-		    susfs_starts_with(iter->name, "setup_groups") ||
-		    susfs_starts_with(iter->name, "setup_mount_ns") ||
-		    susfs_starts_with(iter->name, "search_manager") ||
-		    susfs_starts_with(iter->name, "scan_call_to") ||
-		    susfs_starts_with(iter->name, "get_pkg_from_apk_dir_path") ||
-		    susfs_starts_with(iter->name, "on_boot_completed") ||
-		    susfs_starts_with(iter->name, "on_module_mounted") ||
-		    susfs_starts_with(iter->name, "stop_execve_hook") ||
-		    susfs_starts_with(iter->name, "stop_init_rc_hook") ||
-		    susfs_starts_with(iter->name, "nuke_ext4_sysfs"))
+			susfs_starts_with(iter->name, "__ksu_") ||
+			susfs_starts_with(iter->name, "susfs_") ||
+			susfs_starts_with(iter->name, "ksud") ||
+			susfs_starts_with(iter->name, "is_ksu_") ||
+			susfs_starts_with(iter->name, "is_manager_") ||
+			susfs_starts_with(iter->name, "escape_to_") ||
+			susfs_starts_with(iter->name, "setup_selinux") ||
+			susfs_starts_with(iter->name, "track_throne") ||
+			susfs_starts_with(iter->name, "on_post_fs_data") ||
+			susfs_starts_with(iter->name, "try_umount") ||
+			susfs_starts_with(iter->name, "kernelsu") ||
+			susfs_starts_with(iter->name, "__initcall__kmod_kernelsu") ||
+			susfs_starts_with(iter->name, "apply_kernelsu") ||
+			susfs_starts_with(iter->name, "handle_sepolicy") ||
+			susfs_starts_with(iter->name, "getenforce") ||
+			susfs_starts_with(iter->name, "setenforce") ||
+			susfs_starts_with(iter->name, "is_zygote"))
+		{
 			return 0;
-#endif
+		}
 		seq_printf(m, "%pK %c %s\n", (void *)iter->value,
 			   iter->type, iter->name);
 	}
+#endif
 	return 0;
 }
 

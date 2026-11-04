@@ -31,7 +31,6 @@
 #include <linux/ima.h>
 #include <linux/dnotify.h>
 #include <linux/compat.h>
-
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs_def.h>
 #include <linux/jump_label.h>
@@ -362,8 +361,7 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 #ifdef CONFIG_KSU_SUSFS
 extern struct static_key_true ksu_su_compat_enabled;
 extern bool __ksu_is_allow_uid_for_current(uid_t uid);
-extern int ksu_handle_faccessat(int *dfd, struct filename **filename,
-				int *mode, int *__unused_flags);
+extern int ksu_handle_faccessat(int *dfd, struct filename **filename, int *mode, int *__unused_flags);
 #endif
 
 /*
@@ -439,14 +437,9 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 	}
 retry:
 #ifdef CONFIG_KSU_SUSFS
-	/*
-	 * BakaSU's sucompat hook rewrites fname->name in place, so it needs the
-	 * real struct filename instead of user_path_at()'s internal copy.
-	 */
 	fname = getname_flags(filename, lookup_flags, NULL);
 
-	/* let filename_lookup() report ERR_PTR(-EFAULT) and bad paths */
-	if (likely(susfs_is_current_proc_no_su()) || IS_ERR(fname))
+	if (likely(susfs_is_current_proc_no_su()))
 		goto orig_flow;
 
 	if (static_branch_likely(&ksu_su_compat_enabled)) {
@@ -455,8 +448,8 @@ retry:
 	}
 
 orig_flow:
-	/* filename_lookup() consumes fname and putname()s it itself */
 	res = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
+	// no putname(fname) here as filename_lookup() has it done for us already;
 #else
 	res = user_path_at(dfd, filename, lookup_flags, &path);
 #endif
@@ -1142,64 +1135,6 @@ struct file *filp_clone_open(struct file *oldfile)
 }
 EXPORT_SYMBOL(filp_clone_open);
 
-bool task_is_powerhal(struct task_struct *p);
-static bool libperfmgr_redirect(struct file **f, int dfd, struct filename *n,
-				struct open_flags *op, int flags)
-{
-	struct filename *redir_name;
-	struct file *redir_file;
-
-	/*
-	 * Check for a libperfmgr attempt to open a file that doesn't exist. The
-	 * open flags are checked to isolate file writes from FileNode::Update()
-	 * in libperfmgr specifically. This is done to avoid telling a different
-	 * part of libperfmgr that a file exists when it doesn't even exist on
-	 * the stock kernel.
-	 *
-	 * To identify FileNode::Update()'s open() attempts: O_WRONLY and
-	 * O_CLOEXEC must both be present, O_TRUNC is optional, and O_LARGEFILE
-	 * may be set at the beginning of the syscall so it's also optional.
-	 */
-#define REQUIRED_FLAGS (O_WRONLY | O_CLOEXEC)
-#define ALLOWED_FLAGS  (REQUIRED_FLAGS | O_TRUNC | O_LARGEFILE)
-	if (likely(*f != ERR_PTR(-ENOENT) ||
-	    (flags & REQUIRED_FLAGS) != REQUIRED_FLAGS ||
-	    flags & ~ALLOWED_FLAGS ||
-	    !task_is_powerhal(current)))
-		return false;
-#undef ALLOWED_FLAGS
-#undef REQUIRED_FLAGS
-
-	/*
-	 * Check that the file is a pseudo kernel file. tracefs and debugfs are
-	 * blocked since they're supposed to be ignored when they don't exist.
-	 */
-#define STARTS_WITH(prefix) !strncmp(n->name, prefix, sizeof(prefix) - 1)
-	if (!STARTS_WITH("/dev/") && !STARTS_WITH("/proc/") &&
-	    (!STARTS_WITH("/sys/") || STARTS_WITH("/sys/kernel/tracing/") ||
-	     STARTS_WITH("/sys/kernel/debug/")))
-		return false;
-#undef STARTS_WITH
-
-	/* Redirect the attempt to /dev/null instead */
-	redir_name = getname_kernel("/dev/null");
-	if (IS_ERR(redir_name))
-		return false;
-
-	redir_file = do_filp_open(dfd, redir_name, op);
-	putname(redir_name);
-	if (IS_ERR(redir_file))
-		return false;
-
-	*f = redir_file;
-	return true;
-}
-
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-#include <linux/susfs_def.h>
-extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
-#endif
-
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 {
 	struct open_flags op;
@@ -1213,72 +1148,10 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
-	{
-		static const char addon_path[] = "/system/addon.d";
-
-		if (unlikely(!strncmp(tmp->name, addon_path, strlen(addon_path)))) {
-			if (uid_gt(current_fsuid(), KUIDT_INIT(2000))) {
-				putname(tmp);
-				return -ENOENT;
-			}
-		}
-	}
-
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-	/*
-	 * Resolve just far enough to identify the inode, then swap in the
-	 * replacement name before opening anything. Redirecting after the open
-	 * (close + reopen) ran the real file's ->atomic_open()/->open() first,
-	 * so an O_TRUNC|O_CREAT request truncated, and a FIFO/device blocked on,
-	 * the hidden file before it was closed again.
-	 */
-	{
-		struct filename *lookup_filename;
-		struct path lookup_path;
-		int lookup_err;
-
-		lookup_filename = getname_kernel(tmp->name);
-		if (IS_ERR(lookup_filename)) {
-			putname(tmp);
-			return PTR_ERR(lookup_filename);
-		}
-		lookup_err = filename_lookup(dfd, lookup_filename, op.lookup_flags,
-					     &lookup_path, NULL);
-		if (!lookup_err) {
-			struct inode *inode = d_backing_inode(lookup_path.dentry);
-			struct filename *fake_filename = NULL;
-
-			if (inode && SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode))
-				fake_filename =
-					susfs_open_redirect_spoof_do_sys_openat(inode);
-			path_put(&lookup_path);
-			if (IS_ERR(fake_filename)) {
-				lookup_err = PTR_ERR(fake_filename);
-				putname(tmp);
-				return lookup_err;
-			}
-			if (fake_filename) {
-				putname(tmp);
-				tmp = fake_filename;
-			}
-		} else if (lookup_err != -ENOENT) {
-			/*
-			 * Only a missing file is allowed to continue (O_CREAT).
-			 * Anything else must not fall through and open the original
-			 * inode, which is the one we were asked to hide.
-			 */
-			putname(tmp);
-			return lookup_err;
-		}
-	}
-#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-
 	fd = get_unused_fd_flags(flags);
 	if (fd >= 0) {
-		struct file *f;
-
-		f = do_filp_open(dfd, tmp, &op);
-		if (IS_ERR(f) && !libperfmgr_redirect(&f, dfd, tmp, &op, flags)) {
+		struct file *f = do_filp_open(dfd, tmp, &op);
+		if (IS_ERR(f)) {
 			put_unused_fd(fd);
 			fd = PTR_ERR(f);
 		} else {

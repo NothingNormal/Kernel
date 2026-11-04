@@ -389,7 +389,6 @@ static void input_handle_event(struct input_dev *dev,
 	int disposition = input_get_disposition(dev, type, code, &value);
 
 #ifdef CONFIG_KSU_SUSFS
-	/* KernelSU volume-key boot gesture (safe mode / late-load trigger) */
 	if (static_branch_unlikely(&ksu_is_input_hook_enabled))
 		ksu_handle_input_handle_event(&type, &code, &value);
 #endif
@@ -448,6 +447,7 @@ static void input_handle_event(struct input_dev *dev,
  * to 'seed' initial state of a switch or initial position of absolute
  * axis, etc.
  */
+
 void input_event(struct input_dev *dev,
 		 unsigned int type, unsigned int code, int value)
 {

@@ -14,7 +14,7 @@
 #include <linux/proc_fs.h>
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs_def.h>
-#endif
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 #include "../mount.h"
 #include "internal.h"
@@ -23,7 +23,6 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
 extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id, unsigned long *out_target_ino, dev_t target_dev);
@@ -35,9 +34,6 @@ static int seq_show(struct seq_file *m, void *v)
 	int f_flags = 0, ret = -ENOENT;
 	struct file *file = NULL;
 	struct task_struct *task;
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	struct mount *mnt = NULL;
-#endif
 
 	task = get_proc_task(m->private);
 	if (!task)
@@ -69,10 +65,6 @@ static int seq_show(struct seq_file *m, void *v)
 		return ret;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	/* - SUS_KSTAT spoofs /proc/<pid>/fdinfo/<fd> (mnt_id + ino) for app-uid
-	 *   processes. It also covers what OPEN_REDIRECT used to spoof here, so a
-	 *   redirected path that must stay hidden should be added to SUS_KSTAT too.
-	 */
 	if (susfs_is_current_app_uid()) {
 		struct inode *inode = file_inode(file);
 		bool is_fuse = false;
@@ -80,64 +72,62 @@ static int seq_show(struct seq_file *m, void *v)
 			int mnt_id = real_mount(file->f_path.mnt)->mnt_id;
 			unsigned long ino = inode->i_ino;
 			susfs_sus_kstat_spoof_proc_fd_seq_show(&mnt_id, &ino, inode->i_sb->s_dev);
-			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
+			/* 4.14: stock fdinfo has no "ino:" line, so neither does the spoofed one */
+			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\n",
 					(long long)file->f_pos, f_flags,
-					mnt_id,
-					ino);
+					mnt_id);
 			goto bypass_orig_flow;
 		}
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	mnt = real_mount(file->f_path.mnt);
-	if (likely(susfs_is_current_proc_umounted()) &&
-				mnt->mnt_id >= DEFAULT_KSU_MNT_ID)
-	{
-		struct path path;
-		char *pathname = kmalloc(PAGE_SIZE, GFP_KERNEL);
-		char *dpath;
+	if (likely(susfs_is_current_proc_umounted())) {
+		struct mount *mnt = real_mount(file->f_path.mnt);
+		if (mnt->mnt_id >= DEFAULT_KSU_MNT_ID) {
+			struct path path;
+			char *pathname = kmalloc(PAGE_SIZE, GFP_KERNEL);
+			char *dpath;
 
-		if (!pathname) {
+			if (!pathname) {
+				goto orig_flow;
+			}
+			dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
+			if (!dpath) {
+				goto out_kfree;
+			}
+			if (kern_path(dpath, 0, &path)) {
+				goto out_kfree;
+			}
+			if (!d_backing_inode(path.dentry)) {
+				goto out_path_put;
+			}
+
+			/* 4.14: stock fdinfo has no "ino:" line, so neither does the spoofed one */
+			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\n",
+					(long long)file->f_pos, f_flags,
+					susfs_get_non_sus_mnt_id_from_mnt(mnt));
+			path_put(&path);
+			kfree(pathname);
+			goto bypass_orig_flow;
+out_path_put:
+			path_put(&path);
+out_kfree:
+			kfree(pathname);
 			goto orig_flow;
 		}
-		dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
-		if (!dpath) {
-			goto out_kfree;
-		}
-		if (kern_path(dpath, 0, &path)) {
-			goto out_kfree;
-		}
-		if (!path.dentry->d_inode) {
-			goto out_path_put;
-		}
-		seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-				(long long)file->f_pos, f_flags,
-				susfs_get_non_sus_mnt_id_from_mnt(mnt),
-				path.dentry->d_inode->i_ino);
-		path_put(&path);
-		kfree(pathname);
-		goto bypass_orig_flow;
-out_path_put:
-		path_put(&path);
-out_kfree:
-		kfree(pathname);
 	}
+
 orig_flow:
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
-#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
-	seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-			(long long)file->f_pos, f_flags,
-			real_mount(file->f_path.mnt)->mnt_id,
-			file_inode(file)->i_ino);
-bypass_orig_flow:
-#else
 	seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\n",
 		   (long long)file->f_pos, f_flags,
 		   real_mount(file->f_path.mnt)->mnt_id);
-#endif
 
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
+bypass_orig_flow:
+#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
 	show_fd_locks(m, file, files);
 	if (seq_has_overflowed(m))
 		goto out;
