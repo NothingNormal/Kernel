@@ -32,6 +32,11 @@
 #include <linux/dnotify.h>
 #include <linux/compat.h>
 
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#include <linux/jump_label.h>
+#endif
+
 #include "internal.h"
 
 int do_truncate2(struct vfsmount *mnt, struct dentry *dentry, loff_t length,
@@ -354,9 +359,11 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 	return error;
 }
 
-#ifdef CONFIG_KSU_MANUAL_HOOK
-extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
-				int *mode, int *flags);
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_su_compat_enabled;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
+extern int ksu_handle_faccessat(int *dfd, struct filename **filename,
+				int *mode, int *__unused_flags);
 #endif
 
 /*
@@ -373,8 +380,8 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 	struct vfsmount *mnt;
 	int res;
 	unsigned int lookup_flags = LOOKUP_FOLLOW;
-#ifdef CONFIG_KSU_MANUAL_HOOK
-	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
+#ifdef CONFIG_KSU_SUSFS
+	struct filename *fname = NULL;
 #endif
 
 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
@@ -431,7 +438,28 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 		}
 	}
 retry:
+#ifdef CONFIG_KSU_SUSFS
+	/*
+	 * BakaSU's sucompat hook rewrites fname->name in place, so it needs the
+	 * real struct filename instead of user_path_at()'s internal copy.
+	 */
+	fname = getname_flags(filename, lookup_flags, NULL);
+
+	/* let filename_lookup() report ERR_PTR(-EFAULT) and bad paths */
+	if (likely(susfs_is_current_proc_no_su()) || IS_ERR(fname))
+		goto orig_flow;
+
+	if (static_branch_likely(&ksu_su_compat_enabled)) {
+		if (unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
+			ksu_handle_faccessat(&dfd, &fname, &mode, NULL);
+	}
+
+orig_flow:
+	/* filename_lookup() consumes fname and putname()s it itself */
+	res = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
+#else
 	res = user_path_at(dfd, filename, lookup_flags, &path);
+#endif
 	if (res)
 		goto out;
 

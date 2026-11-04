@@ -136,3 +136,9 @@ Android.bp
 # Keep CI workflows tracked: the ".*" rule above ignores dotfiles
 #
 !.github/
+
+#
+# BakaSU driver checkout: drivers/kernelsu is a symlink to KernelSU/kernel,
+# and the clone is made by build.sh / CI, so it must never be committed.
+#
+/KernelSU/

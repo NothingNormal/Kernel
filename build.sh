@@ -152,6 +152,28 @@ echo "ccache enabled: $(ccache --version 2>/dev/null | head -1)"
 fi
 
 rm -rf AnyKernel
+
+# ---------------------------------------------------------------------------
+# BakaSU driver. drivers/kernelsu is a symlink to ../KernelSU/kernel, so the
+# driver source is not vendored in this tree. It is cloned here because
+# BakaSU's Kbuild derives KSU_VERSION from `git rev-list --count HEAD` and
+# errors out when ../.git is missing, so a plain copy or a shallow clone will
+# not do: --filter=blob:none keeps the full commit history without the blobs.
+# ---------------------------------------------------------------------------
+KSU_REPO="${KSU_REPO:-https://github.com/Baka-SU/BakaSU}"
+KSU_REF="${KSU_REF:-d5e9e025}"
+if [ ! -e KernelSU/.git ]; then
+    rm -rf KernelSU
+    git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }
+    git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out BakaSU $KSU_REF"; exit 1; }
+fi
+if [ ! -e drivers/kernelsu/Kbuild ]; then
+    echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2
+    echo "       Check this tree out on a filesystem with symlink support." >&2
+    exit 1
+fi
+echo "BakaSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
+
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig || { echo " Failed to generate .config"; exit 1; }
 # keep the caller PATH: only the toolchain dir needs to win, and hardcoding
 # /usr/bin:/bin ahead of $PATH silently hid a caller-supplied tool dir
@@ -199,7 +221,7 @@ echo -e " Kernel Compile Successful"
 cp -a AnyKernel3 AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
-zip -r9 Sixfaced-V5-KSUN-miatoll-${TANGGAL}.zip *
+zip -r9 Sixfaced-V5-BakaSU-miatoll-${TANGGAL}.zip *
 cd ../
 fi
 }
