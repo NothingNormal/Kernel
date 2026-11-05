@@ -87,7 +87,9 @@
 	((1UL << LZ4_MEMORY_USAGE) + \
 	 32) /* static size, for inter-version compatibility */
 
-#define LZ4_STREAMHCSIZE_SIZET (262192 / sizeof(size_t))
+#define LZ4_STREAMHCSIZE_SIZET (262200 / sizeof(size_t))
+#define LZ4_STREAMHC_MINSIZE 262200
+#define LZ4_STREAMHC_EXTSIZE (LZ4_STREAMHC_MINSIZE + 65584)
 
 /*! LZ4_stream_t :
  *  Never ever use below internal definitions directly !
@@ -119,19 +121,24 @@ typedef union {
 typedef struct {
 	unsigned int hashTable[LZ4HC_HASHTABLESIZE];
 	unsigned short chainTable[LZ4HC_MAXD];
-	/* next block to continue on current prefix */
+	/* next block here to continue on current prefix */
 	const unsigned char *end;
-	/* All index relative to this position */
-	const unsigned char *base;
-	/* alternate base for extDict */
-	const unsigned char *dictBase;
+	/* Indexes relative to this position */
+	const unsigned char *prefixStart;
+	/* alternate reference for extDict */
+	const unsigned char *dictStart;
 	/* below that point, need extDict */
 	unsigned int dictLimit;
-	/* below that point, no more dict */
+	/* below that point, no more history */
 	unsigned int lowLimit;
-	/* index from which to continue dict update */
+	/* index from which to continue dictionary update */
 	unsigned int nextToUpdate;
-	unsigned int compressionLevel;
+	short compressionLevel;
+	/* favor decompression speed if this flag set */
+	int8_t favorDecSpeed;
+	const void *dictCtx;
+	/* the state is followed by the temporary buffer of levels >= 10 */
+	int8_t hasWorkspace;
 } LZ4HC_CCtx_internal;
 typedef union {
 	size_t table[LZ4_STREAMHCSIZE_SIZET];
@@ -165,7 +172,7 @@ typedef union {
  *	SIZE OF STATE
  **************************************************************************/
 #define LZ4_MEM_COMPRESS sizeof(LZ4_stream_t)
-#define LZ4HC_MEM_COMPRESS LZ4_STREAMHCSIZE
+#define LZ4HC_MEM_COMPRESS LZ4_STREAMHC_EXTSIZE
 
 /*-************************************************************************
  *	Compression Functions
@@ -660,9 +667,5 @@ int LZ4_decompress_safe_continue(LZ4_streamDecode_t *LZ4_streamDecode,
  */
 //int LZ4_decompress_fast_usingDict(const char *source, char *dest,
 //	int originalSize, const char *dictStart, int dictSize);
-
-ssize_t LZ4_arm64_decompress_safe(const void *source, void *dest, size_t inputSize, size_t outputSize, bool dip);
-
-ssize_t LZ4_arm64_decompress_safe_partial(const void *source, void *dest, size_t inputSize, size_t outputSize, bool dip);
 
 #endif
