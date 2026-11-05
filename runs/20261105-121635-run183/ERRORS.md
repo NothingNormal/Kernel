@@ -1,17 +1,79 @@
-# Sixfaced CI - FAILED run #43
+# Sixfaced CI - FAILED run #183
 
-- run URL : https://github.com/rkmandilwar-rgb/Kernel/actions/runs/40094407084
-- ref     : refs/heads/arena/cd1940a2-kernel
-- commit  : ea3bce2ca5bc545dc39213b0ceddebcc9ba27f2f
-- date    : 2026-10-24 12:41:50 UTC
-- clang   : Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
+- run URL : https://github.com/NothingNormal/Kernel/actions/runs/42024878530
+- ref     : refs/heads/arena/0fc62de9-kernel
+- commit  : 8347b299bae39edb173db8724f67829ee4aa68a9
+- date    : 2026-11-05 12:16:35 UTC
+- clang   : Ubuntu clang version 21.1.8 (6ubuntu1)
 
 ## Extracted errors (last 300 matches)
 ```
+1651:../lib/lz4/lz4_compress.c:354:27: error: a function declaration without a prototype is deprecated in all versions of C [-Werror,-Wstrict-prototypes]
+1657:../lib/lz4/lz4_compress.c:354:27: error: conflicting types for 'get_current'
+1664:../lib/lz4/lz4_compress.c:354:27: error: illegal initializer (only variables can be initialized)
+1670:../lib/lz4/lz4_compress.c:575:23: error: a function declaration without a prototype is deprecated in all versions of C [-Werror,-Wstrict-prototypes]
+1676:../lib/lz4/lz4_compress.c:575:23: error: conflicting types for 'get_current'
+1683:../lib/lz4/lz4_compress.c:575:23: error: illegal initializer (only variables can be initialized)
+1689:../lib/lz4/lz4_compress.c:673:1: error: use of undeclared identifier 'noinline'; did you mean 'inline'?
+1699:make[3]: *** [../scripts/Makefile.build:364: lib/lz4/lz4_compress.o] Error 1
+1700:make[2]: *** [../scripts/Makefile.build:667: lib/lz4] Error 2
+1713:make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1286: lib] Error 2
+4601:make: *** [Makefile:151: sub-make] Error 2
 ```
 
 ## Tail of build log (last 250 lines)
 ```
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/init_deinit/src/init_cmd_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/init_deinit/src/init_deinit_lmac.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/init_deinit/src/init_event_handler.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/init_deinit/src/service_ready_util.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/mlme/vdev_mgr/src/target_if_vdev_mgr_tx_ops.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/mlme/vdev_mgr/src/target_if_vdev_mgr_rx_ops.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/mlme/psoc/src/target_if_psoc_timer_tx_ops.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/mlme/psoc/src/target_if_psoc_wake_lock.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/crypto/src/target_if_crypto.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_arp.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_gtk.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_hw_filter.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_lphb.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_main.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_mc_addr_filtering.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_static_config.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_suspend_resume.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_wow.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_ns.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/pmo/src/target_if_pmo_pkt_filter.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/disa/src/target_if_disa.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/blacklist_mgr/src/target_if_blm.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/ipa/src/target_if_ipa.o
+  CC      drivers/staging/qcacld-3.0/components/target_if/action_oui/src/target_if_action_oui.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/global_lmac_if/src/wlan_global_lmac_if.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_tx.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_t2h.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_h2t.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_fw_stats.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_rx.o
+  CC      drivers/staging/qcacld-3.0/core/dp/htt/htt_rx_ll.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/misc/dfs.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/misc/dfs_cac.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/misc/dfs_nol.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/misc/dfs_random_chan_sel.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/misc/dfs_process_radar_found_ind.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_init_deinit_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_lmac_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_mlme_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_tgt_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_ucfg_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/dispatcher/src/wlan_dfs_utils_api.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/dfs/src/target_if_dfs.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/target_if/dfs/src/target_if_dfs_partial_offload.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_fcc_bin5.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_bindetects.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_init.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_misc.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_phyerr_tlv.o
+  CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_process_phyerr.o
   CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_process_radarevent.o
   CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_staggered.o
   CC      drivers/staging/qcacld-3.0/../qca-wifi-host-cmn/umac/dfs/core/src/filtering/dfs_radar.o
@@ -199,104 +261,16 @@
   AR      drivers/staging/qcacld-3.0/built-in.a
   AR      drivers/staging/built-in.a
   AR      drivers/built-in.a
-  GEN     .version
-  CHK     include/generated/compile.h
-  UPD     include/generated/compile.h
-  CC      init/version.o
-  AR      init/built-in.a
-  AR      built-in.a
-  LTO     vmlinux.o
-  MODPOST vmlinux.o
-  KSYM    .tmp_kallsyms1.o
-  KSYM    .tmp_kallsyms2.o
-  LD      vmlinux
-  SORTEX  vmlinux
-  SYSMAP  System.map
-  OBJCOPY arch/arm64/boot/Image
-  Building modules, stage 2.
-  LD [M]  net/ipv4/tcp_bic.lto.o
-  LD [M]  net/ipv4/tcp_htcp.lto.o
-  MODPOST 2 modules
-  CC      net/ipv4/tcp_bic.mod.o
-  CC      net/ipv4/tcp_htcp.mod.o
-  GZIP    arch/arm64/boot/Image.gz
-  LD [M]  net/ipv4/tcp_bic.ko
-  LD [M]  net/ipv4/tcp_htcp.ko
-Cacheable calls:   43459 / 50433 (86.17%)
-  Hits:            29512 / 43459 (67.91%)
-    Direct:        25277 / 29512 (85.65%)
-    Preprocessed:   4235 / 29512 (14.35%)
-  Misses:          13947 / 43459 (32.09%)
-Uncacheable calls:  6974 / 50433 (13.83%)
+make: *** [Makefile:151: sub-make] Error 2
+Cacheable calls:   3780 / 4349 (86.92%)
+  Hits:            3772 / 3780 (99.79%)
+    Direct:         240 / 3772 ( 6.36%)
+    Preprocessed:  3532 / 3772 (93.64%)
+  Misses:             8 / 3780 ( 0.21%)
+Uncacheable calls:  569 / 4349 (13.08%)
 Local storage:
-  Cache size (GB):   0.5 /   4.0 (12.28%)
-  Hits:            29512 / 43459 (67.91%)
-  Misses:          13947 / 43459 (32.09%)
- Kernel Compile Successful
-  adding: Image.gz (deflated 1%)
-  adding: LICENSE (deflated 73%)
-  adding: META-INF/ (stored 0%)
-  adding: META-INF/com/ (stored 0%)
-  adding: META-INF/com/google/ (stored 0%)
-  adding: META-INF/com/google/android/ (stored 0%)
-  adding: META-INF/com/google/android/update-binary (deflated 73%)
-  adding: META-INF/com/google/android/updater-script (deflated 1%)
-  adding: README.md (deflated 60%)
-  adding: anykernel.sh (deflated 51%)
-  adding: banner (deflated 53%)
-  adding: modules/ (stored 0%)
-  adding: modules/system/ (stored 0%)
-  adding: modules/system/lib/ (stored 0%)
-  adding: modules/system/lib/modules/ (stored 0%)
-  adding: modules/system/lib/modules/placeholder (stored 0%)
-  adding: patch/ (stored 0%)
-  adding: patch/placeholder (stored 0%)
-  adding: ramdisk/ (stored 0%)
-  adding: ramdisk/placeholder (stored 0%)
-  adding: tools/ (stored 0%)
-  adding: tools/magiskpolicy (deflated 41%)
-  adding: tools/httools_static (deflated 38%)
-  adding: tools/lptools_static (deflated 38%)
-  adding: tools/fec (deflated 40%)
-  adding: tools/ak3-core.sh (deflated 75%)
-  adding: tools/busybox (deflated 39%)
-  adding: tools/magiskboot (deflated 32%)
-  adding: tools/snapshotupdater_static (deflated 43%)
-```
-
-## SUSFS verification output
-```
--- kernel config
-CONFIG_KSU=y
-CONFIG_KSU_MANUAL_HOOK=y
-CONFIG_KSU_SUSFS=y
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-CONFIG_KSU_SUSFS_ENABLE_LOG=y
-CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-CONFIG_KSU_SUSFS_SUS_MAP=y
--- build outputs
--rwxr-xr-x 1 runner runner 45283352 Oct 24 12:41 out/arch/arm64/boot/Image
--rw-r--r-- 1 runner runner 18519028 Oct 24 12:41 out/arch/arm64/boot/Image.gz
--rwxr-xr-x 1 runner runner 54477664 Oct 24 12:41 out/vmlinux
-  ok   CONFIG_KSU=y
-  ok   CONFIG_KSU_MANUAL_HOOK=y
-  ok   CONFIG_KSU_SUSFS=y
-  ok   CONFIG_KSU_SUSFS_SUS_PATH=y
-  ok   CONFIG_KSU_SUSFS_SUS_MOUNT=y
-  ok   CONFIG_KSU_SUSFS_SUS_KSTAT=y
-  ok   CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-  ok   CONFIG_KSU_SUSFS_SUS_MAP=y
-::error::CONFIG_KSU_SUSFS_SUS_MEMFD is not enabled in out/.config
-  ok   fs/susfs.o compiled
-  grepping out/vmlinux (54477664 bytes)
-  ok   image contains 'susfs_init'
-  ok   image contains 'susfs_open_redirect'
-  ok   image contains 'susfs_add_sus_path'
-  ok   image contains 'susfs_spoof_uname'
-  ok   image contains 'ksu_handle_execveat'
+  Cache size (GB):  0.9 /  8.0 (10.77%)
+  Hits:            3772 / 3780 (99.79%)
+  Misses:             8 / 3780 ( 0.21%)
+ Kernel build failed (make exit code 2)
 ```
