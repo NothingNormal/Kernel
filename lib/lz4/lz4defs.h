@@ -51,7 +51,7 @@
 
 #define FORCE_INLINE __always_inline
 #define LZ4_FORCE_INLINE static __always_inline
-#define LZ4_FORCE_NOINLINE static __attribute__((noinline))
+#define LZ4_FORCE_NOINLINE static __attribute__((__noinline__))
 #define LZ4_FORCE_O2
 #define LZ4_ALIGN_TEST 0
 
