@@ -990,3 +990,8 @@ CONFIG_BPF_JIT_DEFAULT_ON=y
 # ---------------------------------------------------------------------------
 CONFIG_BPF_STREAM_PARSER=y
 # CONFIG_BPF_UNPRIV_DEFAULT_OFF is not set
+
+# LZ4 v1.11.0 HC crypto backend and fgetpriority syscall filter
+CONFIG_CRYPTO_LZ4=y
+CONFIG_CRYPTO_LZ4HC=y
+CONFIG_FGETPRIORITY=y
