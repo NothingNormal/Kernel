@@ -116,7 +116,7 @@ CONFIG_SETEND_EMULATION=y
 CONFIG_ARM64_SW_TTBR0_PAN=y
 # CONFIG_ARM64_VHE is not set
 CONFIG_RANDOMIZE_BASE=y
-CONFIG_CMDLINE="cgroup_disable=pressure rcupdate.rcu_normal_after_boot=1"
+CONFIG_CMDLINE="cgroup_disable=pressure"
 CONFIG_CMDLINE_EXTEND=y
 # CONFIG_EFI is not set
 CONFIG_KRYO_PMU_WORKAROUND=y
@@ -1020,4 +1020,4 @@ CONFIG_BPF_STREAM_PARSER=y
 # LZ4 v1.11.0 HC crypto backend and fgetpriority syscall filter
 CONFIG_CRYPTO_LZ4=y
 CONFIG_CRYPTO_LZ4HC=y
-CONFIG_FGETPRIORITY=y
+# CONFIG_FGETPRIORITY is not set
