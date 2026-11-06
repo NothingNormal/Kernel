@@ -72,7 +72,7 @@ scan:
 	if (!patched  && (offset < (-0x80000000LL + __builtin_labs(scan_depth)) || offset > (0x7fffffffLL - __builtin_labs(scan_depth))))
 		return -ERANGE;
 
-	pr_info("tgt 0x%lx to new_page: 0x%lx in range! delta: %ld bytes\n", tgt, (uintptr_t)new_page, offset);
+	pr_info("tgt 0x%lx to new_page: 0x%lx in range! (delta: %ld bytes)\n", tgt, (uintptr_t)new_page, offset);
 
 	uint32_t new_insn = aarch64_insn_adrp_set_offset(raw_insn, (int32_t)offset);
 
@@ -80,7 +80,7 @@ scan:
 
 	void *arr_addr[] = { (void *)insn_p };
 	uint32_t arr_insn[] = { new_insn };
-
+	
 	int res = aarch64_insn_patch_text(arr_addr, arr_insn, 1);
 	pr_info("%s: patched insn! ret: %d\n", __func__, res);
 	if (!res)
@@ -93,7 +93,7 @@ increment:
 bail:
 	if (!patched) {
 		pr_info("%s: insn not found!\n", __func__);
-		return -ENOENT;
+		return -ENOENT;	
 	}
 
 	pr_info("target_table: 0x%lx mirror_table: 0x%lx patch_count: %u \n", *target_table, (uintptr_t)new_table, patched);
@@ -172,7 +172,9 @@ static void try_mirror_syscall_table(void)
 #endif
 }
 
-#else
+#else 
 
 #define try_mirror_syscall_table()	do { } while(0)
 #endif
+
+

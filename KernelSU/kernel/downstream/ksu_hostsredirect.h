@@ -56,7 +56,7 @@ static __always_inline void ksu_hosts_file_redirect(const char __user *filename,
 		return;
 #else
 	char cbuf[16];
-	if (copy_from_user_retry(cbuf, (void __user *)fn_p, 16))
+	if (!!copy_from_user(cbuf, (void __user *)fn_p, 16))
 		return;
 
 	if (!!memcmp_inline(cbuf, hf, 16))

@@ -32,7 +32,7 @@ static inline void patch_ptr_slot_kick_cpu(void **target_slot, void *new_ptr)
 	kick_all_cpus_sync();
 }
 
-nodiscard static noinline int ksu_write_to_readonly_slot(uintptr_t slot_ptr, uintptr_t new_ptr)
+nodiscard static int patch_ro_slot_vmap(uintptr_t slot_ptr, uintptr_t new_ptr)
 {
 	if (!slot_ptr || !new_ptr)
 		return -EINVAL;
@@ -67,6 +67,28 @@ nodiscard static noinline int ksu_write_to_readonly_slot(uintptr_t slot_ptr, uin
 	return 0;
 }
 
+nodiscard static noinline int patch_ro_slot(uintptr_t slot_ptr, uintptr_t new_ptr)
+{
+	if (!slot_ptr || !new_ptr)
+		return -EINVAL;
+
+	assume_dereferenceable((void *)slot_ptr, sizeof(uintptr_t));
+	if (!copy_to_kernel_nofault((void *)slot_ptr, &new_ptr, sizeof(uintptr_t)) && *(volatile uintptr_t *)slot_ptr == new_ptr) {
+		kick_all_cpus_sync();
+		return 0;
+	}
+
+	return patch_ro_slot_vmap(slot_ptr, new_ptr);
+}
+
+#if 0 // check that the pointer points inside kernel text
+#define __is_kernel_text(addr) ({					\
+	extern char _stext[], _etext[];					\
+	!!(addr >= (uintptr_t)_stext && addr < (uintptr_t)_etext);	\
+})
+#define is_kernel_text(addr)	__is_kernel_text((uintptr_t)addr)
+#endif
+
 // WARNING!!! void * abuse ahead! (type-punning, pointer-hiding!)
 // for 4.19+ storage_ptr is actually syscall_fn_t *, which is just long * so we can consider this void **
 // for 4.19- storage_ptr is actually void **
@@ -80,24 +102,21 @@ static noinline void read_and_replace_syscall(void *storage_ptr, unsigned long s
 	if (!slot || !sc_addr)
 		return;
 
-	// check that the pointer points inside kernel text
 	extern char _stext[], _etext[];
-	if (!(sc_addr > (uintptr_t)_stext && sc_addr < (uintptr_t)_etext)) {
+	if (!(sc_addr >= (uintptr_t)_stext && sc_addr < (uintptr_t)_etext)) {
 		pr_info("%s: syscall #%d at 0x%lx NOT pointing to kernel text!\n", __func__, syscall_nr, sc_addr);
 		return;
 	}
 
 	// save address to storage for restoration
-	*(void **)storage_ptr = (void *)sc_addr;
+	*(volatile void **)storage_ptr = (void *)sc_addr;
 
 	pr_info("%s: hooking syscall: #%d slot: 0x%lx addr: 0x%lx\n", __func__, syscall_nr, (uintptr_t)slot, (uintptr_t)sc_addr);
 
-	if (syscall_table_is_mirrored)
-		patch_ptr_slot_kick_cpu((void **)slot, (void *)hook_fnptr);
-	else
-		(void)ksu_write_to_readonly_slot((uintptr_t)slot, (uintptr_t)hook_fnptr);
+	int ret = patch_ro_slot((uintptr_t)slot, (uintptr_t)hook_fnptr);
+	if (ret)
+		pr_info("patch_ro_slot: *(uintptr_t *)0x%lx = 0x%lx; ret: %d\n", slot, hook_fnptr, ret);
 
-	smp_mb();
 	return;
 }
 
@@ -135,14 +154,12 @@ static noinline void restore_syscall(void *storage_ptr, unsigned long syscall_nr
 
 	pr_info("%s: syscall is ours! sc_addr: 0x%lx hook_fnptr: 0x%lx\n", __func__, (uintptr_t)sc_addr, (uintptr_t)hook_fnptr);
 
-	if (syscall_table_is_mirrored)
-		patch_ptr_slot_kick_cpu((void **)slot, *(void **)storage_ptr);
-	else
-		(void)ksu_write_to_readonly_slot((uintptr_t)slot, (uintptr_t)*(void **)storage_ptr);
+	int ret = patch_ro_slot((uintptr_t)slot, (uintptr_t)*(void **)storage_ptr);
+	if (ret)
+		pr_info("patch_ro_slot: *(uintptr_t *)0x%lx = 0x%lx; ret: %d\n", slot, (uintptr_t)*(void **)storage_ptr, ret);
 
 	// reset storage variable
-	*(void **)storage_ptr = nullptr;
-	smp_mb();
+	*(volatile void **)storage_ptr = nullptr;
 	return;
 }
 

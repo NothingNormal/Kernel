@@ -2,11 +2,11 @@ KernelSU (kernel-side driver) — vendored snapshot
 
   source   : https://github.com/backslashxx/KernelSU
   branch   : master
-  commit   : release tag v3.3.1+36, cbc0b49908066e9c7f778737f65a216f50b203ba
+  commit   : release tag v3.3.1-36, 8ec1642926bdcb4a2b8e98065337e0956952f102
              (master is periodically rebased; use the release snapshot for
              content comparisons)
   upstream commit date : 2026-08-17 (author date; master is periodically rebased)
-  release published    : 2026-11-02 (v3.3.1+36)
+  release published    : 2026-11-05 (v3.3.1-36)
   vendored on          : 2026-10-22 (709711bd)
   synced               : 2026-10-24 (preinit downstream rework d56bb8e7c-era),
                           2026-10-24 (v3.3.1+23: kallsyms '$' suffix handling,
@@ -82,10 +82,22 @@ KernelSU (kernel-side driver) — vendored snapshot
                           routing, kallsyms resolver and lock fixes, SELinux
                           policy-generation-aware AVC reset, and the
                           kernel-compat NUL-copy correction. Retained the local
-                          4.14 SELinux/SuSFS and file-wrapper integration.)
+                          4.14 SELinux/SuSFS and file-wrapper integration.),
+                          2026-11-05 (v3.3.1-36, tag commit
+                          8ec1642926bdcb4a2b8e98065337e0956952f102): re-released
+                          v3.3.1+36 with fixes; KSU_VERSION stays 32716 and
+                          UAPI stays 6. Synced the 14 changed kernel files:
+                          absolute arm64 branch delta check; patch_ro_slot()
+                          fast path via copy_to_kernel_nofault(); kallsyms
+                          compat resolver fallback via sprint_symbol();
+                          copy_from_user retry consolidation; syscall mirror
+                          delta logging; SELinux/LSM readonly-slot updates;
+                          regenerated preinit runner payload (nullptr).
+                          uapi/ is unchanged. Retained all local 4.14
+                          SELinux/SuSFS and file-wrapper integration.)
 
   driver version       : KSU_VERSION=32716, KERNEL_SU_UAPI_VERSION=6 —
-                          matches upstream v3.3.1+36. Its manager APK is
+                          matches upstream v3.3.1-36. Its manager APK is
                           versionCode 32716 and uses UAPI 6; the APK and driver
                           version numbers are separate release values.
 

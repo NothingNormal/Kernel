@@ -103,8 +103,51 @@ size_is_sufficient:
 __weak int sprint_symbol_no_offset(char *buffer, unsigned long address) { return sprint_symbol(buffer, address); }
 #endif
 
-#ifdef MODULE // https://elixir.bootlin.com/linux/v7.2-rc4/source/kernel/kprobes.c#L1506
-static __nocfi int ksu_kallsyms_lookup_size_offset(uintptr_t symaddr, unsigned long *sym_size, unsigned long *offset)
+#ifdef MODULE
+/**
+ *  kallsyms_lookup_size_offset from sprint_symbol actually
+ */
+static int compat_kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize, unsigned long *offset)
+{
+	char buf[KSYM_SYMBOL_LEN];
+	unsigned long u_sz;
+	unsigned long u_off;
+
+	if (!addr || !symbolsize || !offset)
+		return 0;
+
+	if (!(sprint_symbol(buf, addr) > 0))
+		return 0;		
+	
+//	pr_info("symbol is: %s \n", buf);
+
+	char *c_sz = strchr(buf, '/');
+	if (!c_sz)
+		return 0;		
+
+	if (kstrtoul(c_sz + 1, 0, &u_sz))
+		return 0;		
+
+	// null '/', strtok called back.
+	c_sz[0] = 0;
+
+	char *c_off = strchr(buf, '+');
+	if (!c_off)
+		return 0;	
+
+	if (kstrtoul(c_off + 1, 0, &u_off))
+		return 0;		
+
+//	pr_info("symbol_size: %zu \n", u_sz);
+//	pr_info("symbol_offset: %zu \n", u_off);
+
+	*symbolsize = u_sz;
+	*offset = u_off;
+	return 1; // ret 1 for success
+}
+
+// https://elixir.bootlin.com/linux/v7.2-rc4/source/kernel/kprobes.c#L1506
+static __nocfi int ksu_kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize, unsigned long *offset)
 {
 	static typeof(ksu_kallsyms_lookup_size_offset) *fn = nullptr;
 	static bool initialized = false;
@@ -115,11 +158,9 @@ static __nocfi int ksu_kallsyms_lookup_size_offset(uintptr_t symaddr, unsigned l
 	}
 
 	if (fn)
-		return fn(symaddr, sym_size, offset);
+		return fn(addr, symbolsize, offset);
 
-	*sym_size = 0;
-	*offset = 0;
-	return 0;
+	return compat_kallsyms_lookup_size_offset(addr, symbolsize, offset);
 }
 #define kallsyms_lookup_size_offset ksu_kallsyms_lookup_size_offset
 #endif
@@ -175,11 +216,11 @@ scan_start:
 	// .llvm.505034 or .lto_priv.0
 	char *dot_ptr = strchr(symbol_buf, '.');
 	if (dot_ptr)
-		dot_ptr[0] = '\0';
+		dot_ptr[0] = 0;
 
 	char *dollar_ptr = strchr(symbol_buf, '$');
 	if (dollar_ptr)
-		dollar_ptr[0] = '\0';
+		dollar_ptr[0] = 0;
 
 	if (!dot_ptr && !dollar_ptr)
 		goto step_up;
@@ -415,9 +456,10 @@ static noinline size_t ksu_get_ksym_size(uintptr_t symbol_addr, size_t retfail)
 	unsigned long offset = 0;
 	unsigned long symbolsize = 0;
 
-	kallsyms_lookup_size_offset(symbol_addr, &symbolsize, &offset);
-
 	// means lookup failed, just return retfail
+	if (!kallsyms_lookup_size_offset(symbol_addr, &symbolsize, &offset))
+		return retfail;		
+
 	if (!symbolsize && !offset)
 		return retfail;
 
