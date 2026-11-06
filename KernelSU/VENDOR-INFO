@@ -121,6 +121,17 @@ KernelSU (kernel-side driver) — vendored snapshot
 - fs/susfs.c + include/linux/susfs{,_def}.h: SuSFS v2.3.0 ported from
   crDroid xiaomi sm8150 (branch 16.0, susfs4ksu-next line) -- the only
   live 4.14-class reference carrying v2.3.0 with backslashxx-style KSU.
+- 2026-11-06: added Simonpunk GKI priority-UID filtering (reference tip
+  c7f670f57b7d; Android 15/6.6) with 4.14-specific integration in
+  kernel/sys.c, block/ioprio.c, and the local packages.list observer. The
+  resolver uses O_NOATIME and the filter is refreshed after PackageManager
+  replaces packages.list. Added SELinux type/AV-rule tracking for KSU policy
+  edits and applied the saved decisions only to app-facing
+  /sys/fs/selinux/access queries when KernelSU selinux_hide is enabled; this
+  deliberately does not alter SELinux enforcement decisions.
+- Command ABI: 0x60030 is now SET_PRIORITY_UID_FILTER; the local optional
+  SUS_MEMFD extension moved from 0x60030 to 0x60040 to avoid the upstream
+  command collision.
 - 18 kernel hook sites wired (namei, readdir, open, namespace, statfs,
   stat, super, proc/{base,cmdline,fd,task_mmu}, proc_namespace, shmem,
   memory, kallsyms, sys, avc) adapted to CAF/MSM 4.14.357 divergences

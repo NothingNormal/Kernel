@@ -31,6 +31,15 @@
 #include <linux/uaccess.h>
 #include <linux/kobject.h>
 #include <linux/ctype.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/cred.h>
+struct av_decision;
+extern bool ksu_is_selinux_hide_enabled(void);
+extern int susfs_security_context_str_to_sid(const char *scontext, u32 *sid,
+					     gfp_t gfp);
+extern void susfs_security_compute_av_user(u32 ssid, u32 tsid, u16 tclass,
+					   struct av_decision *avd);
+#endif
 
 /* selinuxfs pseudo filesystem for exporting the security policy API.
    Based on the proc code and the fs/nfsd/nfsctl.c code. */
@@ -834,6 +843,10 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 	u16 tclass;
 	struct av_decision avd;
 	ssize_t length;
+#ifdef CONFIG_KSU_SUSFS
+	bool hide_susfs_policy = current_uid().val >= 10000 &&
+				 ksu_is_selinux_hide_enabled();
+#endif
 
 	length = avc_has_perm(&selinux_state,
 			      current_sid(), SECINITSID_SECURITY,
@@ -855,15 +868,30 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 	if (sscanf(buf, "%s %s %hu", scon, tcon, &tclass) != 3)
 		goto out;
 
-	length = security_context_str_to_sid(state, scon, &ssid, GFP_KERNEL);
+#ifdef CONFIG_KSU_SUSFS
+	if (hide_susfs_policy)
+		length = susfs_security_context_str_to_sid(scon, &ssid, GFP_KERNEL);
+	else
+#endif
+		length = security_context_str_to_sid(state, scon, &ssid, GFP_KERNEL);
 	if (length)
 		goto out;
 
-	length = security_context_str_to_sid(state, tcon, &tsid, GFP_KERNEL);
+#ifdef CONFIG_KSU_SUSFS
+	if (hide_susfs_policy)
+		length = susfs_security_context_str_to_sid(tcon, &tsid, GFP_KERNEL);
+	else
+#endif
+		length = security_context_str_to_sid(state, tcon, &tsid, GFP_KERNEL);
 	if (length)
 		goto out;
 
-	security_compute_av_user(state, ssid, tsid, tclass, &avd);
+#ifdef CONFIG_KSU_SUSFS
+	if (hide_susfs_policy)
+		susfs_security_compute_av_user(ssid, tsid, tclass, &avd);
+	else
+#endif
+		security_compute_av_user(state, ssid, tsid, tclass, &avd);
 
 	length = scnprintf(buf, SIMPLE_TRANSACTION_LIMIT,
 			  "%x %x %x %x %u %x",

@@ -36,7 +36,7 @@ static bool ksu_selinux_hide_enabled __read_mostly = true;
 // selinux_setprocattr handler
 static __always_inline int ksu_hide_setprocattr_inline(const char *name, void *value, size_t size)
 {
-	if (unlikely(!ksu_selinux_hide_enabled))
+	if (unlikely(!READ_ONCE(ksu_selinux_hide_enabled)))
 		return 0;
 
 	// only hook when seccomp is enabled
@@ -81,7 +81,7 @@ static __always_inline int ksu_hide_setprocattr_inline(const char *name, void *v
 static ssize_t (*selinux_transaction_write_fn)(struct file *file, const char __user *buf, size_t size, loff_t *pos) __read_mostly = nullptr;
 static __nocfi ssize_t ksu_selinux_transaction_write(struct file *file, const char __user *buf, size_t size, loff_t *pos)
 {
-	if (unlikely(!ksu_selinux_hide_enabled))
+	if (unlikely(!READ_ONCE(ksu_selinux_hide_enabled)))
 		goto skip_destroy;
 
 	if (!ksu_is_seccomp_enabled())
@@ -216,7 +216,7 @@ static int ksu_prepare_fake_status_page()
 static int (*sel_open_handle_status_fn)(struct inode *inode, struct file *filp) __read_mostly = nullptr;
 static __nocfi int ksu_sel_open_handle_status(struct inode *inode, struct file *filp)
 {
-	if (unlikely(!ksu_selinux_hide_enabled))
+	if (unlikely(!READ_ONCE(ksu_selinux_hide_enabled)))
 		goto orig_page;
 
 	if (!ksu_is_seccomp_enabled())
@@ -327,9 +327,14 @@ page_ok:
 	return 0;
 }
 
+bool ksu_is_selinux_hide_enabled(void)
+{
+	return READ_ONCE(ksu_selinux_hide_enabled);
+}
+
 static int selinux_hide_feature_get(u64 *value)
 {
-	*value = ksu_selinux_hide_enabled ? 1 : 0;
+	*value = ksu_is_selinux_hide_enabled() ? 1 : 0;
 	return 0;
 }
 
@@ -338,15 +343,12 @@ static int selinux_hide_feature_set(u64 value)
 	bool enable = value != 0;
 	int ret = 0;
 
-	if (enable == ksu_selinux_hide_enabled)
+	if (enable == READ_ONCE(ksu_selinux_hide_enabled))
 		return 0;
 
 	pr_info("selinux_hide: set to %d\n", enable);
 
-	if (enable)
-		ksu_selinux_hide_enabled = true;
-	else
-		ksu_selinux_hide_enabled = false;
+	WRITE_ONCE(ksu_selinux_hide_enabled, enable);
 
 	return ret;
 }

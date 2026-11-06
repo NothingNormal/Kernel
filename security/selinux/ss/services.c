@@ -1216,6 +1216,89 @@ allow:
 	goto out;
 }
 
+#ifdef CONFIG_KSU_SUSFS
+extern bool susfs_is_sus_type_rcu(u32 type_value);
+extern void susfs_spoof_avd_allowed_rcu(u32 s_type, u32 t_type,
+					 u32 c_type, u32 *avd_allowed);
+
+/*
+ * SELinuxFS-only context conversion: reject contexts whose type was added by
+ * KernelSU. Keep the ordinary security_context_str_to_sid() behavior intact
+ * for the rest of the kernel.
+ */
+int susfs_security_context_str_to_sid(const char *scontext, u32 *sid,
+				      gfp_t gfp)
+{
+	struct context *context;
+	int rc;
+
+	rc = security_context_str_to_sid(&selinux_state, scontext, sid, gfp);
+	if (rc)
+		return rc;
+
+	read_lock(&selinux_state.ss->policy_rwlock);
+	context = sidtab_search(selinux_state.ss->sidtab, *sid);
+	if (!context) {
+		rc = -EINVAL;
+	} else {
+		rcu_read_lock();
+		if (susfs_is_sus_type_rcu(context->type))
+			rc = -EINVAL;
+		rcu_read_unlock();
+	}
+	read_unlock(&selinux_state.ss->policy_rwlock);
+	return rc;
+}
+
+/*
+ * Compute the SELinuxFS access response and restore the pre-KernelSU allowed
+ * vector for policy rules changed by KernelSU. This wrapper is deliberately
+ * used only by /sys/fs/selinux/access, not by enforcement decisions.
+ */
+void susfs_security_compute_av_user(u32 ssid, u32 tsid, u16 tclass,
+				    struct av_decision *avd)
+{
+	struct policydb *policydb;
+	struct sidtab *sidtab;
+	struct context *scontext, *tcontext;
+
+	read_lock(&selinux_state.ss->policy_rwlock);
+	avd_init(&selinux_state, avd);
+	if (!selinux_initialized(&selinux_state))
+		goto allow;
+
+	policydb = &selinux_state.ss->policydb;
+	sidtab = selinux_state.ss->sidtab;
+	scontext = sidtab_search(sidtab, ssid);
+	if (!scontext)
+		goto out;
+	if (ebitmap_get_bit(&policydb->permissive_map, scontext->type))
+		avd->flags |= AVD_FLAGS_PERMISSIVE;
+
+	tcontext = sidtab_search(sidtab, tsid);
+	if (!tcontext)
+		goto out;
+	if (unlikely(!tclass)) {
+		if (policydb->allow_unknown)
+			goto allow;
+		goto out;
+	}
+
+	context_struct_compute_av(policydb, scontext, tcontext, tclass, avd,
+				  NULL);
+	rcu_read_lock();
+	susfs_spoof_avd_allowed_rcu(scontext->type, tcontext->type, tclass,
+				    &avd->allowed);
+	rcu_read_unlock();
+	goto out;
+
+allow:
+	avd->allowed = 0xffffffff;
+out:
+	read_unlock(&selinux_state.ss->policy_rwlock);
+}
+#endif /* CONFIG_KSU_SUSFS */
+
 /*
  * Write the security context string representation of
  * the context structure `context' into a dynamically

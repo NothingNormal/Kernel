@@ -187,6 +187,15 @@ struct st_susfs_sus_memfd_list {
 };
 #endif
 
+/* priority UID filter */
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+#define SUSFS_APP_STR_BUF_SIZE 65535
+struct st_susfs_priority_uid_filter {
+	char                                    app_strings[SUSFS_APP_STR_BUF_SIZE];
+	int                                     err;
+};
+#endif
+
 /* avc log spoofing */
 struct st_susfs_avc_log_spoofing {
 	bool                                    enabled;
@@ -273,6 +282,21 @@ void susfs_add_sus_map(void __user **user_info);
 #ifdef CONFIG_KSU_SUSFS_SUS_MEMFD
 int susfs_add_sus_memfd(void __user **user_info);
 int susfs_sus_memfd(char *memfd_name);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+void susfs_set_priority_uid_filter(void __user **user_info);
+void susfs_parse_priority_app_strings(void);
+bool susfs_is_priority_uid_filtered(uid_t uid);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS
+int susfs_add_sus_type(const char *secctx, u32 type_value);
+bool susfs_is_sus_type_rcu(u32 type_value);
+int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type,
+				      u32 c_type, u32 orig_avd_allowed);
+void susfs_spoof_avd_allowed_rcu(u32 s_type, u32 t_type,
+				  u32 c_type, u32 *avd_allowed);
 #endif
 
 void susfs_set_avc_log_spoofing(void __user **user_info);

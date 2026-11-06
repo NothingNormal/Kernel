@@ -256,6 +256,15 @@ config KSU_SUSFS_SUS_MEMFD
     help
         - Allow preventing the user-defined memfd name from being created
 
+config KSU_SUSFS_PRIORITY_UID_FILTER
+    bool "Enable to filter selected app UIDs from priority syscalls"
+    depends on KSU_SUSFS
+    default y
+    help
+        - Hide selected app UIDs from getpriority/setpriority and ioprio_get/ioprio_set.
+        - Package names are resolved from /data/system/packages.list.
+        - Effective for app callers (UID >= 10000); the app UID range is 10000-19999.
+
 endmenu
 
 endmenu

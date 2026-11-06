@@ -18,6 +18,7 @@
 
 void ksu_selinux_hide_init();
 void ksu_selinux_hide_exit();
+bool ksu_is_selinux_hide_enabled(void);
 
 static int sepol_expected_argc(u32 cmd);
 
