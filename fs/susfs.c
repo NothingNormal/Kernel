@@ -1611,12 +1611,18 @@ void susfs_set_priority_uid_filter(void __user **user_info) {
 				name[--name_len] = '\0';
 			if (name_len) {
 				found = susfs_lookup_pkg_uid(list, name, name_len);
-				if (found < 0)
+				/*
+				 * Braces are load-bearing: SUSFS_LOGE() expands to an if,
+				 * so without them these else branches would bind to that
+				 * inner if and the outcome would depend on whether
+				 * logging happened to be enabled.
+				 */
+				if (found < 0) {
 					SUSFS_LOGE("package '%s' not in packages.list\n", name);
-				else if (found < 10000 || found > 19999)
+				} else if (found < 10000 || found > 19999) {
 					SUSFS_LOGE("package '%s' uid %d not an app uid\n",
 						   name, found);
-				else {
+				} else {
 					set_bit((unsigned int)found, new_bitmap);
 					resolved++;
 				}

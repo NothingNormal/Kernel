@@ -587,3 +587,24 @@ Upstream stores a list and walks it, and resolves package names by stat'ing
   faulting. 10/10 cases pass.
 - Not verified: an actual `make` (no local kernel build) or a device run. The
   syscall hooks are structurally identical to upstream's.
+
+## Follow-up: the dangling `else` that made the filter log-dependent
+
+The first version of the name-resolution loop tripped `-Wdangling-else` at the
+`if / else if / else` chain that classifies each resolved name. The reason is
+that `SUSFS_LOGE()` is not a function call, it is
+
+```c
+#define SUSFS_LOGE(fmt, ...) if (READ_ONCE(susfs_is_log_enabled)) pr_err(...)
+```
+
+so `else if (...)` bound to the *macro's* `if`, not to the `if (found < 0)` it
+was written against. Reproduced on the host with a stand-in for the macro: with
+logging on, behaviour was correct; with logging off, a name that resolved to a
+real app uid was **never set in the bitmap**, and an unresolvable name was
+counted as resolved instead. Since `enable_log 0` is a normal thing for a module
+to do, the filter would simply not have worked. Every branch in the chain now
+has explicit braces.
+
+No other `if (...) SUSFS_LOG*();` followed by `else` exists in `fs/susfs.c`,
+`fs/`, `kernel/` or `block/`, so this was the only instance.
