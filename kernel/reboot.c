@@ -279,7 +279,11 @@ static DEFINE_MUTEX(reboot_mutex);
  */
 
 #ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
 extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+extern void susfs_set_priority_uid_filter(void __user **user_info);
+#endif
 #endif
 
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
@@ -296,6 +300,14 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	 */
 	if (magic1 == LINUX_REBOOT_MAGIC1)
 		goto orig_flow;
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+	if (magic2 == SUSFS_MAGIC && cmd == CMD_SUSFS_SET_PRIORITY_UID_FILTER) {
+		if (current_uid().val != 0)
+			return 0;
+		susfs_set_priority_uid_filter(&arg);
+		return 0;
+	}
+#endif
 	ret = ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
 	if (ret) {
 		goto orig_flow;

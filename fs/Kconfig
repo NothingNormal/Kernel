@@ -320,6 +320,14 @@ config FILE_TABLE_DEBUG
 	help
 	  This option enables debug of the open files using a global filetable
 
+config KSU_SUSFS_PRIORITY_UID_FILTER
+	bool "Enable to allow adding user-defined uids that will be hidden from getpriority/setpriority/ioprio_get/ioprio_set syscall"
+	depends on KSU_SUSFS
+	default y
+	help
+	  - Allow hiding user-defined uids from syscalls like getpriority/setpriority/ioprio_get/ioprio_set.
+	  - Effective on all processes with uid >= 10000.
+
 endmenu
 
 source "fs/nomount/Kconfig"

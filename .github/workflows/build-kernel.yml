@@ -234,7 +234,8 @@ jobs:
                      CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
                      CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
                      CONFIG_KSU_SUSFS_OPEN_REDIRECT \
-                     CONFIG_KSU_SUSFS_SUS_MAP; do
+                     CONFIG_KSU_SUSFS_SUS_MAP \
+                     CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER; do
             if grep -qx "$sym=y" out/.config; then
               echo "  ok   $sym=y"
             else
