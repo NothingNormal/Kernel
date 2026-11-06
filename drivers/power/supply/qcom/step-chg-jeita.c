@@ -18,6 +18,7 @@
 #include <linux/of_batterydata.h>
 #include <linux/power_supply.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/pmic-voter.h>
 #include "step-chg-jeita.h"
 #include "smb5-lib.h"
@@ -95,6 +96,8 @@ struct step_chg_info {
 	struct power_supply	*dc_psy;
 	struct delayed_work	status_change_work;
 	struct delayed_work	get_config_work;
+	/* serialises the notifier's hold/queue against the worker's release */
+	spinlock_t		status_change_lock;
 	struct notifier_block	nb;
 };
 
@@ -510,13 +513,7 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 		*val = range[*new_index].value;
 	}
 
-	if (threshold < range[0].low_threshold) {
-		*new_index = 0;
-		*val = range[*new_index].value;
-	} else if (threshold > range[MAX_STEP_CHG_ENTRIES - 1].low_threshold) {
-		*new_index = MAX_STEP_CHG_ENTRIES - 1;
-		*val = range[*new_index].value;
-	}
+	/* The lookup above already selects or clamps to a populated entry. */
 
 	/*
 	 * If we don't have a current_index return this
@@ -764,9 +761,10 @@ static int handle_jeita(struct step_chg_info *chip)
 	u64 elapsed_us;
 	int curr_vfloat_uv, curr_vbat_uv;
 	int temp, fastcharge_mode = 0, pd_authen_result = 0;
+	bool skip_fastcharge_mode = false;
 	enum power_supply_type real_type = POWER_SUPPLY_TYPE_UNKNOWN;
 
-	pr_err("handle_jeita enter\n");
+	pr_debug("handle_jeita enter\n");
 	rc = power_supply_get_property(chip->batt_psy,
 		POWER_SUPPLY_PROP_SW_JEITA_ENABLED, &pval);
 	if (rc < 0)
@@ -809,13 +807,16 @@ static int handle_jeita(struct step_chg_info *chip)
 		if (!chip->cp_disable_votable)
 			chip->cp_disable_votable = find_votable("CP_DISABLE");
 
+		/* Keep FCC/FV limits active, but defer fast-charge mode changes. */
 		if (!chip->cp_disable_votable)
-			goto update_time;
-
-		if (temp <= BATT_CP_COOL_THRESHOLD || temp >= BATT_CP_WARM_THRESHOLD)
+			skip_fastcharge_mode = true;
+		else if (temp <= BATT_CP_COOL_THRESHOLD ||
+			 temp >= BATT_CP_WARM_THRESHOLD)
 			vote(chip->cp_disable_votable, JEITA_VOTER, true, 0);
-		else if ((temp > BATT_CP_COOL_THRESHOLD + chip->jeita_fv_config->param.hysteresis)
-				|| (temp < BATT_CP_WARM_THRESHOLD - chip->jeita_fv_config->param.hysteresis))
+		else if (temp > BATT_CP_COOL_THRESHOLD +
+				chip->jeita_fv_config->param.hysteresis &&
+			 temp < BATT_CP_WARM_THRESHOLD -
+				chip->jeita_fv_config->param.hysteresis)
 			vote(chip->cp_disable_votable, JEITA_VOTER, false, 0);
 	}
 
@@ -825,7 +826,7 @@ static int handle_jeita(struct step_chg_info *chip)
 			pval.intval,
 			&chip->jeita_fcc_index,
 			&fcc_ua);
-	pr_err("temp:%d, new JEITA index:%d, New JEITA FCC:%d \n",
+	pr_debug("temp:%d, new JEITA index:%d, New JEITA FCC:%d \n",
 				pval.intval, chip->jeita_fcc_index, fcc_ua);
 	if (rc < 0)
 		fcc_ua = 0;
@@ -857,11 +858,13 @@ static int handle_jeita(struct step_chg_info *chip)
 	if (!chip->usb_icl_votable)
 		goto set_jeita_fv;
 
-	pr_err("%s = %d FCC = %duA FV = %duV\n",
+	pr_debug("%s = %d FCC = %duA FV = %duV\n",
 			chip->jeita_fcc_config->param.prop_name, pval.intval, fcc_ua, fv_uv);
 
-	/* set and clear fast charge mode when soft jeita trigger and clear */
-	if (chip->six_pin_battery || chip->qc3p5_ffc_batt) {
+	/* Update fast-charge mode only after the USB supply is registered. */
+	if (!skip_fastcharge_mode &&
+	    (chip->six_pin_battery || chip->qc3p5_ffc_batt) &&
+	    is_usb_available(chip)) {
 		rc = power_supply_get_property(chip->usb_psy,
 				POWER_SUPPLY_PROP_PD_AUTHENTICATION, &pval);
 		if (rc < 0)
@@ -890,7 +893,7 @@ static int handle_jeita(struct step_chg_info *chip)
 
 			if ((temp >= BATT_WARM_THRESHOLD || temp <= BATT_COOL_THRESHOLD)
 						&& fastcharge_mode) {
-				pr_err("temp:%d disable fastcharge mode\n", temp);
+				pr_debug("temp:%d disable fastcharge mode\n", temp);
 				pval.intval = false;
 				rc = power_supply_set_property(chip->usb_psy,
 						POWER_SUPPLY_PROP_FASTCHARGE_MODE, &pval);
@@ -901,7 +904,7 @@ static int handle_jeita(struct step_chg_info *chip)
 			} else if ((temp < BATT_WARM_THRESHOLD - chip->jeita_fv_config->param.hysteresis)
 						&& (temp > BATT_COOL_THRESHOLD + chip->jeita_fv_config->param.hysteresis)
 							&& !fastcharge_mode) {
-				pr_err("temp:%d enable fastcharge mode\n", temp);
+				pr_debug("temp:%d enable fastcharge mode\n", temp);
 				pval.intval = true;
 				rc = power_supply_set_property(chip->usb_psy,
 						POWER_SUPPLY_PROP_FASTCHARGE_MODE, &pval);
@@ -949,11 +952,11 @@ static int handle_jeita(struct step_chg_info *chip)
 
 		if (curr_vbat_uv > fv_uv + ( chip->qc3p5_ffc_batt ? JEITA_SIX_PIN_BATT_HYST_UV: 20000)) {
 			if (pval.intval == POWER_SUPPLY_CHARGE_TYPE_TAPER && fv_uv == WARM_VFLOAT_UV) {
-				pr_err("curr_vbat_uv = %d, fv_uv = %d, set usb_icl=0\n", curr_vbat_uv, fv_uv);
+				pr_debug("curr_vbat_uv = %d, fv_uv = %d, set usb_icl=0\n", curr_vbat_uv, fv_uv);
 				vote(chip->usb_icl_votable, JEITA_VOTER, true, 0);
 			}
 		} else if (curr_vbat_uv < (fv_uv - JEITA_SUSPEND_HYST_UV)) {
-			pr_err("curr_vbat_uv = %d, fv_uv = %d, remove usb_icl=0\n", curr_vbat_uv, fv_uv);
+			pr_debug("curr_vbat_uv = %d, fv_uv = %d, remove usb_icl=0\n", curr_vbat_uv, fv_uv);
 			vote(chip->usb_icl_votable, JEITA_VOTER, false, 0);
 		}
 	}
@@ -1005,6 +1008,7 @@ static void status_change_work(struct work_struct *work)
 {
 	struct step_chg_info *chip = container_of(work,
 			struct step_chg_info, status_change_work.work);
+	unsigned long flags;
 	int rc = 0;
 	union power_supply_propval prop = {0, };
 
@@ -1039,7 +1043,18 @@ static void status_change_work(struct work_struct *work)
 	}
 
 exit_work:
-	__pm_relax(chip->step_chg_ws);
+	/*
+	 * The workqueue clears PENDING before this function is entered, so a
+	 * set bit means another run is queued behind this one: either the
+	 * notification arrived while this run was executing, or it arrived
+	 * after the workqueue dequeued this run but before PENDING was
+	 * cleared. That run owns the release. Clearing the source here would
+	 * let the system suspend before it touches the charger.
+	 */
+	spin_lock_irqsave(&chip->status_change_lock, flags);
+	if (!work_pending(&chip->status_change_work.work))
+		__pm_relax(chip->step_chg_ws);
+	spin_unlock_irqrestore(&chip->status_change_lock, flags);
 }
 
 static int step_chg_notifier_call(struct notifier_block *nb,
@@ -1047,14 +1062,23 @@ static int step_chg_notifier_call(struct notifier_block *nb,
 {
 	struct power_supply *psy = v;
 	struct step_chg_info *chip = container_of(nb, struct step_chg_info, nb);
+	unsigned long flags;
 
 	if (ev != PSY_EVENT_PROP_CHANGED)
 		return NOTIFY_OK;
 
 	if ((strcmp(psy->desc->name, "battery") == 0)
 			|| (strcmp(psy->desc->name, "usb") == 0)) {
+		/*
+		 * Take the hold and queue under the same lock the worker uses
+		 * to check for a queued run. If the queue happened after the
+		 * worker's check but before its release, the release would
+		 * drop the source for work that is already pending.
+		 */
+		spin_lock_irqsave(&chip->status_change_lock, flags);
 		__pm_stay_awake(chip->step_chg_ws);
 		schedule_delayed_work(&chip->status_change_work, 0);
+		spin_unlock_irqrestore(&chip->status_change_lock, flags);
 	}
 
 	if ((strcmp(psy->desc->name, "bms") == 0)) {
@@ -1138,6 +1162,7 @@ int qcom_step_chg_init(struct device *dev,
 
 	INIT_DELAYED_WORK(&chip->status_change_work, status_change_work);
 	INIT_DELAYED_WORK(&chip->get_config_work, get_config_work);
+	spin_lock_init(&chip->status_change_lock);
 
 	rc = step_chg_register_notifier(chip);
 	if (rc < 0) {
@@ -1164,9 +1189,10 @@ void qcom_step_chg_deinit(void)
 	if (!chip)
 		return;
 
+	/* stop new notifications before tearing down the work and the source */
+	power_supply_unreg_notifier(&chip->nb);
 	cancel_delayed_work_sync(&chip->status_change_work);
 	cancel_delayed_work_sync(&chip->get_config_work);
-	power_supply_unreg_notifier(&chip->nb);
 	wakeup_source_unregister(chip->step_chg_ws);
 	the_chip = NULL;
 }

@@ -29,6 +29,7 @@ struct instruction_t {
 	uint32_t value;
 };
 
+int rtp_get_effect_duration(int id);
 int set_running_effect_id(int id);
 int pop_running_effect_command(char *command, int *data);
 //int drv2624_load_rtp(char *filename);
