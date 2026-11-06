@@ -5260,7 +5260,7 @@ static int qpnp_qg_resume(struct device *dev)
 	chip->param.update_now = true;
 	schedule_delayed_work(&chip->soc_monitor_work, msecs_to_jiffies(MONITOR_SOC_WAIT_MS));
 
-	chip->force_shutdown == false;
+	chip->force_shutdown = false;
 	schedule_delayed_work(&chip->force_shutdown_work, msecs_to_jiffies(URGENT_DELAY_MS));
 
 	return 0;
@@ -5499,7 +5499,7 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 	chip->param.batt_soc = -EINVAL;
 	schedule_delayed_work(&chip->soc_monitor_work, msecs_to_jiffies(MONITOR_SOC_WAIT_MS));
 
-	chip->force_shutdown == false;
+	chip->force_shutdown = false;
 	schedule_delayed_work(&chip->force_shutdown_work, msecs_to_jiffies(URGENT_DELAY_MS));
 
 	qg_get_battery_capacity(chip, &soc);
@@ -5509,6 +5509,7 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 	return rc;
 
 fail_votable:
+	power_supply_unreg_notifier(&chip->nb);
 	destroy_votable(chip->awake_votable);
 fail_device:
 	device_destroy(chip->qg_class, chip->dev_no);
@@ -5521,12 +5522,32 @@ static int qpnp_qg_remove(struct platform_device *pdev)
 {
 	struct qpnp_qg *chip = platform_get_drvdata(pdev);
 
+	/*
+	 * The power supply notifier can re-arm qg_status_change_work, and the
+	 * notifier takes a pm wakeup reference that the work releases.
+	 */
+	power_supply_unreg_notifier(&chip->nb);
+	cancel_work_sync(&chip->qg_status_change_work);
+	pm_relax(chip->dev);
+
+	/* profile_load_work can queue ttf_work, so stop it first. */
+	if (chip->profile_load_work.work.func)
+		cancel_delayed_work_sync(&chip->profile_load_work);
+	cancel_delayed_work_sync(&chip->soc_monitor_work);
+	cancel_delayed_work_sync(&chip->force_shutdown_work);
+	cancel_delayed_work_sync(&chip->qg_sleep_exit_work);
+	if (chip->ttf)
+		cancel_delayed_work_sync(&chip->ttf->ttf_work);
+	cancel_work_sync(&chip->udata_work);
+
 	qg_batterydata_exit();
 	qg_soc_exit(chip);
 
-	cancel_delayed_work_sync(&chip->qg_sleep_exit_work);
-	cancel_work_sync(&chip->udata_work);
-	cancel_work_sync(&chip->qg_status_change_work);
+	if (chip->batt_psy) {
+		power_supply_put(chip->batt_psy);
+		chip->batt_psy = NULL;
+	}
+
 	device_destroy(chip->qg_class, chip->dev_no);
 	cdev_del(&chip->qg_cdev);
 	unregister_chrdev_region(chip->dev_no, 1);

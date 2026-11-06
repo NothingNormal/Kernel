@@ -703,6 +703,8 @@ static void aw8624_schedule_recovery(struct aw8624 *aw8624)
 {
 	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
 		return;
+	if (READ_ONCE(aw8624->recover_disabled))
+		return;
 	if (time_before(jiffies, aw8624->recover_after))
 		return;
 
@@ -720,8 +722,17 @@ static int aw8624_haptic_stop(struct aw8624 *aw8624)
 	aw8624_haptic_play_go(aw8624, false);
 	ret = aw8624_haptic_stop_delay(aw8624);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_STANDBY_MODE);
-	if (ret < 0)
+	if (ret < 0) {
 		aw8624_schedule_recovery(aw8624);
+	} else {
+		/*
+		 * The chip reached standby on its own, so whatever the last
+		 * rebuild did worked.  Forget the failures, and allow a future
+		 * one to be retried.
+		 */
+		atomic_set(&aw8624->recover_attempts, 0);
+		WRITE_ONCE(aw8624->recover_disabled, false);
+	}
 
 	return ret;
 }
@@ -4260,6 +4271,41 @@ static DEVICE_ATTR(osc_cali, S_IWUSR | S_IRUGO, aw8624_osc_cali_show, aw8624_osc
 static DEVICE_ATTR(f0_save, S_IWUSR | S_IRUGO, aw8624_f0_save_show, aw8624_f0_save_store);
 static DEVICE_ATTR(osc_save, S_IWUSR | S_IRUGO, aw8624_osc_save_show, aw8624_osc_save_store);
 
+/*
+ * Read: "<disabled> <attempts>".  Writing a non-zero value clears the
+ * give-up lockout so a wedged or reseated part can be retried without a
+ * reboot.  The normal path still re-arms the lockout after
+ * AW8624_RECOVER_MAX_ATTEMPTS rebuilds that do not restore standby.
+ */
+static ssize_t aw8624_recover_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct aw8624 *aw8624 = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%u %u\n",
+			(unsigned int)READ_ONCE(aw8624->recover_disabled),
+			(unsigned int)atomic_read(&aw8624->recover_attempts));
+}
+
+static ssize_t aw8624_recover_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct aw8624 *aw8624 = dev_get_drvdata(dev);
+	unsigned int val;
+	int rc;
+
+	rc = sscanf(buf, "%u", &val);
+	if (rc != 1 || val == 0)
+		return -EINVAL;
+
+	atomic_set(&aw8624->recover_attempts, 0);
+	WRITE_ONCE(aw8624->recover_disabled, false);
+	return count;
+}
+
+static DEVICE_ATTR(recover, 0644, aw8624_recover_show, aw8624_recover_store);
+
 static struct attribute *aw8624_vibrator_attributes[] = {
 	&dev_attr_reg.attr,
 	&dev_attr_ram.attr,
@@ -4289,6 +4335,7 @@ static struct attribute *aw8624_vibrator_attributes[] = {
 	&dev_attr_osc_cali.attr,
 	&dev_attr_osc_save.attr,
 	&dev_attr_f0_save.attr,
+	&dev_attr_recover.attr,
 	NULL
 };
 
@@ -4366,6 +4413,15 @@ static void aw8624_recover_work(struct work_struct *work)
 	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
 		return;
 
+	/*
+	 * A retry queued just before the lockout was armed must not rebuild
+	 * the part again.  schedule_recovery() checks this too; checking here
+	 * closes the window between the two.  Do this before taking ownership,
+	 * otherwise the recovering flag would be left set.
+	 */
+	if (READ_ONCE(aw8624->recover_disabled))
+		return;
+
 	/* A rebuild already in flight owns the chip; drop the duplicate. */
 	if (atomic_xchg(&aw8624->recovering, 1))
 		return;
@@ -4395,9 +4451,28 @@ static void aw8624_recover_work(struct work_struct *work)
 	aw8624_haptic_softreset(aw8624);
 	aw8624_haptic_chip_init(aw8624);
 	ret = aw8624_ram_update(aw8624);
-	if (ret)
+	if (ret) {
 		dev_err(aw8624->dev, "%s: firmware reload failed: %d\n",
 			__func__, ret);
+	} else {
+		/*
+		 * A clean reload is not proof the part is back: standby is, and
+		 * aw8624_haptic_stop() resets the count when it sees it.  Guard
+		 * against an endless reset storm in the meantime - a wedged or
+		 * browned-out part that firmware cannot revive must not keep
+		 * rebuilding every five seconds.  That kept the CPU awake (no
+		 * deep sleep, device warm) and reset the chip out from under
+		 * every playback, which is what made haptics drop out.
+		 */
+		if (atomic_inc_return(&aw8624->recover_attempts) >=
+		    AW8624_RECOVER_MAX_ATTEMPTS) {
+			WRITE_ONCE(aw8624->recover_disabled, true);
+			dev_warn(aw8624->dev,
+				 "%s: giving up after %d rebuilds without standby\n",
+				 __func__,
+				 atomic_read(&aw8624->recover_attempts));
+		}
+	}
 
 	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
 		enable_irq(gpio_to_irq(aw8624->irq_gpio));
