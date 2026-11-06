@@ -42,6 +42,7 @@ struct gpio_button_data {
 	unsigned int release_delay;	/* in msecs, for IRQ-only buttons */
 
 	struct delayed_work work;
+	struct wakeup_source work_wake;
 	unsigned int software_debounce;	/* in msecs, for GPIO-driven buttons */
 
 	unsigned int irq;
@@ -144,10 +145,14 @@ static void gpio_keys_disable_button(struct gpio_button_data *bdata)
 		 */
 		disable_irq(bdata->irq);
 
-		if (bdata->gpiod)
+		if (bdata->gpiod) {
 			cancel_delayed_work_sync(&bdata->work);
-		else
+			/* Cancellation may keep PENDING set while a worker finishes. */
+			if (bdata->button->wakeup)
+				__pm_relax(&bdata->work_wake);
+		} else {
 			del_timer_sync(&bdata->release_timer);
+		}
 
 		bdata->disabled = true;
 	}
@@ -384,24 +389,33 @@ static void gpio_keys_gpio_work_func(struct work_struct *work)
 {
 	struct gpio_button_data *bdata =
 		container_of(work, struct gpio_button_data, work.work);
+	unsigned long flags;
 
 	gpio_keys_gpio_report_event(bdata);
 
-	if (bdata->button->wakeup)
-		pm_relax(bdata->input->dev.parent);
+	if (bdata->button->wakeup) {
+		spin_lock_irqsave(&bdata->lock, flags);
+		/* An IRQ may have requeued this work while it was running. */
+		if (!delayed_work_pending(&bdata->work))
+			__pm_relax(&bdata->work_wake);
+		spin_unlock_irqrestore(&bdata->lock, flags);
+	}
 }
 
 static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 {
 	struct gpio_button_data *bdata = dev_id;
+	unsigned long flags;
 
 	BUG_ON(irq != bdata->irq);
 
+	spin_lock_irqsave(&bdata->lock, flags);
 	if (bdata->button->wakeup) {
 		const struct gpio_keys_button *button = bdata->button;
 
-		pm_stay_awake(bdata->input->dev.parent);
-		if (bdata->suspended  &&
+		if (device_may_wakeup(bdata->input->dev.parent))
+			__pm_stay_awake(&bdata->work_wake);
+		if (bdata->suspended &&
 		    (button->type == 0 || button->type == EV_KEY)) {
 			/*
 			 * Simulate wakeup key press in case the key has
@@ -415,6 +429,7 @@ static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 	mod_delayed_work(system_wq,
 			 &bdata->work,
 			 msecs_to_jiffies(bdata->software_debounce));
+	spin_unlock_irqrestore(&bdata->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -472,10 +487,13 @@ static void gpio_keys_quiesce_key(void *data)
 {
 	struct gpio_button_data *bdata = data;
 
-	if (bdata->gpiod)
+	if (bdata->gpiod) {
 		cancel_delayed_work_sync(&bdata->work);
-	else
+		if (bdata->button->wakeup)
+			wakeup_source_trash(&bdata->work_wake);
+	} else {
 		del_timer_sync(&bdata->release_timer);
+	}
 }
 
 static int gpio_keys_setup_key(struct platform_device *pdev,
@@ -564,6 +582,9 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 		}
 
 		INIT_DELAYED_WORK(&bdata->work, gpio_keys_gpio_work_func);
+		/* Debounce holds belong to this key, not to all keys on the device. */
+		if (button->wakeup)
+			wakeup_source_init(&bdata->work_wake, desc);
 
 		isr = gpio_keys_gpio_isr;
 		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
@@ -597,7 +618,7 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	 * Install custom action to cancel release timer and
 	 * workqueue item.
 	 */
-	error = devm_add_action(dev, gpio_keys_quiesce_key, bdata);
+	error = devm_add_action_or_reset(dev, gpio_keys_quiesce_key, bdata);
 	if (error) {
 		dev_err(dev, "failed to register quiesce action, error: %d\n",
 			error);

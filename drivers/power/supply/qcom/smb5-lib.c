@@ -1293,7 +1293,7 @@ static inline void dump_reg(struct smb_charger *chg, u16 addr,
 
 	if (NULL == name) {
 		strlcat(log, "\n", sizeof(log));
-		printk(log);
+		printk("%s", log);
 		return;
 	}
 
@@ -6334,7 +6334,8 @@ irqreturn_t usb_plugin_irq_handler(int irq, void *data)
 {
 	struct smb_irq_data *irq_data = data;
 	struct smb_charger *chg = irq_data->parent_data;
-	printk("[PMIC_DEBUG][%s]: pd_hard_reset=%d\n", __func__, chg->pd_hard_reset);
+
+	smblib_dbg(chg, PR_INTERRUPT, "pd_hard_reset=%d\n", chg->pd_hard_reset);
 	if (chg->pd_hard_reset)
 		smblib_usb_plugin_hard_reset_locked(chg);
 	else
@@ -8274,8 +8275,10 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 	}
 
 	if (drop_fcc_enable && !chg->health_not_good &&
+		chg->index_vfloat >= 0 &&
+		chg->index_vfloat < MAX_STEP_ENTRIES - 1 &&
 		(current_fcc >= chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua
-		+ TAPER_IBAT_TRH_HYS_UA) && (chg->index_vfloat < (MAX_STEP_ENTRIES - 1))) {
+		+ TAPER_IBAT_TRH_HYS_UA)) {
 		if (chg->taper_ibat_hv_step)
 			vote(chg->fcc_votable, HIGH_VBAT_VOTER,
 					true, (current_fcc - chg->taper_ibat_hv_step));
@@ -8283,8 +8286,10 @@ static void smblib_six_pin_batt_step_chg_work(struct work_struct *work)
 			vote(chg->fcc_votable, SIX_PIN_VFLOAT_VOTER,
 					true, (current_fcc - taper_ibat_step));
 	} else if (drop_fcc_enable && !chg->health_not_good &&
+		chg->index_vfloat >= 0 &&
+		chg->index_vfloat < MAX_STEP_ENTRIES - 1 &&
 		(current_fcc < chg->six_pin_step_cfg[chg->index_vfloat + 1].fcc_step_ua
-		+ TAPER_IBAT_TRH_HYS_UA) && (chg->index_vfloat < (MAX_STEP_ENTRIES - 1))) {
+		+ TAPER_IBAT_TRH_HYS_UA)) {
 		step_cfg_enable = true;
 		set_fcc_fv_enable = true;
 	} else {
@@ -9564,10 +9569,6 @@ int smblib_init(struct smb_charger *chg)
 
 		chg->bms_psy = power_supply_get_by_name("bms");
 
-		if (board_33w_supported) {
-		chg->batt_verify_psy = power_supply_get_by_name("batt_verify");
-		}
-
 		if (chg->sec_pl_present) {
 			chg->pl.psy = power_supply_get_by_name("parallel");
 			if (chg->pl.psy) {
@@ -9660,8 +9661,13 @@ int smblib_deinit(struct smb_charger *chg)
 		cancel_delayed_work_sync(&chg->role_reversal_check);
 		cancel_delayed_work_sync(&chg->pr_swap_detach_work);
 		power_supply_unreg_notifier(&chg->nb);
-		smblib_destroy_votables(chg);
+		/*
+		 * Stop the step-chg notifier and worker before its votables
+		 * disappear; otherwise a late notification can vote on a
+		 * freed votable.
+		 */
 		qcom_step_chg_deinit();
+		smblib_destroy_votables(chg);
 		qcom_batt_deinit();
 		break;
 	case PARALLEL_SLAVE:

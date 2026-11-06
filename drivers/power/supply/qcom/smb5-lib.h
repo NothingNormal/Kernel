@@ -536,7 +536,6 @@ struct smb_charger {
 	struct power_supply		*usb_port_psy;
 	struct power_supply		*wls_psy;
 	struct power_supply		*cp_psy;
-	struct power_supply		*batt_verify_psy;
 	enum power_supply_type		real_charger_type;
 
 	/* dual role class */

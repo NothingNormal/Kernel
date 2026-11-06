@@ -531,7 +531,7 @@ static int smb5_parse_dt(struct smb5 *chip)
 			"qcom,fcc-max-ua", &chip->dt.batt_profile_fcc_ua);
 	if (rc < 0)
 		chip->dt.batt_profile_fcc_ua = -EINVAL;
-	printk("==test qcom,fcc-max-ua:%d\n", chip->dt.batt_profile_fcc_ua);
+	dev_dbg(chg->dev, "fcc-max-ua:%d\n", chip->dt.batt_profile_fcc_ua);
 
 	rc = of_property_read_u32(node,
 				"qcom,fv-max-uv", &chip->dt.batt_profile_fv_uv);
@@ -867,7 +867,7 @@ static int smb5_parse_dt(struct smb5 *chip)
 
 	chip->dt.en_qc3_with_cp = of_property_read_bool(node,
 					"qcom,en-qc3-with-cp");
-	printk("smb en qc3 with cp:%d\n", chip->dt.en_qc3_with_cp);
+	dev_dbg(chg->dev, "smb en qc3 with cp:%d\n", chip->dt.en_qc3_with_cp);
 
 	if (chg->six_pin_step_charge_enable) {
 		rc = smb5_charge_step_charge_init(chg, node);
