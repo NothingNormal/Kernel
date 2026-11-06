@@ -47,7 +47,7 @@ returns early on `!ksu_module_mounted`, `!ksu_kernel_umount_enabled`, uid not on
 the umount list, or non-zygote caller — only the last being a real precondition.
 Any of the others left apps unmarked, and every hiding feature silently no-oped.
 
-## The nine enabled features
+## The ten enabled features
 
 | # | Feature | Setter | Readers | Verdict |
 |---|---|---|---|---|
@@ -61,10 +61,12 @@ Any of the others left apps unmarked, and every hiding feature silently no-oped.
 | 8 | `SPOOF_CMDLINE_OR_BOOTCONFIG` | `susfs_set_cmdline_or_bootconfig` | `fs/proc/cmdline.c:55` early-return | working (no `/proc/bootconfig` in 4.14, correctly absent) |
 | 9 | `OPEN_REDIRECT` | `susfs_add_open_redirect` | `fs/namei.c` ×3, `fs/open.c` ×2, `fs/proc/base.c` ×2, `fs/proc/task_mmu.c` ×2 | working — **fully v2.3.0**: `uid_scheme` field present, validated to the 5-scheme range, stored per entry, and evaluated per lookup at `susfs.c:1084-1107`; stores `spoofed_mnt_id` + `spoofed_kstatfs` so stat after redirect stays consistent |
 | 10 | `SUS_MAP` | `susfs_add_sus_map` → `i_state` bit 39 | `fs/proc/task_mmu.c`: `show_map_vma` drops VMA, `show_smap` returns early (covers smaps **and** smaps_rollup) | working |
+| 11 | `PRIORITY_UID_FILTER` | `susfs_set_priority_uid_filter` → `susfs_priority_uid_bitmap` (`CMD_SUSFS_SET_PRIORITY_UID_FILTER` `0x60030`) | `kernel/sys.c` `getpriority`/`setpriority` ×2, `block/ioprio.c` `ioprio_get`/`ioprio_set` ×2 | working — ported for BRENE, see Addendum 4 |
 
-(Both approved references advertise 9; the tenth row above is the loop variant
-of SUS_PATH, which `show enabled_features` reports under `CONFIG_KSU_SUSFS_SUS_PATH`,
-not as a separate line.)
+Rows 2 and 11 are not separate lines in `show enabled_features`: row 2 is the
+loop variant of SUS_PATH and reports under `CONFIG_KSU_SUSFS_SUS_PATH`, and row
+11 is reported as `CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER` (the one that took the
+count from 9 to 10).
 
 ## Strings userspace parses
 
@@ -72,7 +74,7 @@ not as a separate line.)
 |---|---|---|
 | `show version` | `v2.3.0` | BRENE tests `== "v2"*` → matches |
 | `show variant` | `NON-GKI` | matches manager display |
-| `show enabled_features` | **9 lines** | 11 emit blocks, minus `TRY_UMOUNT` and `SUS_MEMFD` compiled out. BRENE hardcodes `/9`. |
+| `show enabled_features` | **10 lines** | 12 emit blocks, minus `TRY_UMOUNT` and `SUS_MEMFD` compiled out. BRENE hardcodes `/10` as of `d800999c6`. |
 
 ## Flag-bit hygiene — no collisions
 
@@ -460,25 +462,12 @@ and the kernel is protecting it*. `ENOENT` is what a name that does not exist
 answers, so it reveals nothing. Now every caller — create family included —
 gets `-ENOENT`.
 
-### Deliberately absent: upstream's getpriority/ioprio uid filter
+### Upstream's getpriority/ioprio uid filter: now ported
 
-Upstream v2.3.0 carries a second feature we have no equivalent of at all:
-`st_susfs_priority_uid_filter` / `susfs_set_priority_uid_filter()` /
-`susfs_is_priority_uid_filtered()`, hooked into `block/ioprio.c`'s
-`ioprio_set`/`ioprio_get` so a filtered uid cannot observe or set another
-process's ioprio. It is unconditional upstream (no CONFIG guard), so it never
-shows up in upstream's enabled-features output either.
-
-Not ported, on purpose:
-
-1. It is a whole new supercall command + struct + two syscall hooks, not a fix.
-2. It adds a line to `CMD_SUSFS_SHOW_ENABLED_FEATURES`, which is exactly the
-   string the SUSFS module parses. Our contract is 9 feature lines; adding a
-   tenth changes what userspace sees for a feature the module does not use.
-3. `kernel/reboot.c` (also new upstream) *is* covered: `ksu_handle_sys_reboot`
-   already exists at `kernel/reboot.c:281/298` in our tree.
-
-If it is ever wanted, it is a feature decision, not a bug fix.
+Once recorded here as deliberately absent. That changed with Addendum 4 — the
+feature is now implemented behind `CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER` and
+enabled in the defconfig, because the module counts it. The three reasons the
+section used to give are answered there.
 
 ---
 
@@ -515,10 +504,11 @@ caller asking about a filtered uid gets `-ESRCH`, like a uid with no
 processes), backed by an RCU bitmap of the 10000–19999 range and
 `susfs_ends_with()`.
 
-**Not present, deliberately** (same reasoning as Addendum 2): it is a feature,
-not a fix, it adds a 10th line to `CMD_SUSFS_SHOW_ENABLED_FEATURES` which is
-exactly the string the module parses, and it needs new `kernel/sys.c` and
-`block/ioprio.c` hooks.
+**Superseded by Addendum 4** — this was originally recorded as deliberately
+absent. It is now ported: the module does parse the 10th line (BRENE
+`d800999c6` bumped `susfs_total_features` to 10), so leaving it out made the
+manager report `9/10` and the module's own `set_priority_uid_filter` call a
+silent no-op.
 
 ### Collision this exposed
 
@@ -527,13 +517,73 @@ exactly the string the module parses, and it needs new `kernel/sys.c` and
 `SET_PRIORITY_UID_FILTER 0x60030`). Our tree uses `0x60030` for
 `ADD_SUS_MEMFD`.
 
-Currently harmless and verified so: `case CMD_SUSFS_ADD_SUS_MEMFD` is inside
-`#ifdef CONFIG_KSU_SUSFS_SUS_MEMFD`, and `miatoll_defconfig` has that **off**,
-so a `0x60030` command reaches `default:` → `pr_info("sys_reboot: unknown
-susfs cmd: 0x%x")` and returns 0. No misinterpretation, no memory unsafety.
+**Resolved by Addendum 4:** `CMD_SUSFS_ADD_SUS_MEMFD` was moved to `0x60040`
+and `0x60030` now belongs to `CMD_SUSFS_SET_PRIORITY_UID_FILTER`, matching
+upstream. `miatoll_defconfig` still has `CONFIG_KSU_SUSFS_SUS_MEMFD` off, so the
+old `default:` → `pr_info("sys_reboot: unknown susfs cmd: 0x%x")` path was a
+silent no-op rather than memory unsafety, but the two ids no longer collide even
+if memfd is enabled later.
 
-It becomes a real defect only if `CONFIG_KSU_SUSFS_SUS_MEMFD` is ever enabled:
-the upstream priority-filter payload (a 65535-byte `app_strings` blob) would be
-handed to `susfs_add_sus_memfd()` and interpreted as a memfd struct. Documented
-at the define in `include/linux/susfs_def.h`; renumber to `0x60040` if memfd is
-ever turned on.
+---
+
+# Addendum 4: `PRIORITY_UID_FILTER` ported
+
+Addenda 2 and 3 both recorded this feature as deliberately absent. That call is
+reversed: BRENE `d800999c6` bumped `susfs_total_features` from 9 to 10 in
+`module/boot-completed.sh:17`, with `susfs_features_number` computed as
+`susfs show enabled_features | wc -l`. A kernel that emits only 9 lines reports
+`9/10`, and the module's `set_priority_uid_filter` call in
+`boot-completed.sh:410-414` (gated on `config_hide_third_party_apps=1`, default
+on) fell through the dispatcher's `default:` case — a silent no-op.
+
+## What was added
+
+| File | Change |
+|---|---|
+| `include/linux/susfs_def.h` | `CMD_SUSFS_SET_PRIORITY_UID_FILTER 0x60030`, `SUSFS_APP_STR_BUF_SIZE 65535`; `ADD_SUS_MEMFD` moved to `0x60040` |
+| `include/linux/susfs.h` | `struct st_susfs_priority_uid_filter { char app_strings[SUSFS_APP_STR_BUF_SIZE]; int err; }` + the two prototypes |
+| `fs/susfs.c` | bitmap, resolver, `susfs_set_priority_uid_filter()`, and the 10th enabled-features line |
+| `drivers/kernelsu/Kconfig` | `config KSU_SUSFS_PRIORITY_UID_FILTER`, `default y` |
+| `drivers/kernelsu/supercall/supercall.c` | `case CMD_SUSFS_SET_PRIORITY_UID_FILTER` → `susfs_set_priority_uid_filter(arg)` |
+| `kernel/sys.c` | filter guard in `setpriority` and `getpriority`, `PRIO_USER` branch |
+| `block/ioprio.c` | filter guard in `ioprio_set` and `ioprio_get`, `IOPRIO_WHO_USER` branch |
+| `miatoll_defconfig` | `CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y` |
+
+## Where this deliberately differs from upstream
+
+Upstream stores a list and walks it, and resolves package names by stat'ing
+`/data/data/<pkg>` with a temporary SELinux domain switch to `u:r:ksu:s0`.
+
+1. **Bitmap, not a list walk.** `getpriority`/`setpriority`/`ioprio_get`/
+   `ioprio_set` are hot syscalls that any app can call in a loop. A 65536-bit
+   bitmap is one `test_bit()` under `rcu_read_lock()`, no allocation on read.
+   `(uid % 100000)` normalises secondary-user uids, as upstream does.
+2. **`/data/system/packages.list`, not per-package stat.** BRENE passes every
+   installed third-party package comma-joined (a few hundred names). Stat'ing
+   each one is hundreds of syscalls plus a cred and domain switch per name; one
+   `kernel_read()` of `packages.list` under `override_creds(ksu_cred)` answers
+   all of them from a single framework-maintained snapshot.
+3. **uid range gate 10000–19999.** `Process.FIRST/LAST_APPLICATION_UID`. A
+   resolved uid outside that range is not an app and is refused rather than
+   filtered.
+4. **Unresolvable packages are skipped, not fatal.** `packages.list` is written
+   by the framework and can be seconds stale right after an install. Failing the
+   whole call would drop the entire filter because one package was new.
+5. **Empty `app_strings` clears the filter**, matching upstream's
+   each-call-replaces-the-set semantics.
+6. **`kvzalloc` for the two big buffers** (the 64 KiB request struct and the
+   512 KiB `packages.list` read). Both are contiguous-page allocations at
+   `boot-completed` time and `kvzalloc` falls back to `vmalloc`.
+
+## Verification performed
+
+- `scripts/checkpatch.pl` on the full diff: no new findings beyond the
+  conventions `fs/susfs.c` already uses (`(foo*)` casts and next-line braces in
+  the `copy_config_to_buf` block, both copied from the surrounding code).
+- `susfs_lookup_pkg_uid()` extracted verbatim from `fs/susfs.c` and exercised on
+  the host under ASan/UBSan against the real `packages.list` format: exact
+  matches, `com.example.ap` does not match `com.example.app`, last line without
+  a trailing newline still resolves, empty/garbage list returns `-1` without
+  faulting. 10/10 cases pass.
+- Not verified: an actual `make` (no local kernel build) or a device run. The
+  syscall hooks are structurally identical to upstream's.

@@ -33,12 +33,13 @@
 #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x60010
 #define CMD_SUSFS_ADD_SUS_MAP 0x60020
 /*
- * Upstream SUSFS v2.3.0 uses 0x60030 for CMD_SUSFS_SET_PRIORITY_UID_FILTER
- * (simonpunk/susfs4ksu, all branches) and has no ADD_SUS_MEMFD at all.
- * Take the next free slot rather than 0x60030 so that enabling
- * CONFIG_KSU_SUSFS_SUS_MEMFD can never route an upstream priority-filter
- * payload (a 65535-byte app_strings blob) into susfs_add_sus_memfd().
+ * 0x60030 is upstream's CMD_SUSFS_SET_PRIORITY_UID_FILTER, which this tree
+ * now implements at that exact number - BRENE and the upstream ksu_susfs
+ * tool send it there.  ADD_SUS_MEMFD was moved off 0x60030 to 0x60040 for
+ * that reason: a priority-filter payload is a 65535-byte app_strings blob,
+ * nothing like a pathname, so the two must never share a number.
  */
+#define CMD_SUSFS_SET_PRIORITY_UID_FILTER 0x60030
 #define CMD_SUSFS_ADD_SUS_MEMFD 0x60040
 
 #define SUSFS_MAX_LEN_PATHNAME 256 // 256 should address many paths already unless you are doing some strange experimental stuff, then set your own desired length
@@ -46,6 +47,8 @@
 #define SUSFS_ENABLED_FEATURES_SIZE 8192 // 8192 is enough I guess
 #define SUSFS_MAX_VERSION_BUFSIZE 16
 #define SUSFS_MAX_VARIANT_BUFSIZE 16
+/* Upstream size for the comma-separated package list of the uid filter. */
+#define SUSFS_APP_STR_BUF_SIZE 65535
 
 #define TRY_UMOUNT_DEFAULT 0 /* used by susfs_try_umount() */
 #define TRY_UMOUNT_DETACH 1 /* used by susfs_try_umount() */

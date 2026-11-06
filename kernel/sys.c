@@ -190,6 +190,10 @@ out:
 	return error;
 }
 
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+extern bool susfs_is_priority_uid_filtered(uid_t uid);
+#endif
+
 SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
 {
 	struct task_struct *g, *p;
@@ -235,6 +239,17 @@ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
 		if (!who)
 			uid = cred->uid;
 		else if (!uid_eq(uid, cred->uid)) {
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+			/*
+			 * Only an unprivileged app is filtered, and it gets the
+			 * same answer as for a uid that has no processes at all,
+			 * so a filtered app is indistinguishable from an absent
+			 * one rather than merely denied.
+			 */
+			if (current_uid().val >= 10000 &&
+			    susfs_is_priority_uid_filtered(uid.val))
+				goto out_unlock;
+#endif
 			user = find_user(uid);
 			if (!user)
 				goto out_unlock;	/* No processes for this user */
@@ -303,6 +318,17 @@ SYSCALL_DEFINE2(getpriority, int, which, int, who)
 		if (!who)
 			uid = cred->uid;
 		else if (!uid_eq(uid, cred->uid)) {
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+			/*
+			 * Only an unprivileged app is filtered, and it gets the
+			 * same answer as for a uid that has no processes at all,
+			 * so a filtered app is indistinguishable from an absent
+			 * one rather than merely denied.
+			 */
+			if (current_uid().val >= 10000 &&
+			    susfs_is_priority_uid_filtered(uid.val))
+				goto out_unlock;
+#endif
 			user = find_user(uid);
 			if (!user)
 				goto out_unlock;	/* No processes for this user */

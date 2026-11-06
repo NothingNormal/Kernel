@@ -20,6 +20,9 @@
 #include <linux/workqueue.h>
 #include <linux/fsnotify_backend.h>
 #include <linux/security.h>
+#include <linux/mm.h>		/* kvzalloc/kvfree */
+#include <linux/rcupdate.h>	/* priority uid filter bitmap */
+#include <linux/string.h>	/* strchrnul */
 #include <linux/susfs.h>
 #include "fuse/fuse_i.h"
 #include "mount.h"
@@ -1400,6 +1403,259 @@ int susfs_sus_memfd(char *memfd_name) {
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MEMFD
 
+/* priority uid filter */
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+/*
+ * Some apps probe getpriority/setpriority/ioprio_get/ioprio_set against other
+ * uids to work out which apps are installed or running.  Hide a user-selected
+ * set of app uids from those four syscalls: a filtered uid is reported exactly
+ * like a uid with no processes, which is the -ESRCH they already return for a
+ * uid that has never logged in.
+ *
+ * The set is a bitmap so the syscall side is one test_bit() under RCU.  Those
+ * syscalls run far too often for a list walk.  App uids are 10000-19999 and
+ * Android's secondary users add a multiple of 100000, so the lookup always
+ * asks about (uid % 100000), matching upstream.
+ */
+#define SUSFS_PRIORITY_UID_BITS 65536UL
+
+static unsigned long *susfs_priority_uid_bitmap __rcu;
+static DEFINE_MUTEX(susfs_priority_uid_lock);
+
+bool susfs_is_priority_uid_filtered(uid_t uid) {
+	unsigned long *bitmap;
+	uid_t normalized = (uid_t)(uid % 100000U);
+	bool filtered = false;
+
+	if (normalized >= SUSFS_PRIORITY_UID_BITS)
+		return false;
+
+	rcu_read_lock();
+	bitmap = rcu_dereference(susfs_priority_uid_bitmap);
+	if (bitmap)
+		filtered = test_bit(normalized, bitmap);
+	rcu_read_unlock();
+
+	return filtered;
+}
+
+/*
+ * /data/system/packages.list is "<pkg> <uid> <debuggable> <datadir> ..." per
+ * line.  Prefer it over stat'ing /data/data/<pkg> per name: one read, one pass,
+ * and it works for an app whose data dir does not exist yet.
+ */
+#define SUSFS_PACKAGES_LIST_PATH "/data/system/packages.list"
+
+/*
+ * About 100 bytes per line, so this covers several thousand packages.  The
+ * buffer is vmalloc-backed (see kvzalloc below) because a contiguous order-7
+ * allocation is not something to ask for once the device has been up a while.
+ */
+#define SUSFS_PACKAGES_LIST_MAX  (512 * 1024)
+
+static char *susfs_read_packages_list(void) {
+	struct file *file;
+	const struct cred *saved;
+	char *buf = NULL;
+	loff_t pos = 0;
+	ssize_t nread;
+
+	/*
+	 * packages.list is not world readable and sits behind SELinux, so read
+	 * it with ksu_cred as the sus_path loop does.
+	 */
+	saved = ksu_cred ? override_creds(ksu_cred) : NULL;
+
+	file = filp_open(SUSFS_PACKAGES_LIST_PATH, O_RDONLY, 0);
+	if (IS_ERR(file)) {
+		SUSFS_LOGE("failed to open '%s': %ld\n",
+			   SUSFS_PACKAGES_LIST_PATH, PTR_ERR(file));
+		goto out_revert;
+	}
+
+	buf = kvzalloc(SUSFS_PACKAGES_LIST_MAX, GFP_KERNEL);
+	if (!buf)
+		goto out_close;
+
+	nread = kernel_read(file, buf, SUSFS_PACKAGES_LIST_MAX - 1, &pos);
+	if (nread <= 0) {
+		SUSFS_LOGE("failed to read '%s': %zd\n",
+			   SUSFS_PACKAGES_LIST_PATH, nread);
+		kvfree(buf);
+		buf = NULL;
+		goto out_close;
+	}
+	buf[nread] = '\0';
+
+	/*
+	 * A full buffer means a line was cut in half.  Drop that tail rather
+	 * than hand a half-read uid to the parser.
+	 */
+	if (nread == SUSFS_PACKAGES_LIST_MAX - 1) {
+		char *last_nl = strrchr(buf, '\n');
+
+		SUSFS_LOGE("'%s' is larger than %d bytes, truncated\n",
+			   SUSFS_PACKAGES_LIST_PATH, SUSFS_PACKAGES_LIST_MAX - 1);
+		if (last_nl)
+			last_nl[1] = '\0';
+	}
+
+out_close:
+	filp_close(file, NULL);
+out_revert:
+	if (saved)
+		revert_creds(saved);
+	return buf;
+}
+
+/* Returns the uid for @pkg, or -1 when the package is not listed. */
+static int susfs_lookup_pkg_uid(const char *list, const char *pkg, size_t pkg_len) {
+	const char *line = list;
+
+	while (*line) {
+		const char *end = strchrnul(line, '\n');
+		const char *sep = line;
+
+		/* The package name is the first space-separated field. */
+		while (sep < end && *sep != ' ' && *sep != '\t')
+			sep++;
+
+		if ((size_t)(sep - line) == pkg_len && !strncmp(line, pkg, pkg_len)) {
+			const char *p = sep;
+			unsigned long uid = 0;
+			bool digits = false;
+
+			while (p < end && (*p == ' ' || *p == '\t'))
+				p++;
+			while (p < end && *p >= '0' && *p <= '9') {
+				uid = uid * 10 + (unsigned long)(*p - '0');
+				if (uid > INT_MAX)
+					return -1;
+				digits = true;
+				p++;
+			}
+			return digits ? (int)uid : -1;
+		}
+
+		if (!*end)
+			break;
+		line = end + 1;
+	}
+	return -1;
+}
+
+void susfs_set_priority_uid_filter(void __user **user_info) {
+	/*
+	 * This struct carries a 65535-byte package list, so it is the one susfs
+	 * user_info that cannot live on the stack.  kvzalloc keeps the fallback
+	 * to vmalloc, since 64 KiB of contiguous pages can be scarce once boot
+	 * has finished and this runs at boot-completed.
+	 */
+	struct st_susfs_priority_uid_filter *info;
+	unsigned long *new_bitmap, *old_bitmap;
+	char *list, *cursor;
+	int resolved = 0;
+
+	info = kvzalloc(sizeof(*info), GFP_KERNEL);
+	if (!info) {
+		SUSFS_LOGE("failed to allocate info\n");
+		return;
+	}
+	if (copy_from_user(info,
+			   (struct st_susfs_priority_uid_filter __user*)*user_info,
+			   sizeof(*info))) {
+		info->err = -EFAULT;
+		goto out_copy_to_user;
+	}
+	/*
+	 * The caller promises one NUL-terminated string, but the copy above
+	 * takes whatever it is given, so terminate it here before any strlen().
+	 */
+	info->app_strings[SUSFS_APP_STR_BUF_SIZE - 1] = '\0';
+
+	new_bitmap = kcalloc(BITS_TO_LONGS(SUSFS_PRIORITY_UID_BITS),
+			     sizeof(unsigned long), GFP_KERNEL);
+	if (!new_bitmap) {
+		SUSFS_LOGE("failed to allocate bitmap\n");
+		info->err = -ENOMEM;
+		goto out_copy_to_user;
+	}
+
+	if (info->app_strings[0]) {
+		list = susfs_read_packages_list();
+		if (!list) {
+			info->err = -ENOENT;
+			goto out_free_bitmap;
+		}
+
+		/*
+		 * Each invocation replaces the previous set, as upstream does.
+		 * An unresolvable package is skipped rather than failing the
+		 * whole call: packages.list is framework-written and is a few
+		 * seconds stale right after an install.
+		 */
+		cursor = info->app_strings;
+		while (cursor && *cursor) {
+			char *next = strchr(cursor, ',');
+			char *name = cursor;
+			size_t name_len;
+			int found;
+
+			if (next)
+				*next++ = '\0';
+			while (*name == ' ' || *name == '\t')
+				name++;
+			name_len = strlen(name);
+			while (name_len && (name[name_len - 1] == ' ' ||
+					    name[name_len - 1] == '\t'))
+				name[--name_len] = '\0';
+			if (name_len) {
+				found = susfs_lookup_pkg_uid(list, name, name_len);
+				if (found < 0)
+					SUSFS_LOGE("package '%s' not in packages.list\n", name);
+				else if (found < 10000 || found > 19999)
+					SUSFS_LOGE("package '%s' uid %d not an app uid\n",
+						   name, found);
+				else {
+					set_bit((unsigned int)found, new_bitmap);
+					resolved++;
+				}
+			}
+			cursor = next;
+		}
+		kvfree(list);
+	}
+
+	mutex_lock(&susfs_priority_uid_lock);
+	old_bitmap = rcu_dereference_protected(susfs_priority_uid_bitmap,
+					       lockdep_is_held(&susfs_priority_uid_lock));
+	rcu_assign_pointer(susfs_priority_uid_bitmap, new_bitmap);
+	mutex_unlock(&susfs_priority_uid_lock);
+
+	/*
+	 * Rare (boot-completed, at most), so a synchronous grace period is
+	 * cheaper to reason about than a kfree_rcu on a bare pointer.
+	 */
+	if (old_bitmap) {
+		synchronize_rcu();
+		kfree(old_bitmap);
+	}
+	new_bitmap = NULL;
+
+	info->err = 0;
+	SUSFS_LOGI("filtering %d app uid(s) from the priority syscalls\n", resolved);
+
+out_free_bitmap:
+	kfree(new_bitmap);
+out_copy_to_user:
+	if (copy_to_user(&((struct st_susfs_priority_uid_filter __user*)*user_info)->err,
+			 &info->err, sizeof(info->err)))
+		info->err = -EFAULT;
+	SUSFS_LOGI("CMD_SUSFS_SET_PRIORITY_UID_FILTER -> ret: %d\n", info->err);
+	kvfree(info);
+}
+#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+
 /* susfs avc log spoofing */
 extern bool susfs_is_avc_log_spoofing_enabled;
 
@@ -1507,6 +1763,11 @@ void susfs_get_enabled_features(void __user **user_info) {
 #endif
 #ifdef CONFIG_KSU_SUSFS_SUS_MEMFD
 	info->err = copy_config_to_buf("CONFIG_KSU_SUSFS_SUS_MEMFD\n", buf_ptr, &copied_size, SUSFS_ENABLED_FEATURES_SIZE);
+	if (info->err) goto out_copy_to_user;
+	buf_ptr = info->enabled_features + copied_size;
+#endif
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+	info->err = copy_config_to_buf("CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER\n", buf_ptr, &copied_size, SUSFS_ENABLED_FEATURES_SIZE);
 	if (info->err) goto out_copy_to_user;
 	buf_ptr = info->enabled_features + copied_size;
 #endif

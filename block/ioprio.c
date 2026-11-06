@@ -61,6 +61,10 @@ int set_task_ioprio(struct task_struct *task, int ioprio)
 }
 EXPORT_SYMBOL_GPL(set_task_ioprio);
 
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+extern bool susfs_is_priority_uid_filtered(uid_t uid);
+#endif
+
 SYSCALL_DEFINE3(ioprio_set, int, which, int, who, int, ioprio)
 {
 	int class = IOPRIO_PRIO_CLASS(ioprio);
@@ -120,8 +124,23 @@ SYSCALL_DEFINE3(ioprio_set, int, which, int, who, int, ioprio)
 				break;
 			if (!who)
 				user = current_user();
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+			else {
+				/*
+				 * An unprivileged caller asking about a hidden app uid
+				 * gets -ESRCH, the same answer as for a uid with no
+				 * processes, so this is not distinguishable from an
+				 * absent app.
+				 */
+				if (current_uid().val >= 10000 &&
+				    susfs_is_priority_uid_filtered(uid.val))
+					break;
+				user = find_user(uid);
+			}
+#else
 			else
 				user = find_user(uid);
+#endif
 
 			if (!user)
 				break;
@@ -213,8 +232,23 @@ SYSCALL_DEFINE2(ioprio_get, int, which, int, who)
 			uid = make_kuid(current_user_ns(), who);
 			if (!who)
 				user = current_user();
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+			else {
+				/*
+				 * An unprivileged caller asking about a hidden app uid
+				 * gets -ESRCH, the same answer as for a uid with no
+				 * processes, so this is not distinguishable from an
+				 * absent app.
+				 */
+				if (current_uid().val >= 10000 &&
+				    susfs_is_priority_uid_filtered(uid.val))
+					break;
+				user = find_user(uid);
+			}
+#else
 			else
 				user = find_user(uid);
+#endif
 
 			if (!user)
 				break;

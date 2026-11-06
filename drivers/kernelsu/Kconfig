@@ -163,6 +163,23 @@ config KSU_SUSFS_SUS_MEMFD
 	  Spoof the name of suspicious memfd files, as reported through
 	  /proc/<pid>/fd and the maps interfaces.
 
+config KSU_SUSFS_PRIORITY_UID_FILTER
+	bool "Enable to hide app uids from the priority syscalls"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide a user-selected set of app uids from getpriority(),
+	  setpriority(), ioprio_get() and ioprio_set().  Those syscalls are
+	  abused to enumerate installed and running apps; a filtered uid is
+	  reported exactly like a uid with no processes, which is the -ESRCH
+	  those calls already return for a uid that never logged in.
+
+	  The set is configured at runtime through
+	  CMD_SUSFS_SET_PRIORITY_UID_FILTER with a comma-separated package
+	  list, resolved against /data/system/packages.list.  It is a
+	  runtime feature in the same sense as the others: nothing is
+	  filtered until userspace asks for it.
+
 endmenu
 
 endmenu
