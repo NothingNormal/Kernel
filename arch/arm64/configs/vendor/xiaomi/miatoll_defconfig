@@ -741,10 +741,31 @@ CONFIG_EXT4_FS=y
 CONFIG_EXT4_FS_POSIX_ACL=y
 CONFIG_EXT4_FS_SECURITY=y
 CONFIG_EXT4_ENCRYPTION=y
+# EROFS is the read-only system/product image format for Android 10+.  Every
+# sub-option below is stated explicitly rather than left to the Kconfig
+# defaults, so the feature set is visible here and survives savedefconfig.
 CONFIG_EROFS_FS=y
+CONFIG_EROFS_FS_XATTR=y
+CONFIG_EROFS_FS_POSIX_ACL=y
+CONFIG_EROFS_FS_SECURITY=y
+# Fixed-sized output compression (lz4).  Without it a compressing erofs image
+# still mounts but every cluster comes back as I/O errors.
+CONFIG_EROFS_FS_ZIP=y
+# F2FS: the writable userdata filesystem.  Compression is a 5.6+ feature
+# backported into this tree; all three backends are built so that whichever
+# algorithm an image was created with is supported.
 CONFIG_F2FS_FS=y
+CONFIG_F2FS_FS_XATTR=y
+CONFIG_F2FS_FS_POSIX_ACL=y
 CONFIG_F2FS_FS_SECURITY=y
 CONFIG_F2FS_FS_ENCRYPTION=y
+CONFIG_F2FS_FS_COMPRESSION=y
+CONFIG_F2FS_FS_LZO=y
+CONFIG_F2FS_FS_LZ4=y
+CONFIG_F2FS_FS_ZSTD=y
+# F2FS_CHECK_FS is a consistency-torture option: it turns on heavy assertion
+# checking in every hot path.  Left off on purpose.
+# CONFIG_F2FS_CHECK_FS is not set
 CONFIG_FS_ENCRYPTION_INLINE_CRYPT=y
 CONFIG_FS_VERITY=y
 CONFIG_FS_VERITY_BUILTIN_SIGNATURES=y

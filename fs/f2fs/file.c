@@ -3007,6 +3007,97 @@ out:
 	return ret;
 }
 
+/*
+ * Per-file compression options.  The mount options only decide the default for
+ * new files; these ioctls let userspace pin a different algorithm or cluster
+ * size on one inode, which is what f2fs-tools and Android's f2fs_io use.
+ */
+static int f2fs_ioc_set_compress_option(struct file *filp, unsigned long arg)
+{
+	struct inode *inode = file_inode(filp);
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
+	struct f2fs_comp_option option;
+	int ret;
+
+	if (!f2fs_sb_has_compression(sbi))
+		return -EOPNOTSUPP;
+
+	if (!(filp->f_mode & FMODE_WRITE))
+		return -EBADF;
+
+	if (copy_from_user(&option, (void __user *)arg, sizeof(option)))
+		return -EFAULT;
+
+	if (!S_ISREG(inode->i_mode) ||
+	    option.log_cluster_size < MIN_COMPRESS_LOG_SIZE ||
+	    option.log_cluster_size > MAX_COMPRESS_LOG_SIZE ||
+	    option.algorithm >= COMPRESS_MAX)
+		return -EINVAL;
+
+	if (f2fs_readonly(sbi->sb))
+		return -EROFS;
+
+	ret = mnt_want_write_file(filp);
+	if (ret)
+		return ret;
+
+	inode_lock(inode);
+
+	/*
+	 * Once a file is compressed the cluster size is baked into every
+	 * address stored for it, so the options can only be set beforehand.
+	 */
+	if (F2FS_I(inode)->i_flags & F2FS_COMPR_FL) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* Same reasoning for data already queued against the old layout. */
+	if (f2fs_is_mmap_file(inode) || get_dirty_pages(inode)) {
+		ret = -EBUSY;
+		goto out;
+	}
+
+	F2FS_I(inode)->i_compress_algorithm = option.algorithm;
+	F2FS_I(inode)->i_log_cluster_size = option.log_cluster_size;
+	F2FS_I(inode)->i_cluster_size = 1 << option.log_cluster_size;
+	f2fs_mark_inode_dirty_sync(inode, true);
+
+	/*
+	 * Accepting an algorithm this build has no backend for would only fail
+	 * later, on the first write, with a much less obvious error.
+	 */
+	if (!f2fs_is_compress_backend_ready(inode)) {
+		f2fs_warn(sbi, "compression algorithm %u set but this kernel has no backend for it",
+			  option.algorithm);
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	ret = 0;
+out:
+	inode_unlock(inode);
+	mnt_drop_write_file(filp);
+	return ret;
+}
+
+static int f2fs_ioc_get_compress_option(struct file *filp, unsigned long arg)
+{
+	struct inode *inode = file_inode(filp);
+	struct f2fs_comp_option option;
+
+	if (!f2fs_sb_has_compression(F2FS_I_SB(inode)))
+		return -EOPNOTSUPP;
+
+	option.algorithm = F2FS_I(inode)->i_compress_algorithm;
+	option.log_cluster_size = F2FS_I(inode)->i_log_cluster_size;
+
+	if (copy_to_user((void __user *)arg, &option, sizeof(option)))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int f2fs_ioc_get_features(struct file *filp, unsigned long arg)
 {
 	struct inode *inode = file_inode(filp);
@@ -3810,6 +3901,10 @@ long f2fs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return f2fs_release_compress_blocks(filp, arg);
 	case F2FS_IOC_RESERVE_COMPRESS_BLOCKS:
 		return f2fs_reserve_compress_blocks(filp, arg);
+	case F2FS_IOC_SET_COMPRESS_OPTION:
+		return f2fs_ioc_set_compress_option(filp, arg);
+	case F2FS_IOC_GET_COMPRESS_OPTION:
+		return f2fs_ioc_get_compress_option(filp, arg);
 	default:
 		return -ENOTTY;
 	}
@@ -3976,6 +4071,8 @@ long f2fs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case F2FS_IOC_GET_COMPRESS_BLOCKS:
 	case F2FS_IOC_RELEASE_COMPRESS_BLOCKS:
 	case F2FS_IOC_RESERVE_COMPRESS_BLOCKS:
+	case F2FS_IOC_SET_COMPRESS_OPTION:
+	case F2FS_IOC_GET_COMPRESS_OPTION:
 		break;
 	default:
 		return -ENOIOCTLCMD;
