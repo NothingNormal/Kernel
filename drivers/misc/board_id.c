@@ -31,15 +31,20 @@ static char board_id_hwname[32] = {0};
 
 void board_id_get_hwname(char *str)
 {
-	if(IS_ERR_OR_NULL(str))
+	if (IS_ERR_OR_NULL(str))
 		return;
-	strcpy(str, board_id_hwname);
+	/* Callers must provide room for the full name; never overrun it. */
+	strscpy(str, board_id_hwname, sizeof(board_id_hwname));
 }
 EXPORT_SYMBOL(board_id_get_hwname);
 
 static int __init setup_board_id_hwname(char *str)
 {
-	strcpy(board_id_hwname, str);
+	if (!str)
+		return 1;
+
+	/* androidboot.hwname= comes straight from the boot image. */
+	strscpy(board_id_hwname, str, sizeof(board_id_hwname));
 	pr_info("board_id_hwname : %s\n", board_id_hwname);
 
 	if (!strcmp(str, "excalibur") ||
@@ -132,13 +137,20 @@ static int __init setup_board_id_hwversion(char *str)
 	char *str_p = NULL;
 	char *str_n = NULL;
 	char buf[32] = {0};
-	strcpy(buf, str);
+
+	if (!str)
+		return 1;
+
+	strscpy(buf, str, sizeof(buf));
 	str_n = buf;
 	str_p = strsep(&str_n, ".");
-	board_id_hwversion_product_num = simple_strtoul(str_p, NULL, 10);
+	if (str_p)
+		board_id_hwversion_product_num = simple_strtoul(str_p, NULL, 10);
 	str_p = strsep(&str_n, ".");
-	board_id_hwversion_major_num = simple_strtoul(str_p, NULL, 10);
-	board_id_hwversion_minor_num = simple_strtoul(str_n, NULL, 10);
+	if (str_p)
+		board_id_hwversion_major_num = simple_strtoul(str_p, NULL, 10);
+	if (str_n)
+		board_id_hwversion_minor_num = simple_strtoul(str_n, NULL, 10);
 	pr_info("board_id_hwversion_product_num : %d\n", board_id_hwversion_product_num);
 	pr_info("board_id_hwversion_major_num : %d\n", board_id_hwversion_major_num);
 	pr_info("board_id_hwversion_minor_num : %d\n", board_id_hwversion_minor_num);

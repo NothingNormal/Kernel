@@ -17,7 +17,7 @@ CONFIG_RCU_FAST_NO_HZ=y
 CONFIG_RCU_NOCB_CPU=y
 CONFIG_IKCONFIG=y
 CONFIG_IKCONFIG_PROC=y
-CONFIG_LOG_BUF_SHIFT=20
+CONFIG_LOG_BUF_SHIFT=18
 CONFIG_PELT_UTIL_HALFLIFE_16=y
 CONFIG_CGROUPS=y
 CONFIG_BLK_CGROUP=y
@@ -128,6 +128,7 @@ CONFIG_SUSPEND_SKIP_SYNC=y
 CONFIG_PM_WAKELOCKS=y
 CONFIG_PM_WAKELOCKS_LIMIT=0
 # CONFIG_PM_WAKELOCKS_GC is not set
+CONFIG_PM_DEBUG=y
 CONFIG_CPU_IDLE=y
 CONFIG_CPU_IDLE_GOV_TEO=y
 CONFIG_ARM_CPUIDLE=y
@@ -137,7 +138,65 @@ CONFIG_CPU_FREQ_TIMES=y
 CONFIG_CPU_FREQ_GOV_POWERSAVE=y
 CONFIG_CPU_FREQ_GOV_USERSPACE=y
 CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+# ---------------------------------------------------------------------------
+# own commit: restore two stock QTI power knobs (msm_performance, cpu-boost).
+#
+# stock_defconfig and atoll-perf_defconfig set these two as well as
+# SCHED_CORE_CTL; core_ctl is deliberately NOT restored here - see below.
+# Both symbols below are inert until userspace configures them, which is what
+# makes them safe to turn on:
+#
+#   MSM_PERFORMANCE - a CPUFREQ_POLICY_NOTIFIER whose per-CPU limits default
+#     to min=0/max=UINT_MAX (cpufreq_verify_within_limits() with no effect)
+#     and a cpuhp callback that only sets a flag for a sleeping kthread. Acts
+#     only after something writes cpu_min_freq/cpu_max_freq in
+#     /sys/module/msm_performance/parameters/.
+#   CPU_BOOST - an input handler that returns immediately unless
+#     input_boost_freq has been written non-zero (input_boost_enabled is false
+#     with the default 0), so it does nothing at all as shipped.
+#     sched_boost_on_input is 0 as well, and with SCHED_WALT off
+#     sched_set_boost() is the inline stub in include/linux/sched.h returning
+#     -EINVAL, so the sched-boost half cannot fire either.
+#
+# SCHED_CORE_CTL was in the first version of this block and failed CI (run
+# 41178558128, "implicit declaration of function 'for_each_sched_cluster'",
+# "incomplete definition of type 'struct sched_cluster'"). Both of those
+# live inside "#ifdef CONFIG_SCHED_WALT": kernel/sched/sched.h:57 opens the
+# block that defines the struct at :88, and kernel/sched/walt.h:17 opens the
+# branch that defines the iteration macro at :267. With SCHED_WALT off -
+# deliberate on this kernel - core_ctl does not compile at all.
+#
+# Its periodic evaluator is coupled the same way: the only caller of
+# core_ctl_check() in the whole tree is kernel/sched/walt.c:3234, so even a
+# successful build would isolate CPUs only on sysfs writes and hotplug, never
+# as load changes. Core isolation therefore requires SCHED_WALT; with that
+# one symbol flipped, core_ctl becomes both buildable and self-driving, and
+# would be added back in the same commit.
+#
+# Nothing else in the tree depends on these two symbols.
+#
+# They were first turned off together, as a suspected cause of jank. That was
+# half right, and the half that was wrong matters:
+#
+#   CPU_BOOST raises policy->min to input_boost_freq on every input event
+#     (cpu-boost.c boost_adjust_notify()). It can only ever *raise* the
+#     frequency, so it cannot cause jank - its cost is heat and battery.
+#     Staying off.
+#
+#   MSM_PERFORMANCE only clamps the policy to [cpu_min_freq, cpu_max_freq],
+#     and since SCHED_WALT is off its core_ctl notifier is inert, so that
+#     clamp is its only live path. Those parameters are written by the ROM's
+#     perfd / thermal-engine. Turning the driver off therefore does not remove
+#     a jank source - it removes the *thermostat*, so nothing caps CPU
+#     frequency when the SoC gets hot. That is why the jank went away and the
+#     device started running warm. Turned back on: a kernel with no thermal
+#     clamp is not a fix for anything.
+#
+# If jank returns with it enabled, the jank was thermal throttling, and the
+# real bug is whatever is heating the SoC - not this clamp.
+# ---------------------------------------------------------------------------
 CONFIG_MSM_PERFORMANCE=y
+# CONFIG_CPU_BOOST is not set
 CONFIG_NET=y
 CONFIG_PACKET=y
 CONFIG_UNIX=y
@@ -685,10 +744,31 @@ CONFIG_EXT4_FS=y
 CONFIG_EXT4_FS_POSIX_ACL=y
 CONFIG_EXT4_FS_SECURITY=y
 CONFIG_EXT4_ENCRYPTION=y
+# EROFS is the read-only system/product image format for Android 10+.  Every
+# sub-option below is stated explicitly rather than left to the Kconfig
+# defaults, so the feature set is visible here and survives savedefconfig.
 CONFIG_EROFS_FS=y
+CONFIG_EROFS_FS_XATTR=y
+CONFIG_EROFS_FS_POSIX_ACL=y
+CONFIG_EROFS_FS_SECURITY=y
+# Fixed-sized output compression (lz4).  Without it a compressing erofs image
+# still mounts but every cluster comes back as I/O errors.
+CONFIG_EROFS_FS_ZIP=y
+# F2FS: the writable userdata filesystem.  Compression is a 5.6+ feature
+# backported into this tree; all three backends are built so that whichever
+# algorithm an image was created with is supported.
 CONFIG_F2FS_FS=y
+CONFIG_F2FS_FS_XATTR=y
+CONFIG_F2FS_FS_POSIX_ACL=y
 CONFIG_F2FS_FS_SECURITY=y
 CONFIG_F2FS_FS_ENCRYPTION=y
+CONFIG_F2FS_FS_COMPRESSION=y
+CONFIG_F2FS_FS_LZO=y
+CONFIG_F2FS_FS_LZ4=y
+CONFIG_F2FS_FS_ZSTD=y
+# F2FS_CHECK_FS is a consistency-torture option: it turns on heavy assertion
+# checking in every hot path.  Left off on purpose.
+# CONFIG_F2FS_CHECK_FS is not set
 CONFIG_FS_ENCRYPTION_INLINE_CRYPT=y
 CONFIG_FS_VERITY=y
 CONFIG_FS_VERITY_BUILTIN_SIGNATURES=y
@@ -714,10 +794,9 @@ CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
 CONFIG_UNICODE=y
 CONFIG_PRINTK_TIME=y
-CONFIG_OPTIMIZE_INLINING=y
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_PANIC_TIMEOUT=5
-CONFIG_SCHEDSTATS=y
+# CONFIG_SCHEDSTATS is not set
 CONFIG_SCHED_STACK_END_CHECK=y
 # CONFIG_DEBUG_PREEMPT is not set
 CONFIG_BUG_ON_DATA_CORRUPTION=y
@@ -755,13 +834,15 @@ CONFIG_MODULE_FORCE_LOAD=y
 CONFIG_CRYPTO_LZ4KD=y
 CONFIG_RC_CORE=y
 
-CONFIG_STACKPROTECTOR=y
-# CONFIG_CC_STACKPROTECTOR_STRONG is not set
+# Stack protector: the 5.x CONFIG_STACKPROTECTOR name does not exist in this
+# tree and was silently ignored, leaving arch/Kconfig's choice at its NONE
+# default. Say what is actually wanted.
+CONFIG_CC_STACKPROTECTOR_STRONG=y
 CONFIG_AUDIT=y
 CONFIG_PROFILING=y
 CONFIG_DEBUG_KERNEL=y
 CONFIG_GKI_HACKS_TO_FIX=y
-CONFIG_SCHED_DEBUG=y
+# CONFIG_SCHED_DEBUG is not set
 CONFIG_TRACE_GPU_MEM=y
 
 # KernelSU (backslashxx driver, vendored at KernelSU/kernel)

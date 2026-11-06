@@ -254,15 +254,14 @@ static void sugov_get_util(unsigned long *util, unsigned long *max, int cpu)
 
 	cfs_max = arch_scale_cpu_capacity(NULL, cpu);
 
-	*util = min(rq->cfs.avg.util_avg, cfs_max);
 	*max = cfs_max;
 
 	*util = boosted_cpu_util(cpu, &loadcpu->walt_load);
 
 	/*
-	 * Clamp the aggregated CPU utilization with the rq-level uclamp
-	 * values (MAX-aggregated over RUNNABLE tasks). This is a NOP until
-	 * userspace actually uses uclamp (sched_uclamp_used static key).
+	 * Apply util-clamp last: this is the value that gets turned into a
+	 * frequency, so a sched_util_min/max (or cpu.uclamp.*) request has to
+	 * be visible here and nowhere earlier.
 	 */
 #ifdef CONFIG_UCLAMP_TASK
 	*util = uclamp_util_with(rq, *util, NULL);

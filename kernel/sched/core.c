@@ -1201,7 +1201,7 @@ uclamp_update_active(struct task_struct *p, enum uclamp_id clamp_id)
 	 * affecting a valid clamp bucket, the next time it's enqueued,
 	 * it will already see the updated clamp bucket value.
 	 */
-	if (!p->uclamp[clamp_id].active) {
+	if (p->uclamp[clamp_id].active) {
 		uclamp_rq_dec_id(rq, p, clamp_id);
 		uclamp_rq_inc_id(rq, p, clamp_id);
 	}
@@ -8545,6 +8545,7 @@ static u64 cpu_uclamp_boost_read_u64(struct cgroup_subsys_state *css,
 
 	return (u64) tg->boosted;
 }
+
 #endif /* CONFIG_UCLAMP_TASK_GROUP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -8878,6 +8879,14 @@ static struct cftype cpu_files[] = {
 	},
 #endif
 #ifdef CONFIG_UCLAMP_TASK_GROUP
+	/*
+	 * Util-clamp group tunables. These live on the *cpu* controller, not on
+	 * cpuset: css_tg() below is container_of(css, struct task_group, css),
+	 * which is only valid for a css that belongs to a task_group. cpuset's
+	 * css is embedded in struct cpuset, so the same call from a cpuset file
+	 * would hand back a bogus task_group pointer and write past the end of
+	 * the cpuset object.
+	 */
 	{
 		.name = "uclamp.min",
 		.flags = CFTYPE_NOT_ON_ROOT,

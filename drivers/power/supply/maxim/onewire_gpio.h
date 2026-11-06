@@ -1,7 +1,10 @@
 #ifndef __ONEWIRE_GPIO_H__
 #define __ONEWIRE_GPIO_H__
 
-/* Lock complete transactions in process context, not individual bit slots. */
+/*
+ * Serializes complete bus transactions. The per-slot spinlock in the bit
+ * helpers cannot stop two callers from interleaving their bytes.
+ */
 void onewire_bus_lock(void);
 void onewire_bus_unlock(void);
 
