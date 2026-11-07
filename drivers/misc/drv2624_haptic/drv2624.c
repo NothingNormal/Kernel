@@ -1623,7 +1623,7 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 				nResult = -EINVAL;
 				break;
 			}
-			dev_err(pDRV2624->dev,
+			dev_dbg(pDRV2624->dev,
 				"%s upload to use effect,fw_effCount = %d\n",
 				__func__, pDRV2624->fw_header.fw_effCount);
 			memset(&pDRV2624->msWaveformSequencer, 0,
@@ -1640,16 +1640,18 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 				data[CUSTOM_DATA_EFFECT_IDX] + 1);
 		/**1-5-2**/
 			time_ms = pDRV2624->mnEffectTimems[data[CUSTOM_DATA_EFFECT_IDX]];
+			if (!time_ms)
+				time_ms = 25;
 
 			dev_dbg(pDRV2624->dev, "effect playing time_ms %d\n",
 				time_ms);
 			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] =
 			    time_ms / MSEC_PER_SEC;
-			dev_err(pDRV2624->dev, " ram data[1] time_ms =%d\n",
+			dev_dbg(pDRV2624->dev, " ram data[1] time_ms =%d\n",
 				data[CUSTOM_DATA_TIMEOUT_SEC_IDX]);
 			data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] =
-			    time_ms % MSEC_PER_SEC;;
-			dev_err(pDRV2624->dev, " ram data[2] time_ms =%d\n",
+			    time_ms % MSEC_PER_SEC;
+			dev_dbg(pDRV2624->dev, " ram data[2] time_ms =%d\n",
 				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX]);
 
 			/*
@@ -1670,10 +1672,11 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			   && play->effect_id < 127) {
 			nResult = rtp_get_effect_duration(play->effect_id - 1);
 			if (nResult < 0) {
-				nResult = -EINVAL;
-				break;
+				/* ponytail: fallback click timing when RTP firmware is absent. */
+				time_ms = 25;
+			} else {
+				time_ms = nResult;
 			}
-			time_ms = nResult;
 			nResult = 0;
 			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = time_ms / MSEC_PER_SEC;	//300 / 1000;
 			dev_dbg(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
@@ -1689,11 +1692,7 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 				break;
 			}
 			/* Do not reset the active stream if the user copy failed. */
-			nResult = set_running_effect_id(play->effect_id - 1);
-			if (nResult < 0) {
-				nResult = -EINVAL;
-				break;
-			}
+			set_running_effect_id(play->effect_id - 1);
 			nResult = 0;
 			pDRV2624->mnWorkMode = DRV2624_NEW_RTP_MODE;
 			schedule_work(&pDRV2624->upload_periodic_work);
@@ -1834,7 +1833,7 @@ static int drv2624_haptics_playback(struct input_dev *dev, int effect_id,
 	dev_dbg(pDRV2624->dev, "%s: mnEffectType(%d) WorkMode(%d)\n",
 		__func__, pDRV2624->mnEffectType, pDRV2624->mnWorkMode);
 	if (val <= 0) {
-		dev_err(pDRV2624->dev, "%s: return as value <= 0 \n", __func__);
+		dev_dbg(pDRV2624->dev, "%s: return as value <= 0 \n", __func__);
 		return 0;
 	}
 	if ((pDRV2624->mnEffectType == FF_CONSTANT)
@@ -2277,11 +2276,7 @@ static int drv2624_i2c_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Failed to allocate input device_node\n");
 		goto destroy_mutex;
 	}
-#ifndef CONFIG_ARCH_QCOM
-	pDRV2624->input_dev->name = "drv2624:haptics";
-#else
 	pDRV2624->input_dev->name = "qcom-hv-haptics";
-#endif
 	pDRV2624->input_dev->close = drv2624_close;
 	input_set_drvdata(pDRV2624->input_dev, pDRV2624);
 	input_set_capability(pDRV2624->input_dev, EV_FF, FF_RUMBLE);

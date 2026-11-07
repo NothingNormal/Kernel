@@ -48,6 +48,7 @@ typedef int atomic_t;
 #define mutex_unlock(l) assert(pthread_mutex_unlock(l) == 0)
 #define atomic_read(a) (*(a))
 #define atomic_set(a, v) (*(a) = (v))
+#define atomic_inc_return(a) (++*(a))
 #define wait_event_interruptible(q, condition) (mock_wait(q, !!(condition)))
 #define wake_up_interruptible(q) ((void)(q))
 #define VIB_FUNC_ENTER()                                                                           \
@@ -70,6 +71,7 @@ typedef int atomic_t;
 #define AW8624_MEDIUM_MAGNITUDE 0x5fff
 #define AW8624_STRONG_MAGNITUDE 0x7fff
 #define AW8624_RECOVER_INTERVAL_MS 5000
+#define AW8624_RECOVER_MAX_ATTEMPTS 3
 #define msecs_to_jiffies(ms) ((unsigned long)(ms))
 #define time_before(a, b) ((long)((a) - (b)) < 0)
 #define AW8624_MAX_EFFECT_WAIT_US 20000
@@ -148,6 +150,8 @@ struct aw8624 {
 	u8 level, applied_gain, rtp_init, ram_init;
 	bool suspended, shutting_down;
 	unsigned long recover_after;
+	atomic_t recover_attempts;
+	bool recover_disabled;
 	atomic_t exit_in_rtp_loop, is_in_irq, recovering;
 	int wait_q, stop_wait_q;
 };
@@ -491,6 +495,24 @@ static void test_stop_delay(void)
 	assert(stop_reads == 1 && stop_sleeps == 0);
 	assert(a.play_mode == AW8624_HAPTIC_STANDBY_MODE);
 	assert(a.recover_work.queued == 2);
+	stop_read_error = 0;
+
+	/*
+	 * A part that never recovers must stop being rebuilt, or the 5 s loop
+	 * keeps the CPU awake and resets the chip out from under playback.
+	 */
+	jiffies += AW8624_RECOVER_INTERVAL_MS;
+	a.recover_disabled = true;
+	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
+	assert(a.recover_work.queued == 2);   /* lockout honoured */
+
+	/* A stop that does reach standby clears the lockout and the count. */
+	stop_read_error = 0;
+	stop_reads = 0;
+	stop_active_reads = 0;
+	a.recover_attempts = AW8624_RECOVER_MAX_ATTEMPTS;
+	assert(aw8624_haptic_stop(&a) == 0);
+	assert(!a.recover_disabled && atomic_read(&a.recover_attempts) == 0);
 	cleanup();
 }
 static void test_routing(void)
@@ -525,7 +547,9 @@ static void test_routing(void)
 	a.effects_count = 3;
 	assert(upload(4, 10, 0x7fff, data) == 0 && slots[4].effect_id == 2 && data[2] == 3);
 	a.effects_count = 0;
-	assert(upload(4, 0, 0x7fff, data) == -EINVAL);
+	assert(upload(4, 0, 0x7fff, data) == 0 && slots[4].effect_id == 0 &&
+	       slots[4].activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE &&
+	       data[1] == 0 && data[2] == 25);
 	a.effects_count = 11;
 	mock_copy_from_error = 1;
 	assert(upload(4, 1, 0x7fff, data) == -EFAULT);
