@@ -826,7 +826,7 @@ CONFIG_UTS_NS=y
 
 # Required by PSTORE_FTRACE
 
-# BakaSU (SUSFS inline hook mode). In drivers/kernelsu/Kconfig the hooking
+# OriginSU (SUSFS inline hook mode). In drivers/kernelsu/Kconfig the hooking
 # method is a choice with three entries, and CONFIG_KSU_SUSFS is one of them:
 # setting it is what selects the inline hook, so CONFIG_KSU_MANUAL_HOOK and
 # CONFIG_KSU_TRACEPOINT_HOOK must stay unset (tracepoint is GKI2-only).
@@ -837,7 +837,7 @@ CONFIG_KSU=y
 # SUSFS v2.3.0 kernel-side addon. Same set as the sibling branch: every
 # feature is stated explicitly rather than inherited from the Kconfig
 # defaults, so what ships is visible here and survives savedefconfig.
-# BakaSU's SUSFS menu has no TRY_UMOUNT or SUS_MEMFD options.
+# OriginSU's SUSFS menu has no TRY_UMOUNT or SUS_MEMFD options.
 CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_SUS_PATH=y
 CONFIG_KSU_SUSFS_SUS_MOUNT=y
@@ -944,7 +944,7 @@ CONFIG_DEFAULT_BBR=y
 # && PERF_EVENTS. UPROBE_EVENTS alone satisfies it, so KPROBES and
 # KPROBE_EVENTS stay off on purpose:
 #
-#   * BakaSU's inline hook (CONFIG_KSU_SUSFS) needs no kprobes at all: every
+#   * OriginSU's inline hook (CONFIG_KSU_SUSFS) needs no kprobes at all: every
 #     hook is an explicit call site, and the defconfig states CONFIG_KSU_SUSFS
 #     explicitly, so nothing here can silently flip KernelSU into its
 #     tracepoint (GKI2-only) or manual/kprobe hook mode.
