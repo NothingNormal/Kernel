@@ -4767,9 +4767,9 @@ static int aw8624_i2c_remove(struct i2c_client *i2c)
 	if (aw8624->misc_registered)
 		misc_deregister(&aw8624_haptic_misc);
 	aw8624_block_new_effects(aw8624);
-	input_unregister_device(aw8624->input_dev);
 	aw8624_shutdown_firmware(aw8624);
 	aw8624_quiesce(aw8624);
+	input_unregister_device(aw8624->input_dev);
 	if (aw8624->irq_requested)
 		devm_free_irq(&i2c->dev, gpio_to_irq(aw8624->irq_gpio), aw8624);
 	mutex_lock(&aw8624->rtp_lock);
