@@ -1,18 +1,18 @@
-# Sixfaced CI - FAILED run #61
+# Sixfaced CI - FAILED run #212
 
-- run URL : https://github.com/rkmandilwar-rgb/Kernel/actions/runs/40297315784
-- ref     : refs/heads/arena/0fc62de9-kernel
-- commit  : b486a135a4189eb62268dd794e78c371325e0712
-- date    : 2026-10-26 09:23:50 UTC
-- clang   : Ubuntu clang version 21.1.8 (6ubuntu1)
+- run URL : https://github.com/NothingNormal/Kernel/actions/runs/42368964167
+- ref     : refs/heads/bakasu
+- commit  : 1a8a12cd7c28b8b24959dce10a1bcd9dd8a3919f
+- date    : 2026-11-07 11:45:18 UTC
+- clang   : Neutron clang version 24.0.0git (https://github.com/llvm/llvm-project.git f42c87ba2c70219b1f4ad1f031a5b6a1ea6603fb)
 
 ## Extracted errors (last 300 matches)
 ```
-2938:../net/netfilter/nf_tables_api.c:3534:8: error: no member named 'dead' in 'struct nft_set'
-2942:make[3]: *** [../scripts/Makefile.build:364: net/netfilter/nf_tables_api.o] Error 1
-2943:make[2]: *** [../scripts/Makefile.build:667: net/netfilter] Error 2
-2944:make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1286: net] Error 2
-4663:make: *** [Makefile:151: sub-make] Error 2
+820:../kernel/sched/core.c:7676:19: error: expected ')'
+828:make[3]: *** [../scripts/Makefile.build:364: kernel/sched/core.o] Error 1
+829:make[2]: *** [../scripts/Makefile.build:669: kernel/sched] Error 2
+830:make[1]: *** [/home/runner/work/Kernel/Kernel/Makefile:1341: kernel] Error 2
+3799:make: *** [Makefile:151: sub-make] Error 2
 ```
 
 ## Tail of build log (last 250 lines)
@@ -256,15 +256,15 @@
   AR      drivers/staging/built-in.a
   AR      drivers/built-in.a
 make: *** [Makefile:151: sub-make] Error 2
-Cacheable calls:   15033 / 17365 (86.57%)
-  Hits:             7992 / 15033 (53.16%)
-    Direct:         7834 /  7992 (98.02%)
-    Preprocessed:    158 /  7992 ( 1.98%)
-  Misses:           7041 / 15033 (46.84%)
-Uncacheable calls:  2332 / 17365 (13.43%)
+Cacheable calls:   54509 / 65656 (83.02%)
+  Hits:            44287 / 54509 (81.25%)
+    Direct:        33269 / 44287 (75.12%)
+    Preprocessed:  11018 / 44287 (24.88%)
+  Misses:          10222 / 54509 (18.75%)
+Uncacheable calls: 11147 / 65656 (16.98%)
 Local storage:
-  Cache size (GB):   0.3 /   8.0 ( 3.57%)
-  Hits:             7992 / 15033 (53.16%)
-  Misses:           7041 / 15033 (46.84%)
+  Cache size (GB):   0.4 /   4.0 (10.03%)
+  Hits:            44287 / 54509 (81.25%)
+  Misses:          10222 / 54509 (18.75%)
  Kernel build failed (make exit code 2)
 ```
