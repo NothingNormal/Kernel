@@ -196,10 +196,11 @@ jobs:
           # Kbuild errors out when KernelSU/.git is missing.
           git clone --filter=blob:none https://github.com/samakshkambxj/OriginSU KernelSU
           git -C KernelSU checkout -q main
-          # 4.14 compat: ensure linux/ratelimit.h is included for OriginSU ratelimited logging
-          sed -i '/ccflags-y.*-Wno-declaration-after-statement/a ccflags-y += -include linux/ratelimit.h' KernelSU/kernel/Kbuild
-          sed -i '/#include <linux\/printk.h>/i #include <linux/ratelimit.h>' KernelSU/kernel/include/klog.h
-          git -C KernelSU update-index --assume-unchanged kernel/Kbuild kernel/include/klog.h 2>/dev/null || true
+          # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
+          if [ -f scripts/originsu-4.14-susfs.patch ]; then
+            git -C KernelSU apply --check "/mnt/c/Users/rkman/scripts/originsu-4.14-susfs.patch" &&               git -C KernelSU apply "/mnt/c/Users/rkman/scripts/originsu-4.14-susfs.patch"
+            git -C KernelSU update-index --assume-unchanged               kernel/Kbuild kernel/include/klog.h               kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
+          fi
           echo "OriginSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
           echo "KSU_COMMIT=$(git -C KernelSU log -1 --format=%h)" >> "$GITHUB_ENV"
           test -e drivers/kernelsu/Kbuild || {
