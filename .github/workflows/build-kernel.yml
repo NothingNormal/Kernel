@@ -52,7 +52,7 @@ env:
 
 jobs:
   build:
-    name: Build Sixfaced (miatoll, arm64, BakaSU-SUSFS)
+    name: Build Sixfaced (miatoll, arm64, OriginSU)
     runs-on: ubuntu-latest
     # LTO + Polly on a 4 vCPU runner is slow; 6h is the GitHub maximum
     timeout-minutes: 360
@@ -470,7 +470,7 @@ jobs:
       # asset and leaves the release title, notes, tag and any other asset
       # (e.g. the KSU variant) untouched.
       - name: Publish zip to the 'latest' release
-        if: success() && github.ref != 'refs/heads/bakasu'
+        if: success() && github.ref != 'refs/heads/bakasu' && github.ref != 'refs/heads/OriginSU'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -514,11 +514,38 @@ jobs:
           gh release view latest --json assets \
             -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
 
+      # OriginSU branch only. Adds a separate asset to the latest release
+      # named Sixfaced-miatoll-OriginSU.zip without replacing the other three assets
+      # (Sixfaced-miatoll-KSU.zip, Sixfaced-miatoll-KSUN.zip, Sixfaced-miatoll-BakaSU.zip).
+      - name: Publish OriginSU zip to the 'latest' release
+        if: success() && github.ref == 'refs/heads/OriginSU'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mapfile -t ASSETS < <(gh release view latest --json assets -q '.assets[].name')
+          printf 'existing assets:\n'
+          printf '  %s\n' "${ASSETS[@]}"
+          for want in Sixfaced-miatoll-KSU.zip Sixfaced-miatoll-KSUN.zip Sixfaced-miatoll-BakaSU.zip; do
+            if printf '%s\n' "${ASSETS[@]}" | grep -qx "$want"; then
+              echo "  ok   $want is present"
+            else
+              echo "::warning::$want is not present on latest release"
+            fi
+          done
+          SRC=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
+          OUT="$RUNNER_TEMP/Sixfaced-miatoll-OriginSU.zip"
+          cp "$SRC" "$OUT"
+          ls -lh "$SRC" "$OUT"
+          gh release upload latest "$OUT" --clobber
+          gh release view latest --json assets \
+            -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
+
       - name: Upload kernel zip (artifact)
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Sixfaced-BakaSU-miatoll
+          name: Sixfaced-OriginSU-miatoll
           path: AnyKernel/Sixfaced-*.zip
           if-no-files-found: error
           retention-days: 30
