@@ -2973,10 +2973,6 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 		uploaded.activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE;
 		uploaded.effect_id = aw8624->info.effect_id_boundary;
 	} else if (effect->type == FF_PERIODIC) {
-		if (!aw8624->effects_count) {
-			ret = -EINVAL;
-			goto out;
-		}
 		if (copy_from_user(data, effect->u.periodic.custom_data,
 				   sizeof(data))) {
 			ret = -EFAULT;
@@ -2993,8 +2989,11 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 
 		/* The boundary itself is a RAM pattern, not an RTP blob. */
 		if (uploaded.effect_id <= aw8624->info.effect_id_boundary) {
-			uploaded.effect_id = min(uploaded.effect_id,
-						 aw8624->effects_count - 1);
+			if (aw8624->effects_count > 0)
+				uploaded.effect_id = min(uploaded.effect_id,
+							 aw8624->effects_count - 1);
+			else
+				uploaded.effect_id = 0;
 			uploaded.activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_MODE;
 		} else if (uploaded.effect_id < AW8624_RTP_FIRST_EFFECT_ID ||
 			   (unsigned int)(uploaded.effect_id - AW8624_RTP_EFFECT_BASE) >=
@@ -3012,12 +3011,23 @@ static int aw8624_haptics_upload_effect(struct input_dev *dev,
 
 		/* The HAL combines data[1] seconds and data[2] milliseconds. */
 		if (uploaded.activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE) {
-			data[1] = aw8624->predefined[uploaded.effect_id].play_rate_us / 1000000;
-			data[2] = (aw8624->predefined[uploaded.effect_id].play_rate_us /
-				   1000) % 1000;
+			if (aw8624->effects_count > 0 && aw8624->predefined &&
+			    aw8624->predefined[uploaded.effect_id].play_rate_us) {
+				data[1] = aw8624->predefined[uploaded.effect_id].play_rate_us / 1000000;
+				data[2] = (aw8624->predefined[uploaded.effect_id].play_rate_us /
+					   1000) % 1000;
+			} else {
+				/* ponytail: fallback click timing when child nodes or rates are missing. */
+				data[1] = 0;
+				data[2] = 25;
+			}
 		} else {
-			data[1] = aw8624->info.rtp_time[uploaded.effect_id] / 1000;
-			data[2] = aw8624->info.rtp_time[uploaded.effect_id] % 1000;
+			u32 rtp_ms = aw8624->info.rtp_time[uploaded.effect_id];
+
+			if (!rtp_ms)
+				rtp_ms = 25;
+			data[1] = rtp_ms / 1000;
+			data[2] = rtp_ms % 1000;
 		}
 		if (copy_to_user(effect->u.periodic.custom_data, data,
 				 sizeof(data))) {
@@ -4650,10 +4660,8 @@ static int aw8624_i2c_probe(struct i2c_client *i2c,
 	aw8624->input_dev = input_dev;
 	input_set_capability(input_dev, EV_FF, FF_CONSTANT);
 	input_set_capability(input_dev, EV_FF, FF_GAIN);
-	if (aw8624->effects_count != 0) {
-		input_set_capability(input_dev, EV_FF, FF_PERIODIC);
-		input_set_capability(input_dev, EV_FF, FF_CUSTOM);
-	}
+	input_set_capability(input_dev, EV_FF, FF_PERIODIC);
+	input_set_capability(input_dev, EV_FF, FF_CUSTOM);
 
 	if (aw8624->effects_count + 1 > FF_EFFECT_COUNT_MAX)
 		effect_count_max = aw8624->effects_count + 1;

@@ -547,7 +547,9 @@ static void test_routing(void)
 	a.effects_count = 3;
 	assert(upload(4, 10, 0x7fff, data) == 0 && slots[4].effect_id == 2 && data[2] == 3);
 	a.effects_count = 0;
-	assert(upload(4, 0, 0x7fff, data) == -EINVAL);
+	assert(upload(4, 0, 0x7fff, data) == 0 && slots[4].effect_id == 0 &&
+	       slots[4].activate_mode == AW8624_HAPTIC_ACTIVATE_RAM_MODE &&
+	       data[1] == 0 && data[2] == 25);
 	a.effects_count = 11;
 	mock_copy_from_error = 1;
 	assert(upload(4, 1, 0x7fff, data) == -EFAULT);
