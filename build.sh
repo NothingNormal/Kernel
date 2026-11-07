@@ -174,8 +174,11 @@ if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_R
 fi
 # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
 if [ -f scripts/originsu-4.14-susfs.patch ]; then
-    git -C KernelSU apply --check "/mnt/c/Users/rkman/scripts/originsu-4.14-susfs.patch" 2>/dev/null &&         git -C KernelSU apply "/mnt/c/Users/rkman/scripts/originsu-4.14-susfs.patch" || true
-    git -C KernelSU update-index --assume-unchanged         kernel/Kbuild kernel/include/klog.h         kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
+    git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch 2>/dev/null && \
+        git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch || true
+    git -C KernelSU update-index --assume-unchanged \
+        kernel/Kbuild kernel/include/klog.h \
+        kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
 fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2

@@ -3,13 +3,13 @@ index ef63b9d9..e79a3b12 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
 @@ -57,6 +57,7 @@ ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-miss
- ccflags-y += 
+ ccflags-y += $(call cc-disable-warning, int-conversion)
  ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable -Wno-missing-braces
  ccflags-y += -Wno-int-to-pointer-cast -Wno-declaration-after-statement
 +ccflags-y += -include linux/ratelimit.h
  
- ccflags-y += -I/security/selinux -I/security/selinux/include
- ccflags-y += -I/ -I//include
+ ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
+ ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
 index ca8d7629..91b54efc 100644
 --- a/kernel/feature/selinux_hide.c
@@ -50,7 +50,8 @@ index ca8d7629..91b54efc 100644
 +
  // 6.6+ or 4.14-
  // android has backport in 4.14
- #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0) ||                                                                   @@ -237,12 +238,14 @@ static inline u32 current_sid(void)
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0) ||                                                                   \
+@@ -237,12 +238,14 @@ static inline u32 current_sid(void)
  }
  #endif
  
@@ -88,10 +89,11 @@ index ca8d7629..91b54efc 100644
  
 -#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && !defined(KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE)
 -struct ksu_lsm_hook selinux_setprocattr_hook =
--    KSU_LSM_HOOK_INIT(setprocattr, selinux_setprocattr, ksu_handle_selinux_setprocattr, 0);
+-    KSU_LSM_HOOK_INIT(setprocattr, "selinux_setprocattr", ksu_handle_selinux_setprocattr, 0);
 -#endif
 -
--#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) &&                                                                   -    (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS))
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) &&                                                                   \
+-    (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS))
 -static setprocattr_fn ksu_orig_setprocattr;
 -uintptr_t selinux_setprocattr_hook_ptr = 0;
 +// clang-format off
@@ -101,10 +103,11 @@ index ca8d7629..91b54efc 100644
 -extern setprocattr_fn ksu_orig_setprocattr;
 +    #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && !defined(KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE)
 +        struct ksu_lsm_hook selinux_setprocattr_hook =
-+            KSU_LSM_HOOK_INIT(setprocattr, selinux_setprocattr, ksu_handle_selinux_setprocattr, 0);
++            KSU_LSM_HOOK_INIT(setprocattr, "selinux_setprocattr", ksu_handle_selinux_setprocattr, 0);
 +    #endif
 +
-+    #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) &&                                                                   +        (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS))
++    #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) &&                                                                   \
++        (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS))
 +        static setprocattr_fn ksu_orig_setprocattr;
 +        uintptr_t selinux_setprocattr_hook_ptr = 0;
 +    #else
@@ -124,7 +127,7 @@ index ca8d7629..91b54efc 100644
          goto call_orig;
      }
 @@ -458,6 +470,7 @@ int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, vo
-     if (strcmp(name, current)) {
+     if (strcmp(name, "current")) {
          goto call_orig;
      }
 +#endif
@@ -167,14 +170,14 @@ index 7d73cafa..03edc8e1 100644
 --- a/kernel/runtime/ksud_integration.c
 +++ b/kernel/runtime/ksud_integration.c
 @@ -43,10 +43,10 @@
- #include policy/feature.h
- #include selinux/selinux.h
- #include manager/throne_tracker.h
-+#include preinit/preinit.h
+ #include "policy/feature.h"
+ #include "selinux/selinux.h"
+ #include "manager/throne_tracker.h"
++#include "preinit/preinit.h"
  #if defined(CONFIG_KSU_TRACEPOINT_HOOK) || defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
- #include hook/syscall_hook.h
- #include hook/syscall_event_bridge.h
--#include preinit/preinit.h
+ #include "hook/syscall_hook.h"
+ #include "hook/syscall_event_bridge.h"
+-#include "preinit/preinit.h"
  #endif
  
  // clang-format off
