@@ -172,6 +172,15 @@ fi
 if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_REF^{commit}" 2>/dev/null)" ]; then
     git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out OriginSU $KSU_REF (shallow clone? rm -rf KernelSU)"; exit 1; }
 fi
+# 4.14 compat: ensure linux/ratelimit.h is included for OriginSU ratelimited logging
+if [ -e KernelSU/kernel/Kbuild ] && ! grep -q "linux/ratelimit.h" KernelSU/kernel/Kbuild; then
+    sed -i '/ccflags-y.*-Wno-declaration-after-statement/a ccflags-y += -include linux/ratelimit.h' KernelSU/kernel/Kbuild
+    git -C KernelSU update-index --assume-unchanged kernel/Kbuild 2>/dev/null || true
+fi
+if [ -e KernelSU/kernel/include/klog.h ] && ! grep -q "linux/ratelimit.h" KernelSU/kernel/include/klog.h; then
+    sed -i '/#include <linux\/printk.h>/i #include <linux/ratelimit.h>' KernelSU/kernel/include/klog.h
+    git -C KernelSU update-index --assume-unchanged kernel/include/klog.h 2>/dev/null || true
+fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2
     echo "       Check this tree out on a filesystem with symlink support." >&2
