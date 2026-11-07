@@ -897,9 +897,6 @@ static int qti_haptics_upload_effect(struct input_dev *dev,
 		break;
 
 	case FF_PERIODIC:
-		if (chip->effects_count == 0)
-			return -EINVAL;
-
 		if (effect->u.periodic.waveform != FF_CUSTOM) {
 			dev_err(chip->dev, "Only accept custom waveforms\n");
 			return -EINVAL;
@@ -914,13 +911,24 @@ static int qti_haptics_upload_effect(struct input_dev *dev,
 					data[CUSTOM_DATA_EFFECT_IDX])
 				break;
 
+		level = effect->u.periodic.magnitude;
 		if (i == chip->effects_count) {
-			dev_err(chip->dev, "predefined effect %d is NOT supported\n",
-					data[0]);
-			return -EINVAL;
+			/* Keyboard HAL may send custom effects without DT waveforms. */
+			play->length_us = 25 * USEC_PER_MSEC;
+			tmp = level * config->vmax_mv;
+			play->vmax_mv = tmp / 0x7fff;
+			rc = qti_haptics_load_constant_waveform(chip);
+			if (rc < 0)
+				return rc;
+			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = 0;
+			data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = 25;
+			if (copy_to_user(effect->u.periodic.custom_data, data,
+					sizeof(s16) * CUSTOM_DATA_LEN))
+				return -EFAULT;
+			break;
 		}
 
-		level = effect->u.periodic.magnitude;
+		
 		tmp = level * chip->predefined[i].vmax_mv;
 		play->vmax_mv = tmp / 0x7fff;
 
