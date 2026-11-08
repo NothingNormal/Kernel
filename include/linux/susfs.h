@@ -9,7 +9,7 @@
 #include <linux/susfs_def.h>
 #include <linux/statfs.h>
 
-#define SUSFS_VERSION "v2.3.0"
+#define SUSFS_VERSION "v2.4.0"
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
 #define SUSFS_VARIANT "NON-GKI"
 #else
@@ -244,6 +244,13 @@ void susfs_set_priority_uid_filter(void __user **user_info);
 void susfs_parse_priority_app_strings(void);
 extern bool susfs_is_priority_uid_filtered(uid_t uid);
 #endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+
+#ifdef CONFIG_KSU_SUSFS
+int susfs_add_sus_type(const char *secctx, u32 type_value);
+bool susfs_is_sus_type_rcu(u32 type_value);
+int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type,
+				      u32 c_type, u32 orig_avd_allowed);
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 void susfs_set_avc_log_spoofing(void __user **user_info);
 

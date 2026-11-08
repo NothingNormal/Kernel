@@ -44,12 +44,11 @@ fi
 # An LLVM without Polly accepts -mllvm -polly (it is only an unknown *pass*
 # name, which LLVM tolerates) but rejects the individual -polly-* options, so
 # the probe must use the full list to be meaningful.
-POLLY_FLAGS="-mllvm -polly -mllvm -polly-run-inliner \
+POLLY_FLAGS="-mllvm -polly \
  -mllvm -polly-ast-use-context -mllvm -polly-detect-keep-going \
  -mllvm -polly-invariant-load-hoisting -mllvm -polly-vectorizer=stripmine \
  -mllvm -polly-loopfusion-greedy=1 -mllvm -polly-reschedule=1 \
- -mllvm -polly-postopts=1 -mllvm -polly-num-threads=0 \
- -mllvm -polly-omp-backend=LLVM -mllvm -polly-scheduling=dynamic \
+ -mllvm -polly-postopts=1 -mllvm -polly-scheduling=dynamic \
  -mllvm -polly-scheduling-chunksize=1 -mllvm -polly-run-dce"
 
 polly_probe()
