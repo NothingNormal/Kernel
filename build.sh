@@ -173,8 +173,10 @@ if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_R
 fi
 # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
 if [ -f scripts/originsu-4.14-susfs.patch ]; then
-    git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch || exit 1
-    git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch || exit 1
+    if ! git -C KernelSU apply --reverse --check ../scripts/originsu-4.14-susfs.patch 2>/dev/null; then
+        git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch || exit 1
+        git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch || exit 1
+    fi
     git -C KernelSU update-index --assume-unchanged \
         kernel/Kbuild kernel/include/klog.h \
         kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
