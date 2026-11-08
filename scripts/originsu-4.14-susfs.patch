@@ -196,3 +196,14 @@ diff --git a/kernel/kpm/super_access.c b/kernel/kpm/super_access.c
  #endif
  DEFINE_MEMBER(task_struct, files)
  DEFINE_MEMBER(task_struct, seccomp)
+diff --git a/kernel/policy/su_request.c b/kernel/policy/su_request.c
+--- a/kernel/policy/su_request.c
++++ b/kernel/policy/su_request.c
+@@ -8,6 +8,7 @@
+ #include <linux/pid.h>
+ #include <linux/sched.h>
+ #include <linux/slab.h>
++#include <linux/ratelimit.h>
+ #include <linux/spinlock.h>
+ #include <linux/string.h>
+ #include <linux/wait.h>
