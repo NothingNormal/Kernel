@@ -181,3 +181,18 @@ index 7d73cafa..03edc8e1 100644
  #endif
  
  // clang-format off
+diff --git a/kernel/kpm/super_access.c b/kernel/kpm/super_access.c
+--- a/kernel/kpm/super_access.c
++++ b/kernel/kpm/super_access.c
+@@ -148,11 +148,11 @@ DYNAMIC_STRUCT_BEGIN(task_struct)
+ DEFINE_MEMBER(task_struct, group_leader)
+ DEFINE_MEMBER(task_struct, mm)
+ DEFINE_MEMBER(task_struct, active_mm)
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0)
+-DEFINE_MEMBER(task_struct, pids[PIDTYPE_PID].pid)
++DEFINE_MEMBER(task_struct, thread_pid)
+ #else
+ DEFINE_MEMBER(task_struct, thread_pid)
+ #endif
+ DEFINE_MEMBER(task_struct, files)
+ DEFINE_MEMBER(task_struct, seccomp)
