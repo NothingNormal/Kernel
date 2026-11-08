@@ -2,6 +2,7 @@
 #define KSU_SUSFS_DEF_H
 
 #include <linux/bits.h>
+#include <linux/bitmap.h>
 #include <linux/string.h>
 /* 4.14: current_uid() / test_thread_flag() used below are not pulled in by every includer */
 #include <linux/cred.h>

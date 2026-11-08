@@ -774,18 +774,10 @@ ifeq ($(cc-name),gcc)
 KBUILD_CFLAGS	+= -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55
 endif
 ifeq ($(cc-name),clang)
-# Cortex-A55 is the lowest common denominator here: clang has no fused
-# cortex-a76.cortex-a55 -mcpu model (and rejects that name for -mtune too),
-# so the ISA stays on the little core, which both clusters implement. Aim the
-# cost model at the big core instead, where latency-sensitive work runs.
-#
-# Probe it explicitly rather than through a bare cc-option fallback: a silent
-# fallback cannot be told apart from success, and the point of this hunk is
-# which cost model ends up in the image. If the compiler refuses -mtune, say so
-# at configure time and keep -mcpu=cortex-a55, which tunes for itself.
-CORTEX_TUNE_CFLAGS := $(call cc-option,-mcpu=cortex-a55 -mtune=cortex-a76,)
+# Optimize target for Cortex-A76 / Kryo 465
+CORTEX_TUNE_CFLAGS := $(call cc-option,-mcpu=cortex-a76 -mtune=cortex-a76,)
 ifeq ($(CORTEX_TUNE_CFLAGS),)
-$(warning $(CC) rejected -mtune=cortex-a76, tuning for cortex-a55 only)
+$(warning $(CC) rejected -mcpu=cortex-a76 -mtune=cortex-a76, fallback to -mcpu=cortex-a55)
 CORTEX_TUNE_CFLAGS := -mcpu=cortex-a55
 endif
 KBUILD_CFLAGS	+= $(CORTEX_TUNE_CFLAGS)
@@ -795,7 +787,6 @@ ifdef CONFIG_LLVM_POLLY
 # demand: a clang compiled without it rejects -mllvm -polly outright. AOSP and
 # distro clang builds leave it out, so probe instead of breaking every object.
 POLLY_CFLAGS	:= -mllvm -polly \
-		   -mllvm -polly-run-inliner \
 		   -mllvm -polly-ast-use-context \
 		   -mllvm -polly-detect-keep-going \
 		   -mllvm -polly-invariant-load-hoisting \
@@ -803,8 +794,6 @@ POLLY_CFLAGS	:= -mllvm -polly \
 		   -mllvm -polly-loopfusion-greedy=1 \
 		   -mllvm -polly-reschedule=1 \
 		   -mllvm -polly-postopts=1 \
-		   -mllvm -polly-num-threads=0 \
-		   -mllvm -polly-omp-backend=LLVM \
 		   -mllvm -polly-scheduling=dynamic \
 		   -mllvm -polly-scheduling-chunksize=1
 
@@ -833,9 +822,9 @@ endif # CONFIG_CC_OPTIMIZE_FOR_SIZE
 # place it can take effect.
 ifeq ($(cc-name),clang)
 ifdef CONFIG_INLINE_OPTIMIZATION
-KBUILD_CFLAGS	+= -mllvm -inline-threshold=2000
-KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=3000
-KBUILD_CFLAGS	+= -mllvm -unroll-threshold=1200
+KBUILD_CFLAGS	+= -mllvm -inline-threshold=500
+KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=600
+KBUILD_CFLAGS	+= -mllvm -unroll-threshold=400
 endif
 endif
 
