@@ -56,7 +56,7 @@ env:
 jobs:
   build:
     name: Build Sixfaced (miatoll, arm64, OriginSU)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # LTO + Polly on a 4 vCPU runner is slow; 6h is the GitHub maximum
     timeout-minutes: 360
 
@@ -172,17 +172,21 @@ jobs:
           fi
           echo "Polly flag set accepted"
 
+      - name: Save Neutron Clang
+        if: steps.neutron-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/neutron-clang
+          key: ${{ steps.neutron-cache.outputs.cache-primary-key }}
+
       - name: Restore ccache
         id: ccache-restore
         uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
-          # Key on the build inputs, not the commit. A per-SHA key can never
-          # produce an exact hit, so every run wrote a brand-new multi-GB
-          # entry and pushed the toolchain cache toward eviction. ccache
-          # decides per-object what to reuse, so a cache built from an older
-          # commit still hits for every file that did not change.
-          key: ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ hashFiles('arch/arm64/configs/vendor/xiaomi/miatoll_defconfig', 'build.sh', 'Makefile') }}-${{ github.run_id }}
+          # Unique snapshots let successful and failed builds refresh cached objects.
+          key: ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ hashFiles('arch/arm64/configs/vendor/xiaomi/miatoll_defconfig', 'build.sh', 'Makefile') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-${{ hashFiles('arch/arm64/configs/vendor/xiaomi/miatoll_defconfig', 'build.sh', 'Makefile') }}-
             ccache-${{ runner.os }}-${{ env.NEUTRON_TAG }}-
@@ -387,8 +391,8 @@ jobs:
           exit $fail
 
       - name: Save ccache
-        if: always() && steps.ccache-restore.outputs.cache-hit != 'true'
-            && steps.ccache-restore.outputs.cache-primary-key != ''
+        if: ${{ !cancelled() && steps.build.outcome != 'skipped' && steps.ccache-restore.outputs.cache-hit != 'true' && steps.ccache-restore.outputs.cache-primary-key != '' }}
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: ~/.ccache
@@ -412,6 +416,16 @@ jobs:
             echo "| clang | \`$("$NEUTRON_DIR/bin/clang" --version | head -1)\` |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
           ccache -s | head -15 || true
+
+      - name: Upload kernel zip (artifact)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sixfaced-OriginSU-miatoll
+          path: AnyKernel/Sixfaced-*.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Prepare failure report
         if: failure()
@@ -567,11 +581,3 @@ jobs:
           gh release view latest --json assets \
             -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
 
-      - name: Upload kernel zip (artifact)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Sixfaced-OriginSU-miatoll
-          path: AnyKernel/Sixfaced-*.zip
-          if-no-files-found: error
-          retention-days: 30
