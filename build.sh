@@ -160,7 +160,7 @@ rm -rf AnyKernel
 # not do: --filter=blob:none keeps the full commit history without the blobs.
 # ---------------------------------------------------------------------------
 KSU_REPO="${KSU_REPO:-https://github.com/samakshkambxj/OriginSU}"
-KSU_REF="${KSU_REF:-main}"
+KSU_REF="${KSU_REF:-d25f48fbc0ea56a0aafd1f71965f8d38a3aeff00}"
 if [ ! -e KernelSU/.git ]; then
     rm -rf KernelSU
     git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }

@@ -47,6 +47,7 @@ permissions:
 
 env:
   NEUTRON_TAG: ${{ github.event.inputs.neutron_tag || '06092026' }}
+  KSU_REF: d25f48fbc0ea56a0aafd1f71965f8d38a3aeff00
   NEUTRON_DIR: /home/runner/neutron-clang
   CCACHE_MAXSIZE: 4G
   CCACHE_COMPRESSLEVEL: 1
@@ -199,7 +200,7 @@ jobs:
           # OriginSU computes KSU_VERSION as 30000 + commit count + 700 and its
           # Kbuild errors out when KernelSU/.git is missing.
           git clone --filter=blob:none https://github.com/samakshkambxj/OriginSU KernelSU
-          git -C KernelSU checkout -q main
+          git -C KernelSU checkout -q "$KSU_REF"
           # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
           if [ -f scripts/originsu-4.14-susfs.patch ]; then
             git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch && \
@@ -239,7 +240,7 @@ jobs:
           ls -l out/vmlinux out/arch/arm64/boot/Image out/arch/arm64/boot/Image.gz 2>&1 || true
 
           # exactly the nine features the sibling branch ships
-          for sym in CONFIG_KSU CONFIG_KSU_SUSFS \
+          for sym in CONFIG_KSU CONFIG_KPM CONFIG_KSU_SUSFS \
                      CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
                      CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_SPOOF_UNAME \
                      CONFIG_KSU_SUSFS_ENABLE_LOG \
@@ -289,6 +290,8 @@ jobs:
             echo "::error::OriginSU no longer advertises KERNEL_SU_UAPI_VERSION 6"
             fail=1
           fi
+
+          test -f out/drivers/kernelsu/kpm/kpm.o || { echo "::error::KPM object missing"; fail=1; }
 
           # NoMount verification
           if grep -qx "CONFIG_NOMOUNT=y" out/.config; then
