@@ -752,7 +752,7 @@ ifeq ($(cc-name),gcc)
 KBUILD_CFLAGS	+= -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55
 endif
 ifeq ($(cc-name),clang)
-KBUILD_CFLAGS	+= -mcpu=cortex-a55 -mtune=cortex-a55
+KBUILD_CFLAGS	+= -mcpu=cortex-a76 -mtune=cortex-a76
 
 ifdef CONFIG_LTO_CLANG
 KBUILD_CFLAG	+= -fwhole-program-vtables
@@ -760,7 +760,6 @@ endif
 
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
-		   -mllvm -polly-run-inliner \
 		   -mllvm -polly-ast-use-context \
 		   -mllvm -polly-detect-keep-going \
 		   -mllvm -polly-invariant-load-hoisting \
@@ -768,8 +767,6 @@ KBUILD_CFLAGS	+= -mllvm -polly \
 		   -mllvm -polly-loopfusion-greedy=1 \
 		   -mllvm -polly-reschedule=1 \
 		   -mllvm -polly-postopts=1 \
-		   -mllvm -polly-num-threads=0 \
-		   -mllvm -polly-omp-backend=LLVM \
 		   -mllvm -polly-scheduling=dynamic \
 		   -mllvm -polly-scheduling-chunksize=1
 
@@ -786,9 +783,9 @@ endif # $(cc-name),clang
 endif # CONFIG_CC_OPTIMIZE_FOR_SIZE
 
 ifdef CONFIG_INLINE_OPTIMIZATION
-KBUILD_CFLAGS	+= -mllvm -inline-threshold=2000
-KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=3000
-KBUILD_CFLAGS   += -mllvm -unroll-threshold=1200
+KBUILD_CFLAGS	+= -mllvm -inline-threshold=500
+KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=600
+KBUILD_CFLAGS   += -mllvm -unroll-threshold=400
 KBUILD_LDFLAGS  += --plugin-opt=-import-instr-limit=40
 endif
 

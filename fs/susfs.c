@@ -1586,12 +1586,48 @@ static int susfs_parse_priority_app_names(char *app_str, unsigned long *bits, bo
 	return 0;
 }
 
+static struct cred *susfs_switch_to_ksu_domain(void) {
+	struct cred *orig_cred = NULL;
+	struct cred *cred = NULL;
+
+	orig_cred = prepare_creds();
+	if (!orig_cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		return NULL;
+	}
+
+	cred = prepare_creds();
+	if (!cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		abort_creds(orig_cred);
+		return NULL;
+	}
+
+	setup_selinux("u:r:ksu:s0", cred);
+	commit_creds(cred);
+
+	if (!susfs_is_current_ksu_domain()) {
+		SUSFS_LOGE("domain is not ksu, restoring the original creds\n");
+		commit_creds(orig_cred);
+		return NULL;
+	}
+
+	return orig_cred;
+}
+
+static void susfs_restore_creds(struct cred *orig_cred) {
+	if (!orig_cred)
+		return;
+
+	commit_creds(orig_cred);
+}
+
 void susfs_set_priority_uid_filter(void __user **user_info) {
 	struct st_susfs_priority_uid_filter *info = NULL;
 	struct susfs_priority_uid_filter_bitmap *new_bitmap = NULL;
 	struct susfs_priority_uid_filter_bitmap *old_bitmap = NULL;
 	char *new_app_strings = NULL;
-	const struct cred *saved_cred = NULL;
+	struct cred *orig_cred = NULL;
 	size_t app_str_len = 0;
 	int err = 0;
 	static bool is_uid_filter_set_before = false;
@@ -1644,18 +1680,18 @@ void susfs_set_priority_uid_filter(void __user **user_info) {
 	 * restrictions of the calling process, hence the selinux domain is
 	 * switched to the KernelSU one before the uids are resolved.
 	 */
-	if (!ksu_cred) {
+	orig_cred = susfs_switch_to_ksu_domain();
+	if (!orig_cred) {
 		err = -EINVAL;
 		goto out_free_new_bitmap;
 	}
-	saved_cred = override_creds(ksu_cred);
 
 	if (READ_ONCE(is_uid_filter_set_before))
 		SUSFS_LOGI("renewing the priority uid filter\n");
 	err = susfs_parse_priority_app_names(info->app_strings, new_bitmap->bits, true);
 
-	revert_creds(saved_cred);
-	saved_cred = NULL;
+	susfs_restore_creds(orig_cred);
+	orig_cred = NULL;
 
 	if (err)
 		goto out_free_new_bitmap;
@@ -1705,7 +1741,7 @@ static void susfs_priority_app_strings_worker(struct work_struct *work)
 {
 	struct susfs_priority_uid_filter_bitmap *new_bitmap = NULL;
 	struct susfs_priority_uid_filter_bitmap *old_bitmap = NULL;
-	const struct cred *saved_cred = NULL;
+	struct cred *orig_cred = NULL;
 	char *app_strings = NULL;
 	size_t app_str_len = 0;
 	int generation = 0;
@@ -1717,9 +1753,9 @@ static void susfs_priority_app_strings_worker(struct work_struct *work)
 	 * restrictions of the default domain of the workqueue task, hence the
 	 * domain is switched to the KernelSU one.
 	 */
-	if (!ksu_cred)
+	orig_cred = susfs_switch_to_ksu_domain();
+	if (!orig_cred)
 		goto out;
-	saved_cred = override_creds(ksu_cred);
 
 	/* take a snapshot of the stored app package names */
 	mutex_lock(&susfs_mutex_lock_priority_uid_filter);
@@ -1765,8 +1801,8 @@ static void susfs_priority_app_strings_worker(struct work_struct *work)
 	SUSFS_LOGI("the uids of the priority uid filter are resolved again\n");
 
 out_restore_creds:
-	revert_creds(saved_cred);
-	saved_cred = NULL;
+	susfs_restore_creds(orig_cred);
+	orig_cred = NULL;
 out:
 	if (new_bitmap)
 		kfree(new_bitmap);
@@ -1881,10 +1917,20 @@ struct susfs_sus_av_rule {
 static DEFINE_SPINLOCK(susfs_lock_sus_avd_allowed);
 static DEFINE_HASHTABLE(SUS_AVD_ALLOWED_HLIST, SUSFS_SUS_AV_RULE_HASH_BITS);
 
-static u32 susfs_av_rule_hash(u32 s_type, u32 t_type, u32 c_type)
+static inline u32 susfs_av_rule_hash(u32 s_type, u32 t_type, u32 c_type)
 {
-	return hash_32(s_type, 32) ^ rol32(hash_32(t_type, 32), 13) ^
-	       rol32(hash_32(c_type, 32), 19);
+	u32 h;
+
+	h = hash_32(s_type, 32);
+	h ^= rol32(hash_32(t_type, 32), 13);
+	h ^= rol32(hash_32(c_type, 32), 19);
+
+	h += h << 13;
+	h ^= h >> 7;
+	h += h << 17;
+	h ^= h >> 5;
+
+	return h;
 }
 
 int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type,
@@ -2199,8 +2245,14 @@ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
 	return 0;
 }
 
+static void susfs_fsnotify_free_mark(struct fsnotify_mark *mark)
+{
+	kfree(mark);
+}
+
 static const struct fsnotify_ops fsnotify_ops = {
 	.handle_event = susfs_handle_sdcard_inode_event,
+	.free_mark = susfs_fsnotify_free_mark,
 };
 
 static int add_mark_on_inode(struct inode *inode, u32 mask,

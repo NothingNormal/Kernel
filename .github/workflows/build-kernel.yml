@@ -26,6 +26,10 @@ jobs:
     name: Build Sixfaced (miatoll, arm64, KSU)
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      CCACHE_COMPRESSLEVEL: 1
+      KBUILD_BUILD_USER: sixfaced
+      KBUILD_BUILD_HOST: android-build
 
     steps:
       - name: Checkout
