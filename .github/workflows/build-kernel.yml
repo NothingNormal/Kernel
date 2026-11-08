@@ -203,8 +203,8 @@ jobs:
           git -C KernelSU checkout -q "$KSU_REF"
           # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
           if [ -f scripts/originsu-4.14-susfs.patch ]; then
-            git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch && \
-              git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch
+            git -C KernelSU apply --check ../scripts/originsu-4.14-susfs.patch
+            git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch
             git -C KernelSU update-index --assume-unchanged \
               kernel/Kbuild kernel/include/klog.h \
               kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true

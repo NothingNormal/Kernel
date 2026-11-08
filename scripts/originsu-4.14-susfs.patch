@@ -184,7 +184,7 @@ index 7d73cafa..03edc8e1 100644
 diff --git a/kernel/kpm/super_access.c b/kernel/kpm/super_access.c
 --- a/kernel/kpm/super_access.c
 +++ b/kernel/kpm/super_access.c
-@@ -148,11 +148,11 @@ DYNAMIC_STRUCT_BEGIN(task_struct)
+@@ -148,10 +148,10 @@ DYNAMIC_STRUCT_BEGIN(task_struct)
  DEFINE_MEMBER(task_struct, group_leader)
  DEFINE_MEMBER(task_struct, mm)
  DEFINE_MEMBER(task_struct, active_mm)
