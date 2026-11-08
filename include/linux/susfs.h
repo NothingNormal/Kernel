@@ -10,7 +10,7 @@
 #include <linux/stat.h>
 #include <linux/statfs.h>
 
-#define SUSFS_VERSION "v2.3.0"
+#define SUSFS_VERSION "v2.4.0"
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
 #define SUSFS_VARIANT "NON-GKI"
 #else
@@ -188,12 +188,10 @@ struct st_susfs_sus_memfd_list {
 #endif
 
 /* priority uid filter */
-#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 struct st_susfs_priority_uid_filter {
 	char                                    app_strings[SUSFS_APP_STR_BUF_SIZE];
 	int                                     err;
 };
-#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 
 /* avc log spoofing */
 struct st_susfs_avc_log_spoofing {
@@ -287,7 +285,14 @@ int susfs_sus_memfd(char *memfd_name);
 #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 void susfs_set_priority_uid_filter(void __user **user_info);
 bool susfs_is_priority_uid_filtered(uid_t uid);
+#else
+static inline bool susfs_is_priority_uid_filtered(uid_t uid) { return false; }
 #endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+
+int susfs_add_sus_type(const char *secctx, u32 type_value);
+bool susfs_is_sus_type_rcu(u32 type_value);
+int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type, u32 c_type, u32 orig_avd_allowed);
+void susfs_spoof_avd_allowed_rcu(u32 s_type, u32 t_type, u32 c_type, u32 *avd_allowed);
 
 void susfs_set_avc_log_spoofing(void __user **user_info);
 

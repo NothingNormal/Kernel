@@ -23,6 +23,8 @@
 #include <linux/mm.h>		/* kvzalloc/kvfree */
 #include <linux/rcupdate.h>	/* priority uid filter bitmap */
 #include <linux/string.h>	/* strchrnul */
+#include <linux/hash.h>
+#include <linux/bitops.h>
 #include <linux/susfs.h>
 #include "fuse/fuse_i.h"
 #include "mount.h"
@@ -43,9 +45,184 @@ bool susfs_is_log_enabled __read_mostly = true;
 #define SUSFS_LOGI(fmt, ...) if (READ_ONCE(susfs_is_log_enabled)) pr_info("susfs:[%u][%d][%s] " fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
 #define SUSFS_LOGE(fmt, ...) if (READ_ONCE(susfs_is_log_enabled)) pr_err("susfs:[%u][%d][%s]" fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
 #else
-#define SUSFS_LOGI(fmt, ...) 
-#define SUSFS_LOGE(fmt, ...) 
+#define SUSFS_LOGI(fmt, ...)
+#define SUSFS_LOGE(fmt, ...)
 #endif
+
+static DEFINE_MUTEX(susfs_mutex_lock_sus_type);
+static DEFINE_HASHTABLE(SUS_TYPE_HLIST, 10);
+
+struct st_susfs_sus_type_hlist {
+	struct hlist_node node;
+};
+
+int susfs_add_sus_type(const char *secctx, u32 type_value) {
+	struct st_susfs_sus_type_hlist *new_entry, *tmp_entry;
+	struct hlist_node *tmp_hlist_node;
+	int err = 0;
+
+	mutex_lock(&susfs_mutex_lock_sus_type);
+	hash_for_each_possible_safe(SUS_TYPE_HLIST, tmp_entry, tmp_hlist_node, node, type_value) {
+		SUSFS_LOGE("secctx '%s', type_value '%u', was added before already\n",
+			secctx, type_value);
+		err = -EINVAL;
+		goto unlock;
+	}
+
+	new_entry = kzalloc(sizeof(struct st_susfs_sus_type_hlist), GFP_KERNEL);
+	if (!new_entry) {
+		err = -ENOMEM;
+		goto unlock;
+	}
+
+	hash_add_rcu(SUS_TYPE_HLIST, &new_entry->node, type_value);
+	SUSFS_LOGI("secctx '%s', type '%u', has been added to SUS_TYPE_HLIST\n",
+					secctx, type_value);
+unlock:
+	mutex_unlock(&susfs_mutex_lock_sus_type);
+	return err;
+}
+
+bool susfs_is_sus_type_rcu(u32 type_value) {
+	struct st_susfs_sus_type_hlist *entry = NULL;
+
+	hash_for_each_possible_rcu(SUS_TYPE_HLIST, entry, node, type_value) {
+		return true;
+	}
+	return false;
+}
+
+static DEFINE_MUTEX(susfs_mutex_lock_sus_avd_allowed_hlist);
+static DEFINE_HASHTABLE(SUS_AVD_ALLOWED_HLIST, 18);
+
+struct susfs_sus_av_rule {
+	struct hlist_node node;
+	u32 s_type;
+	u32 t_type;
+	u32 c_type;
+	u32 orig_avd_allowed;
+};
+
+static inline u32 susfs_av_rule_hash(u32 ssid, u32 tsid, u16 tclass)
+{
+	u32 h;
+
+	h = hash_32(ssid, 32);
+	h ^= rol32(hash_32(tsid, 32), 13);
+	h ^= rol32(hash_32((u32)tclass, 32), 19);
+
+	h += h << 13;
+	h ^= h >> 7;
+	h += h << 17;
+	h ^= h >> 5;
+
+	return h;
+}
+
+int susfs_add_sus_avd_allowed_by_type(u32 s_type, u32 t_type, u32 c_type, u32 orig_avd_allowed)
+{
+	struct susfs_sus_av_rule *entry, *tmp_entry;
+	struct hlist_node *tmp_hlist_node;
+	int err = 0;
+	u32 key;
+
+	mutex_lock(&susfs_mutex_lock_sus_avd_allowed_hlist);
+
+	entry = kzalloc(sizeof(*entry), GFP_ATOMIC);
+	if (!entry) {
+		err = -ENOMEM;
+		goto unlock;
+	}
+
+	key = susfs_av_rule_hash(s_type, t_type, c_type);
+	hash_for_each_possible_safe(SUS_AVD_ALLOWED_HLIST, tmp_entry, tmp_hlist_node, node, key) {
+		if (tmp_entry->s_type == s_type &&
+		    tmp_entry->t_type == t_type &&
+		    tmp_entry->c_type == c_type)
+		{
+			// Do not apply any new orig_avd_allowed for matched entry.
+			kfree(entry);
+			goto unlock;
+		}
+	}
+
+	entry->s_type = s_type;
+	entry->t_type = t_type;
+	entry->c_type = c_type;
+	entry->orig_avd_allowed = orig_avd_allowed;
+
+	hash_add_rcu(SUS_AVD_ALLOWED_HLIST, &entry->node, key);
+	SUSFS_LOGI("av_rule '%u %u %u %u' has been added to SUS_AVD_ALLOWED_HLIST\n",
+				s_type, t_type, c_type, orig_avd_allowed);
+unlock:
+	mutex_unlock(&susfs_mutex_lock_sus_avd_allowed_hlist);
+	return err;
+}
+
+void susfs_spoof_avd_allowed_rcu(u32 s_type, u32 t_type, u32 c_type, u32 *avd_allowed)
+{
+	struct susfs_sus_av_rule *entry;
+	u32 key = susfs_av_rule_hash(s_type, t_type, c_type);
+
+	hash_for_each_possible_rcu(SUS_AVD_ALLOWED_HLIST, entry, node, key) {
+		if (entry->s_type == s_type &&
+		    entry->t_type == t_type &&
+		    entry->c_type == c_type)
+		{
+			*avd_allowed = entry->orig_avd_allowed;
+			return;
+		}
+	}
+}
+
+/*
+ * Switches the selinux domain of the current process to the KernelSU one, so
+ * that the data paths of the apps can be accessed despite of the selinux
+ * restrictions.
+ * The original credentials are returned, they have to be restored with
+ * susfs_restore_creds() afterwards.
+ * Returns the original credentials on success, NULL on failure.
+ */
+static struct cred *susfs_switch_to_ksu_domain(void) {
+	struct cred *orig_cred = NULL;
+	struct cred *cred = NULL;
+
+	/* a copy of the current credentials, which is restored later on */
+	orig_cred = prepare_creds();
+	if (!orig_cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		return NULL;
+	}
+
+	cred = prepare_creds();
+	if (!cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		abort_creds(orig_cred);
+		return NULL;
+	}
+
+	setup_selinux("u:r:ksu:s0", cred);
+	commit_creds(cred);
+
+	if (!susfs_is_current_ksu_domain()) {
+		SUSFS_LOGE("domain is not ksu, restoring the original creds\n");
+		commit_creds(orig_cred);
+		return NULL;
+	}
+
+	return orig_cred;
+}
+
+/*
+ * Restores the original credentials that were saved by
+ * susfs_switch_to_ksu_domain().
+ */
+static void susfs_restore_creds(struct cred *orig_cred) {
+	if (!orig_cred)
+		return;
+
+	commit_creds(orig_cred);
+}
 
 /*
  * A userspace-supplied string field is only usable if it is non-empty AND
@@ -1455,16 +1632,16 @@ bool susfs_is_priority_uid_filtered(uid_t uid) {
 
 static char *susfs_read_packages_list(void) {
 	struct file *file;
-	const struct cred *saved;
+	struct cred *saved_cred = NULL;
 	char *buf = NULL;
 	loff_t pos = 0;
 	ssize_t nread;
 
 	/*
 	 * packages.list is not world readable and sits behind SELinux, so read
-	 * it with ksu_cred as the sus_path loop does.
+	 * it with ksu domain creds.
 	 */
-	saved = ksu_cred ? override_creds(ksu_cred) : NULL;
+	saved_cred = susfs_switch_to_ksu_domain();
 
 	file = filp_open(SUSFS_PACKAGES_LIST_PATH, O_RDONLY, 0);
 	if (IS_ERR(file)) {
@@ -1503,8 +1680,7 @@ static char *susfs_read_packages_list(void) {
 out_close:
 	filp_close(file, NULL);
 out_revert:
-	if (saved)
-		revert_creds(saved);
+	susfs_restore_creds(saved_cred);
 	return buf;
 }
 

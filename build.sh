@@ -9,8 +9,8 @@ cd "$(dirname "$(readlink -f "$0")")" || exit 1
 export LC_ALL=C
 TANGGAL=$(date +"%Y%m%d-%H")
 export ARCH=arm64
-export KBUILD_BUILD_HOST=android-build
-export KBUILD_BUILD_USER="unknown"
+export KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST:-android-build}
+export KBUILD_BUILD_USER=${KBUILD_BUILD_USER:-android-build}
 
 # ---------------------------------------------------------------------------
 # Host prerequisites. Check them here, before anything is downloaded, so a
@@ -44,12 +44,11 @@ fi
 # An LLVM without Polly accepts -mllvm -polly (it is only an unknown *pass*
 # name, which LLVM tolerates) but rejects the individual -polly-* options, so
 # the probe must use the full list to be meaningful.
-POLLY_FLAGS="-mllvm -polly -mllvm -polly-run-inliner \
+POLLY_FLAGS="-mllvm -polly \
  -mllvm -polly-ast-use-context -mllvm -polly-detect-keep-going \
  -mllvm -polly-invariant-load-hoisting -mllvm -polly-vectorizer=stripmine \
  -mllvm -polly-loopfusion-greedy=1 -mllvm -polly-reschedule=1 \
- -mllvm -polly-postopts=1 -mllvm -polly-num-threads=0 \
- -mllvm -polly-omp-backend=LLVM -mllvm -polly-scheduling=dynamic \
+ -mllvm -polly-postopts=1 -mllvm -polly-scheduling=dynamic \
  -mllvm -polly-scheduling-chunksize=1 -mllvm -polly-run-dce"
 
 polly_probe()
@@ -147,6 +146,7 @@ export CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime,modu
 # Do not fold the build directory into the hash: the checkout path differs
 # between the runner and a local build.
 export CCACHE_NOHASHDIR=1
+export CCACHE_COMPRESSLEVEL=1
 export CCACHE_BASEDIR="$(pwd)"
 echo "ccache enabled: $(ccache --version 2>/dev/null | head -1)"
 fi

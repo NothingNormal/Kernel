@@ -323,3 +323,11 @@ config FILE_TABLE_DEBUG
 endmenu
 
 source "fs/nomount/Kconfig"
+
+config KSU_SUSFS_PRIORITY_UID_FILTER
+	bool "Enable to hide app uids from the priority syscalls"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide a user-selected set of app uids from getpriority(),
+	  setpriority(), ioprio_get() and ioprio_set().
