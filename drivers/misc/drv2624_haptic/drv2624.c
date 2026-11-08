@@ -1672,11 +1672,23 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 			   && play->effect_id < 127) {
 			nResult = rtp_get_effect_duration(play->effect_id - 1);
 			if (nResult < 0) {
-				/* ponytail: fallback click timing when RTP firmware is absent. */
+				/* ponytail: 25 ms constant click; use RTP when firmware exists. */
 				time_ms = 25;
-			} else {
-				time_ms = nResult;
+				data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = 0;
+				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = time_ms;
+				if (copy_to_user(effect->u.periodic.custom_data, data,
+						 sizeof(data))) {
+					nResult = -EFAULT;
+					break;
+				}
+				play->length = time_ms;
+				play->effect_id = 127;
+				pDRV2624->mnEffectType = FF_CONSTANT;
+				pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
+				nResult = 0;
+				break;
 			}
+			time_ms = nResult;
 			nResult = 0;
 			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = time_ms / MSEC_PER_SEC;	//300 / 1000;
 			dev_dbg(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
