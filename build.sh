@@ -79,7 +79,7 @@ polly_probe()
 # CROSS_COMPILE is kept ONLY so kbuild derives the clang --target
 # triple; no $(CROSS_COMPILE)* binary is ever invoked.
 #
-# Primary: Neutron Clang — LLVM built with PGO + BOLT + LTO + O3 and
+# Primary: Neutron Clang â LLVM built with PGO + BOLT + LTO + O3 and
 # Polly bundled, specifically tuned for kernel compilation (the
 # compiler binary itself is profile-optimized, so it also compiles
 # faster than a generic distro clang). Pinned release tag for
@@ -161,7 +161,7 @@ rm -rf AnyKernel
 # not do: --filter=blob:none keeps the full commit history without the blobs.
 # ---------------------------------------------------------------------------
 KSU_REPO="${KSU_REPO:-https://github.com/Baka-SU/BakaSU}"
-KSU_REF="${KSU_REF:-516d3e87fbc986ccefdde2c2765f1700612441a9}"
+KSU_REF="${KSU_REF:-548d1dda060ca198823d8808804d01f5209ef4a9}"
 if [ ! -e KernelSU/.git ]; then
     rm -rf KernelSU
     git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }

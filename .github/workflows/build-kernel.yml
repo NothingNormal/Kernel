@@ -1,4 +1,4 @@
-# Sixfaced Kernel CI — miatoll (SM6250), arm64, 4.14
+# Sixfaced Kernel CI â miatoll (SM6250), arm64, 4.14
 #
 # Adapted for this fork:
 #   * BakaSU + SUSFS v2.3.0 are built in -> artifact, job and zip names say
@@ -202,7 +202,7 @@ jobs:
           # BakaSU computes KSU_VERSION as 30000 + commit count + 700 and its
           # Kbuild errors out when KernelSU/.git is missing.
           git clone --filter=blob:none https://github.com/Baka-SU/BakaSU KernelSU
-          git -C KernelSU checkout -q d5e9e025
+          git -C KernelSU checkout -q 548d1dda
           echo "BakaSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
           echo "KSU_COMMIT=$(git -C KernelSU log -1 --format=%h)" >> "$GITHUB_ENV"
           test -e drivers/kernelsu/Kbuild || {
@@ -276,7 +276,9 @@ jobs:
           # The manager's SuperUser/Module tabs depend on the UAPI version it
           # speaks; BakaSU shipping this pin advertises 6.
           if grep -qE "^static const __u32 KERNEL_SU_UAPI_VERSION = 6;" \
-               KernelSU/kernel/include/uapi/supercall.h; then
+               KernelSU/uapi/supercall.h 2>/dev/null || \
+             grep -qE "^static const __u32 KERNEL_SU_UAPI_VERSION = 6;" \
+               KernelSU/kernel/include/uapi/supercall.h 2>/dev/null; then
             echo "  ok   BakaSU advertises uapi 6"
           else
             echo "::error::BakaSU no longer advertises KERNEL_SU_UAPI_VERSION 6"
