@@ -70,7 +70,11 @@ typedef int atomic_t;
 #define AW8624_MEDIUM_MAGNITUDE 0x5fff
 #define AW8624_STRONG_MAGNITUDE 0x7fff
 #define AW8624_RECOVER_INTERVAL_MS 5000
-#define AW8624_RECOVER_MAX_ATTEMPTS 3
+#define AW8624_RECOVER_MAX_BACKOFF_SHIFT 6
+#define AW8624_BIT_SYSINT_OVI (1 << 6)
+#define AW8624_BIT_SYSINT_UVLI (1 << 5)
+#define AW8624_BIT_SYSINT_OCDI (1 << 2)
+#define AW8624_BIT_SYSINT_OTI (1 << 1)
 #define msecs_to_jiffies(ms) ((unsigned long)(ms))
 #define time_before(a, b) ((long)((a) - (b)) < 0)
 #define AW8624_MAX_EFFECT_WAIT_US 20000
@@ -153,7 +157,6 @@ struct aw8624 {
 	bool suspended, shutting_down;
 	unsigned long recover_after;
 	atomic_t recover_attempts;
-	bool recover_disabled;
 	atomic_t exit_in_rtp_loop, is_in_irq, recovering;
 	int wait_q, stop_wait_q;
 };
@@ -395,6 +398,8 @@ static int aw8624_haptic_rtp_init(struct aw8624 *a)
 	return rtp_result;
 }
 
+/* EXTRACT aw8624_recover_delay_ms */
+/* EXTRACT aw8624_fault_status */
 /* EXTRACT aw8624_haptic_stop_delay */
 /* EXTRACT aw8624_schedule_recovery */
 /* EXTRACT aw8624_haptic_stop */
@@ -520,22 +525,24 @@ static void test_stop_delay(void)
 	assert(a.recover_work.queued == 2);
 	stop_read_error = 0;
 
-	/*
-	 * A part that never recovers must stop being rebuilt, or the 5 s loop
-	 * keeps the CPU awake and resets the chip out from under playback.
-	 */
-	jiffies += AW8624_RECOVER_INTERVAL_MS;
-	a.recover_disabled = true;
-	assert(aw8624_haptic_stop(&a) == -ETIMEDOUT);
-	assert(a.recover_work.queued == 2);   /* lockout honoured */
+	assert(aw8624_recover_delay_ms(0) == 5000);
+	assert(aw8624_recover_delay_ms(1) == 5000);
+	assert(aw8624_recover_delay_ms(2) == 10000);
+	assert(aw8624_recover_delay_ms(7) == 320000);
+	assert(aw8624_recover_delay_ms(100) == 320000);
+	assert(!aw8624_fault_status(0));
+	assert(aw8624_fault_status(AW8624_BIT_SYSINT_OVI));
+	assert(aw8624_fault_status(AW8624_BIT_SYSINT_UVLI));
+	assert(aw8624_fault_status(AW8624_BIT_SYSINT_OCDI));
+	assert(aw8624_fault_status(AW8624_BIT_SYSINT_OTI));
 
-	/* A stop that does reach standby clears the lockout and the count. */
+	/* A later successful stop restores the base retry window. */
 	stop_read_error = 0;
 	stop_reads = 0;
 	stop_active_reads = 0;
-	a.recover_attempts = AW8624_RECOVER_MAX_ATTEMPTS;
+	a.recover_attempts = 7;
 	assert(aw8624_haptic_stop(&a) == 0);
-	assert(!a.recover_disabled && atomic_read(&a.recover_attempts) == 0);
+	assert(atomic_read(&a.recover_attempts) == 0);
 	cleanup();
 }
 static void test_routing(void)
