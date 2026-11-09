@@ -437,6 +437,7 @@ static void setup(void)
 	assert(!pthread_mutex_init(&a.rtp_lock, NULL));
 	assert(!pthread_mutex_init(&input.event_lock, NULL));
 	a.input_dev = &input;
+	a.work_queue = &a;
 	input.drvdata = &a;
 	input.ff = &ff;
 	a.ff_effects = slots;
