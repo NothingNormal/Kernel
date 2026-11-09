@@ -65,6 +65,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test AW8624 haptics logic
+        run: python3 tools/testing/selftests/aw8624/run.py
+
       - name: Show build inputs
         run: |
           {
