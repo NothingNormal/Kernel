@@ -180,6 +180,7 @@ fi
 echo "BakaSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
 
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig || { echo " Failed to generate .config"; exit 1; }
+make O=out ARCH=arm64 headers_install INSTALL_HDR_PATH="$(pwd)/out/usr" || { echo " Failed to install headers"; exit 1; }
 # keep the caller PATH: only the toolchain dir needs to win, and hardcoding
 # /usr/bin:/bin ahead of $PATH silently hid a caller-supplied tool dir
 # (found during a stubbed dry run of this script)
