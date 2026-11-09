@@ -42,7 +42,8 @@ int main(void)
 	struct drv2624_data d = {0};
 	reset(); assert(drv2624_set_go_bit(&d, GO) == 0 && reads == 1 && delays == 1);
 	reset(); mismatch_reads = 3; assert(drv2624_set_go_bit(&d, GO) == 0 && reads == 4);
-	reset(); read_error_at = 2; assert(drv2624_set_go_bit(&d, GO) == -EIO && reads == 2);
+	reset(); mismatch_reads = 1; read_error_at = 2;
+	assert(drv2624_set_go_bit(&d, GO) == -EIO && reads == 2);
 	reset(); write_error = -EIO; assert(drv2624_set_go_bit(&d, STOP) == -EIO && !reads);
 	reset(); mismatch_reads = 100; assert(drv2624_set_go_bit(&d, GO) == -ETIMEDOUT);
 	assert(reads == GO_BIT_MAX_RETRY_CNT && delays == GO_BIT_MAX_RETRY_CNT);
