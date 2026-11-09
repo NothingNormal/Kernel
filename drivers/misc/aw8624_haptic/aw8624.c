@@ -214,6 +214,7 @@ static char aw8624_rtp_name[][AW8624_RTP_NAME_MAX] = {
 };
 
 struct aw8624_container *aw8624_rtp;
+struct aw8624_container *aw8624_ram_fw;
 static struct aw8624 *g_aw8624;
 /* Serializes file operations against unbind and rejects stale open files. */
 static DEFINE_MUTEX(aw8624_file_lock);
@@ -513,8 +514,11 @@ static void aw8624_ram_loaded(const struct firmware *cont, void *context)
 		aw8624->ram_init = 1;
 		/* The child request is counted before this callback completes. */
 		aw8624_rtp_update(aw8624);
+		kfree(aw8624_ram_fw);
+		aw8624_ram_fw = aw8624_fw;
+	} else {
+		kfree(aw8624_fw);
 	}
-	kfree(aw8624_fw);
 	goto done;
 
 release:
@@ -2248,7 +2252,7 @@ static int aw8624_haptic_chip_init(struct aw8624 *aw8624)
 	aw8624->activate_mode = aw8624->info.mode;
 	aw8624->ulevel = 128;
 	aw8624->level = AW8624_GAIN_FULL;
-	aw8624->ff_gain = 0xffff;
+	aw8624->ff_gain = AW8624_STRONG_MAGNITUDE;
 	aw8624->osc_cali_run = 0;
 	ret = aw8624_i2c_read(aw8624, AW8624_REG_WAVSEQ1, &reg_val);
 	aw8624->index = reg_val & 0x7F;
@@ -4456,16 +4460,21 @@ static void aw8624_recover_work(struct work_struct *work)
 	ret = aw8624_read_chipid(aw8624);
 	if (!ret)
 		ret = aw8624_haptic_chip_init(aw8624);
-	if (!ret)
-		ret = aw8624_ram_update(aw8624);
-	if (!ret && !wait_event_timeout(aw8624->firmware_wait,
-					READ_ONCE(aw8624->ram_init) ||
-					READ_ONCE(aw8624->shutting_down),
-					msecs_to_jiffies(
-					 AW8624_RECOVER_FIRMWARE_TIMEOUT_MS)))
-		ret = -ETIMEDOUT;
-	if (!ret && !READ_ONCE(aw8624->ram_init))
-		ret = -EIO;
+	if (!ret) {
+		if (aw8624_ram_fw && aw8624_container_update(aw8624, aw8624_ram_fw)) {
+			aw8624->ram_init = 1;
+		} else {
+			ret = aw8624_ram_update(aw8624);
+			if (!ret && !wait_event_timeout(aw8624->firmware_wait,
+							READ_ONCE(aw8624->ram_init) ||
+							READ_ONCE(aw8624->shutting_down),
+							msecs_to_jiffies(
+							 AW8624_RECOVER_FIRMWARE_TIMEOUT_MS)))
+				ret = -ETIMEDOUT;
+			if (!ret && !READ_ONCE(aw8624->ram_init))
+				ret = -EIO;
+		}
+	}
 	if (ret)
 		dev_err(aw8624->dev, "%s: recovery failed: %d\n", __func__, ret);
 	else
@@ -4726,6 +4735,8 @@ err_haptic:
 	mutex_lock(&aw8624->rtp_lock);
 	vfree(aw8624_rtp);
 	aw8624_rtp = NULL;
+	kfree(aw8624_ram_fw);
+	aw8624_ram_fw = NULL;
 	mutex_unlock(&aw8624->rtp_lock);
 	if (aw8624->misc_registered)
 		misc_deregister(&aw8624_haptic_misc);
@@ -4763,6 +4774,8 @@ static int aw8624_i2c_remove(struct i2c_client *i2c)
 	mutex_lock(&aw8624->rtp_lock);
 	vfree(aw8624_rtp);
 	aw8624_rtp = NULL;
+	kfree(aw8624_ram_fw);
+	aw8624_ram_fw = NULL;
 	mutex_unlock(&aw8624->rtp_lock);
 	destroy_workqueue(aw8624->work_queue);
 	i2c_set_clientdata(i2c, NULL);
