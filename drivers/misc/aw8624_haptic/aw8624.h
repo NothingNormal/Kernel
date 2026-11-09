@@ -42,15 +42,10 @@
 #define AW8624_MAX_EFFECT_WAIT_US           20000
 /* Fallback for a timed effect without a positive duration. */
 #define AW8624_DEFAULT_PLAYBACK_MS          50
-/* Never rebuild the chip more often than this, even if stops keep failing. */
+/* Retry only on a new fault/request; back off to roughly five minutes. */
 #define AW8624_RECOVER_INTERVAL_MS          5000
-/*
- * Give up after this many consecutive rebuilds that do not restore standby.
- * A part that cannot be recovered must not keep resetting itself every five
- * seconds: the workqueue wakeups and the firmware reload keep the CPU busy
- * (no deep sleep, phone runs warm) and the constant resets kill playback.
- */
-#define AW8624_RECOVER_MAX_ATTEMPTS         3
+#define AW8624_RECOVER_MAX_BACKOFF_SHIFT    6
+#define AW8624_RECOVER_FIRMWARE_TIMEOUT_MS  2000
 
 #define AW8624_VBAT_REFER                   4200
 #define AW8624_VBAT_MIN                     3000
@@ -416,7 +411,6 @@ struct aw8624 {
 	atomic_t recovering;
 	unsigned long recover_after;
 	atomic_t recover_attempts;
-	bool recover_disabled;
 	struct workqueue_struct *work_queue;
 
 #ifdef INPUT_DEV
