@@ -63,6 +63,11 @@ struct drm_msm_pa_hsic sde_hw_kcal_hsic_struct(void);
  * @plane: index of pcc color plane.
  */
 void sde_hw_kcal_pcc_adjust(u32 *data, int plane);
+
+/**
+ * kcal_force_update() - force reprocessing on config change.
+ */
+void kcal_force_update(void);
 #else
 static inline struct sde_hw_kcal sde_hw_kcal_get(void)
 {
@@ -75,6 +80,10 @@ static inline struct drm_msm_pa_hsic sde_hw_kcal_hsic_struct(void)
 }
 
 static inline void sde_hw_kcal_pcc_adjust(u32 *data, int plane)
+{
+
+}
+static inline void kcal_force_update(void)
 {
 
 }
