@@ -83,6 +83,7 @@ struct aw8624 {
 /* EXTRACT_RTP_TABLE */
 static char *aw8624_ram_name = "aw8624_haptic.bin";
 static struct aw8624_container *aw8624_rtp;
+static struct aw8624_container *aw8624_ram_fw;
 static pthread_mutex_t gate_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t gate_cond = PTHREAD_COND_INITIALIZER;
 static bool block_write, write_started, allow_write, shutdown_returned;
@@ -196,6 +197,8 @@ static void cleanup(struct aw8624 *a)
 	assert(a->firmware_pending == 0);
 	free(aw8624_rtp);
 	aw8624_rtp = NULL;
+	free(aw8624_ram_fw);
+	aw8624_ram_fw = NULL;
 	assert(!pthread_cond_destroy(&a->firmware_wait.cond));
 	assert(!pthread_mutex_destroy(&a->firmware_wait.lock));
 	assert(!pthread_mutex_destroy(&a->firmware_lock));
@@ -240,6 +243,7 @@ static void test_firmware_paths(void)
 	assert(aw8624_ram_update(&a) == 0 && a.firmware_pending == 1);
 	run_callback(0, &ram_fw);
 	assert(a.ram_init == 1 && a.ram.base_addr == 4 && a.ram.len == sizeof(ram_data));
+	assert(aw8624_ram_fw && aw8624_ram_fw->len == sizeof(ram_data));
 	assert(request_count == 2 && a.firmware_pending == 1 && writes > 0 && released == 1);
 	run_callback(1, &rtp_fw);
 	assert(a.firmware_pending == 0 && a.rtp_init && aw8624_rtp->len == 3 && released == 2);
