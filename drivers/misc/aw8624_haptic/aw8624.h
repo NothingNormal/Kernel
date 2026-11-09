@@ -40,8 +40,8 @@
 
 /* Avoid stalling new effects behind a long-running timer. */
 #define AW8624_MAX_EFFECT_WAIT_US           20000
-/* A zero-length constant effect still needs time to be felt. */
-#define AW8624_MIN_PLAYBACK_MS              50
+/* Fallback for a timed effect without a positive duration. */
+#define AW8624_DEFAULT_PLAYBACK_MS          50
 /* Never rebuild the chip more often than this, even if stops keep failing. */
 #define AW8624_RECOVER_INTERVAL_MS          5000
 /*

@@ -65,8 +65,7 @@ typedef int atomic_t;
 	} while (0)
 #define MSEC_PER_SEC 1000
 #define AW8624_GAIN_FULL 0x80
-/* Strongest drive level the magnitude scale may produce. */
-#define AW8624_GAIN_MAX 0xc0
+/* EXTRACT_PLAYBACK_DEFAULT */
 #define AW8624_LIGHT_MAGNITUDE 0x3fff
 #define AW8624_MEDIUM_MAGNITUDE 0x5fff
 #define AW8624_STRONG_MAGNITUDE 0x7fff
@@ -84,11 +83,14 @@ typedef int atomic_t;
 #define AW8624_HAPTIC_RAM_MODE 1
 #define AW8624_HAPTIC_RTP_MODE 2
 #define AW8624_HAPTIC_ACTIVATE_RAM_MODE 0
+#define AW8624_HAPTIC_ACTIVATE_CONT_MODE 1
 #define AW8624_HAPTIC_ACTIVATE_RTP_MODE 2
 #define AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE 3
 #define AW8624_REG_GLB_STATE 0x01
 #define CUSTOM_DATA_LEN 3
 #define OSC_CALI 1
+#define F0_CALI 0
+#define HRTIMER_MODE_REL 0
 
 struct work_struct {
 	int queued;
@@ -190,6 +192,16 @@ static int copy_to_user(void *dst, const void *src, size_t n)
 		return 1;
 	memcpy(dst, src, n);
 	return 0;
+}
+static ktime_t ktime_set(s64 sec, unsigned long nsec)
+{
+	return sec * 1000000 + nsec / 1000;
+}
+static void hrtimer_start(struct hrtimer *t, ktime_t expires, int mode)
+{
+	assert(mode == HRTIMER_MODE_REL);
+	t->remaining_us = expires;
+	t->active = true;
 }
 static int hrtimer_active(struct hrtimer *t)
 {
@@ -358,6 +370,16 @@ static void aw8624_haptic_upload_lra(struct aw8624 *a, int mode)
 		a->play_generation++;
 	}
 }
+static void aw8624_haptic_ram_vbat_comp(struct aw8624 *a, bool on)
+{
+	(void)a;
+	(void)on;
+}
+static void aw8624_haptic_cont(struct aw8624 *a)
+{
+	(void)a;
+	start_count++;
+}
 static void aw8624_haptic_set_rtp_aei(struct aw8624 *a, bool on)
 {
 	(void)a;
@@ -391,6 +413,7 @@ static void aw8624_haptic_set_gain(struct aw8624 *a, u8 gain)
 /* EXTRACT aw8624_haptics_set_gain */
 /* EXTRACT aw8624_block_new_effects */
 /* EXTRACT aw8624_quiesce */
+/* EXTRACT aw8624_vibrator_work_routine */
 /* EXTRACT aw8624_gain_work_routine */
 /* EXTRACT aw8624_rtp_work_routine */
 
@@ -580,18 +603,18 @@ static void test_gain_and_slots(void)
 	setup();
 	unsigned int previous = 0;
 
-	for (int m = 0; m <= AW8624_STRONG_MAGNITUDE; m++) {
+	for (int m = 0; m <= UINT16_MAX; m++) {
 		aw8624_haptic_effect_strength(&a, m);
-		assert(a.level >= previous && a.level <= AW8624_GAIN_MAX);
+		assert(a.level >= previous && a.level <= AW8624_GAIN_FULL);
 		previous = a.level;
 	}
-	/* Anchors are 0x80/0xa0/0xc0 so "strong" really drives harder. */
+	/* HAL strengths stay ordered without exceeding the software reference. */
 	aw8624_haptic_effect_strength(&a, AW8624_LIGHT_MAGNITUDE);
-	assert(a.level == 0x80);
+	assert(a.level == 0x40);
 	aw8624_haptic_effect_strength(&a, AW8624_MEDIUM_MAGNITUDE);
-	assert(a.level == 0xa0);
+	assert(a.level == 0x60);
 	aw8624_haptic_effect_strength(&a, AW8624_STRONG_MAGNITUDE);
-	assert(a.level == 0xc0);
+	assert(a.level == 0x80);
 	for (int u = 0; u <= 128; u++)
 		for (int g = 0; g <= 255; g++)
 			for (int i = 0; i < 4; i++) {
@@ -616,8 +639,8 @@ static void test_gain_and_slots(void)
 	assert(a.vibrator_work.queued == 1);
 	pre[10].level = 64;
 	aw8624_haptic_play_effect_seq(&a, true);
-	/* 0xc0 * 64 / 0x80: the DT per-effect level still scales the new anchor. */
-	assert(wavseq == 11 && written_gain == 96 && start_count == 1);
+	/* DT per-effect scaling still applies to the bounded strong level. */
+	assert(wavseq == 11 && written_gain == 64 && start_count == 1);
 	play(7, 0);
 	assert(a.state == 0 && a.exit_in_rtp_loop == 1);
 	a.exit_in_rtp_loop = 0;
@@ -635,6 +658,63 @@ static void test_gain_and_slots(void)
 	assert(a.ff_gain == 0 && a.gain_work.queued == 1);
 	cleanup();
 }
+static void test_ram_gain(void)
+{
+	const u16 magnitudes[] = {0, AW8624_LIGHT_MAGNITUDE,
+		AW8624_MEDIUM_MAGNITUDE, AW8624_STRONG_MAGNITUDE, UINT16_MAX};
+	const int expected[] = {0, 0x40, 0x60, 0x80, 0x80};
+
+	setup();
+	for (int i = 0; i < (int)ARRAY_SIZE(magnitudes); i++) {
+		aw8624_haptic_play_ram(&a, 0, magnitudes[i]);
+		assert(written_gain == expected[i]);
+	}
+	pre[0].level = 64;
+	a.ff_gain = 0x7fff;
+	aw8624_haptic_play_ram(&a, 0, AW8624_STRONG_MAGNITUDE);
+	assert(written_gain == 31); /* DT scaling, then FF_GAIN */
+	cleanup();
+}
+
+static void test_timed_playback(void)
+{
+	const int requested[] = {0, 1, 20, 49, 50, 1000, 65535};
+	const int expected[] = {50, 1, 20, 49, 50, 1000, 65535};
+	const int modes[] = {AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE,
+		AW8624_HAPTIC_ACTIVATE_CONT_MODE};
+
+	setup();
+	a.effect_id = a.info.effect_id_boundary;
+	for (int mode = 0; mode < (int)ARRAY_SIZE(modes); mode++) {
+		for (int i = 0; i < (int)ARRAY_SIZE(requested); i++) {
+			a.state = 1;
+			a.activate_mode = modes[mode];
+			a.duration = requested[i];
+			a.timer.active = false;
+			start_count = 0;
+			aw8624_vibrator_work_routine(&a.vibrator_work);
+			assert(start_count == 1 && a.timer.active);
+			assert(a.duration == expected[i]);
+			assert(a.timer.remaining_us == (s64)expected[i] * 1000);
+		}
+	}
+	/* A normal RAM waveform is not lengthened with a timer. */
+	a.state = 1;
+	a.activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_MODE;
+	a.duration = 1;
+	a.timer.active = false;
+	aw8624_vibrator_work_routine(&a.vibrator_work);
+	assert(!a.timer.active && a.duration == 1);
+	/* Suspension must not start a new timed effect. */
+	a.suspended = true;
+	a.activate_mode = AW8624_HAPTIC_ACTIVATE_RAM_LOOP_MODE;
+	a.timer.active = false;
+	start_count = 0;
+	aw8624_vibrator_work_routine(&a.vibrator_work);
+	assert(!a.timer.active && start_count == 0);
+	cleanup();
+}
+
 static void test_firmware_worker(void)
 {
 	s16 data[3];
@@ -651,7 +731,7 @@ static void test_firmware_worker(void)
 	aw8624_rtp_work_routine(&a.rtp_work);
 	assert(wavseq == 1 && start_count == 1 && a.effect_id == 85 &&
 	       a.activate_mode == AW8624_HAPTIC_ACTIVATE_RTP_MODE);
-	assert(!wake_active && a.rtp_file_num == 65);
+	assert(!wake_active && a.rtp_file_num == 65 && written_gain == 0x80);
 	start_count = 0;
 	wavseq = -1;
 	fw_action = FW_STOP;
@@ -679,7 +759,8 @@ static void test_firmware_worker(void)
 	preload_streaming = 0;
 	aw8624_rtp_work_routine(&a.rtp_work);
 	assert(start_count == 1 && aw8624_rtp && aw8624_rtp->len == 200 && !wake_active);
-	assert(a.rtp_file_num == 65 && a.play_mode == AW8624_HAPTIC_RTP_MODE);
+	assert(a.rtp_file_num == 65 && a.play_mode == AW8624_HAPTIC_RTP_MODE &&
+	       written_gain == 0x80);
 	start_count = 0;
 	preload_streaming = 1;
 	aw8624_rtp_work_routine(&a.rtp_work);
@@ -741,6 +822,8 @@ int main(void)
 	test_stop_delay();
 	test_routing();
 	test_gain_and_slots();
+	test_ram_gain();
+	test_timed_playback();
 	test_firmware_worker();
 	test_quiesce();
 	puts("AW8624 extracted-code tests: routing, slots, gain, timer and RTP fallback passed");
