@@ -835,7 +835,7 @@ CONFIG_UTS_NS=y
 # fs/open.c, fs/stat.c, fs/read_write.c, kernel/sys.c, kernel/reboot.c and
 # drivers/input/input.c, guarded by CONFIG_KSU_SUSFS.
 CONFIG_KSU=y
-CONFIG_KPM=y
+# CONFIG_KPM is not set
 # SUSFS v2.3.0 kernel-side addon. Same set as the sibling branch: every
 # feature is stated explicitly rather than inherited from the Kconfig
 # defaults, so what ships is visible here and survives savedefconfig.

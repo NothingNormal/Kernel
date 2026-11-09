@@ -240,7 +240,7 @@ jobs:
           ls -l out/vmlinux out/arch/arm64/boot/Image out/arch/arm64/boot/Image.gz 2>&1 || true
 
           # exactly the nine features the sibling branch ships
-          for sym in CONFIG_KSU CONFIG_KPM CONFIG_KSU_SUSFS \
+          for sym in CONFIG_KSU CONFIG_KSU_SUSFS \
                      CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT \
                      CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_SPOOF_UNAME \
                      CONFIG_KSU_SUSFS_ENABLE_LOG \
@@ -291,7 +291,10 @@ jobs:
             fail=1
           fi
 
-          test -f out/drivers/kernelsu/kpm/kpm.o || { echo "::error::KPM object missing"; fail=1; }
+          if grep -qx "CONFIG_KPM=y" out/.config; then
+            echo "::error::KPM stubs must stay disabled"
+            fail=1
+          fi
 
           # NoMount verification
           if grep -qx "CONFIG_NOMOUNT=y" out/.config; then
