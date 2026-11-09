@@ -11,6 +11,10 @@ ROOT = Path(__file__).resolve().parents[4]
 DRIVER = ROOT / "drivers/misc/aw8624_haptic/aw8624.c"
 MOCKS = [Path(__file__).with_name("mock.c"), Path(__file__).with_name("lifetime.c"), Path(__file__).with_name("files.c")]
 source = DRIVER.read_text()
+header = (ROOT / "drivers/misc/aw8624_haptic/aw8624.h").read_text()
+default_duration = re.search(r"(?m)^#define AW8624_DEFAULT_PLAYBACK_MS\s+\d+$", header)
+if not default_duration:
+    raise RuntimeError("cannot find fallback duration")
 
 def extract(name):
     pattern = r"(?m)^static [^\n]*\b" + re.escape(name) + r"\s*\([^;]*?\)\s*\{"
@@ -41,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix="aw8624-test-") as temp:
         mock = re.sub(r"/\* EXTRACT ([a-zA-Z0-9_]+) \*/",
                       lambda m: extract(m.group(1)), template.read_text())
         mock = mock.replace("/* EXTRACT_RTP_TABLE */", table.group(0))
+        mock = mock.replace("/* EXTRACT_PLAYBACK_DEFAULT */", default_duration.group(0))
         cfile, exe = Path(temp) / template.name, Path(temp) / template.stem
         cfile.write_text(mock)
         subprocess.run([os.environ.get("CC", "cc"), *flags, str(cfile), "-o", str(exe)], check=True)
