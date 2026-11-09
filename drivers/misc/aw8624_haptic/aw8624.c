@@ -1246,31 +1246,10 @@ static int aw8624_haptic_rtp_init(struct aw8624 *aw8624)
 static int16_t aw8624_haptic_effect_strength(struct aw8624 *aw8624,
 					      u16 magnitude)
 {
-	u32 level;
-
-	/*
-	 * The HAL sends the LIGHT/MEDIUM/STRONG magnitude tokens.  Scaling them
-	 * to 0x50..0x80 made a strong effect no harder than a light one, which
-	 * is what the sibling arena branch fixed by moving the anchors to
-	 * 0x80/0xa0/0xc0.  Keep the interpolation so magnitudes between the
-	 * tokens still land in between, but use those anchors.
-	 */
-	if (magnitude <= AW8624_LIGHT_MAGNITUDE) {
-		level = DIV_ROUND_CLOSEST((u32)magnitude * 0x80,
-					  AW8624_LIGHT_MAGNITUDE);
-	} else if (magnitude <= AW8624_MEDIUM_MAGNITUDE) {
-		level = 0x80 + DIV_ROUND_CLOSEST(
-			(u32)(magnitude - AW8624_LIGHT_MAGNITUDE) * 0x20,
-			AW8624_MEDIUM_MAGNITUDE - AW8624_LIGHT_MAGNITUDE);
-	} else if (magnitude <= AW8624_STRONG_MAGNITUDE) {
-		level = 0xa0 + DIV_ROUND_CLOSEST(
-			(u32)(magnitude - AW8624_MEDIUM_MAGNITUDE) * 0x20,
-			AW8624_STRONG_MAGNITUDE - AW8624_MEDIUM_MAGNITUDE);
-	} else {
-		level = 0xc0;
-	}
-
-	aw8624->level = min_t(u32, level, 0xc0);
+	/* ponytail: cap at the software reference; tune with phone measurements. */
+	aw8624->level = DIV_ROUND_CLOSEST(
+		(u32)min_t(u16, magnitude, AW8624_STRONG_MAGNITUDE) *
+		AW8624_GAIN_FULL, AW8624_STRONG_MAGNITUDE);
 	return 0;
 }
 
@@ -2432,8 +2411,8 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 			   
 			aw8624_haptic_ram_vbat_comp(aw8624, true);
 			aw8624_haptic_play_effect_seq(aw8624, true);
-			if (aw8624->duration < AW8624_MIN_PLAYBACK_MS)
-				aw8624->duration = AW8624_MIN_PLAYBACK_MS;
+			if (aw8624->duration <= 0)
+				aw8624->duration = AW8624_DEFAULT_PLAYBACK_MS;
 			hrtimer_start(&aw8624->timer,
 				      ktime_set(aw8624->duration / 1000,
 						(aw8624->duration % 1000) *
@@ -2441,8 +2420,8 @@ static void aw8624_vibrator_work_routine(struct work_struct *work)
 		} else if (aw8624->activate_mode ==
 			   AW8624_HAPTIC_ACTIVATE_CONT_MODE) {
 			aw8624_haptic_cont(aw8624);
-			if (aw8624->duration < AW8624_MIN_PLAYBACK_MS)
-				aw8624->duration = AW8624_MIN_PLAYBACK_MS;
+			if (aw8624->duration <= 0)
+				aw8624->duration = AW8624_DEFAULT_PLAYBACK_MS;
 			hrtimer_start(&aw8624->timer,
 				      ktime_set(aw8624->duration / 1000,
 						(aw8624->duration % 1000) *
