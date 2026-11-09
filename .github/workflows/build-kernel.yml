@@ -1,4 +1,4 @@
-# Sixfaced Kernel CI â miatoll (SM6250), arm64, 4.14
+# Sixfaced Kernel CI — miatoll (SM6250), arm64, 4.14
 #
 # Adapted for this fork:
 #   * BakaSU + SUSFS v2.3.0 are built in -> artifact, job and zip names say

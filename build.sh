@@ -79,7 +79,7 @@ polly_probe()
 # CROSS_COMPILE is kept ONLY so kbuild derives the clang --target
 # triple; no $(CROSS_COMPILE)* binary is ever invoked.
 #
-# Primary: Neutron Clang â LLVM built with PGO + BOLT + LTO + O3 and
+# Primary: Neutron Clang — LLVM built with PGO + BOLT + LTO + O3 and
 # Polly bundled, specifically tuned for kernel compilation (the
 # compiler binary itself is profile-optimized, so it also compiles
 # faster than a generic distro clang). Pinned release tag for
