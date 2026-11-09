@@ -34,7 +34,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Test AW8624 haptics logic
+      - name: Test haptics logic
         run: python3 tools/testing/selftests/aw8624/run.py
 
       - name: Show vendored KernelSU info

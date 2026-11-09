@@ -691,6 +691,20 @@ static int aw8624_haptic_stop_delay(struct aw8624 *aw8624)
 
 static void aw8624_recover_work(struct work_struct *work);
 
+static unsigned long aw8624_recover_delay_ms(unsigned int attempts)
+{
+	unsigned int shift = attempts ? attempts - 1 : 0;
+
+	shift = min(shift, (unsigned int)AW8624_RECOVER_MAX_BACKOFF_SHIFT);
+	return (unsigned long)AW8624_RECOVER_INTERVAL_MS << shift;
+}
+
+static bool aw8624_fault_status(unsigned char status)
+{
+	return status & (AW8624_BIT_SYSINT_OVI | AW8624_BIT_SYSINT_UVLI |
+			 AW8624_BIT_SYSINT_OCDI | AW8624_BIT_SYSINT_OTI);
+}
+
 /*
  * The controller keeps its firmware in RAM and has no reset detection of its
  * own, so a brownout or a wedged playback engine leaves it answering I2C while
@@ -701,9 +715,8 @@ static void aw8624_recover_work(struct work_struct *work);
  */
 static void aw8624_schedule_recovery(struct aw8624 *aw8624)
 {
-	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
-		return;
-	if (READ_ONCE(aw8624->recover_disabled))
+	if (!aw8624->work_queue || READ_ONCE(aw8624->suspended) ||
+	    READ_ONCE(aw8624->shutting_down))
 		return;
 	if (time_before(jiffies, aw8624->recover_after))
 		return;
@@ -731,7 +744,6 @@ static int aw8624_haptic_stop(struct aw8624 *aw8624)
 		 * one to be retried.
 		 */
 		atomic_set(&aw8624->recover_attempts, 0);
-		WRITE_ONCE(aw8624->recover_disabled, false);
 	}
 
 	return ret;
@@ -2511,13 +2523,18 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	unsigned char reg_val = 0;
 	unsigned char dbg_val = 0;
 	unsigned int buf_len = 0;
+	bool fault;
 	int ret;
 
 	pr_debug("%s enter\n", __func__);
 	atomic_set(&aw8624->is_in_irq, 1);
-	aw8624_i2c_read(aw8624, AW8624_REG_SYSINT, &reg_val);
+	ret = aw8624_i2c_read(aw8624, AW8624_REG_SYSINT, &reg_val);
+	fault = ret < 0 || aw8624_fault_status(reg_val);
 	VIB_DEBUG("reg SYSINT=0x%x", reg_val);
-	aw8624_i2c_read(aw8624, AW8624_REG_DBGSTAT, &dbg_val);
+	if (ret >= 0)
+		aw8624_i2c_read(aw8624, AW8624_REG_DBGSTAT, &dbg_val);
+	else
+		pr_err("%s: failed to read interrupt status: %d\n", __func__, ret);
 	VIB_DEBUG("reg DBGSTAT=0x%x", dbg_val);
 
 	if (reg_val & AW8624_BIT_SYSINT_OVI) {
@@ -2534,6 +2551,18 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	}
 	if (reg_val & AW8624_BIT_SYSINT_DONEI)
 		VIB_DEBUG("chip playback done");
+
+	if (fault) {
+		WRITE_ONCE(aw8624->state, 0);
+		aw8624_haptic_set_rtp_aei(aw8624, false);
+		mutex_lock(&aw8624->rtp_lock);
+		aw8624->rtp_init = 0;
+		aw8624->rtp_cnt = 0;
+		mutex_unlock(&aw8624->rtp_lock);
+		pm_relax(aw8624->dev);
+		aw8624_schedule_recovery(aw8624);
+		goto out;
+	}
 
 	if (reg_val & AW8624_BIT_SYSINT_FF_AEI) {
 		VIB_DEBUG("aw8624 rtp fifo almost empty int");
@@ -2599,6 +2628,7 @@ static irqreturn_t aw8624_irq(int irq, void *data)
 	VIB_DEBUG("reg SYSINT=0x%x", reg_val);
 	aw8624_i2c_read(aw8624, AW8624_REG_SYSST, &reg_val);
 	VIB_DEBUG("reg SYSST=0x%x", reg_val);
+out:
 	atomic_set(&aw8624->is_in_irq, 0);
 	wake_up_interruptible(&aw8624->wait_q);
 	VIB_FUNC_EXIT();
@@ -4260,19 +4290,13 @@ static DEVICE_ATTR(osc_cali, S_IWUSR | S_IRUGO, aw8624_osc_cali_show, aw8624_osc
 static DEVICE_ATTR(f0_save, S_IWUSR | S_IRUGO, aw8624_f0_save_show, aw8624_f0_save_store);
 static DEVICE_ATTR(osc_save, S_IWUSR | S_IRUGO, aw8624_osc_save_show, aw8624_osc_save_store);
 
-/*
- * Read: "<disabled> <attempts>".  Writing a non-zero value clears the
- * give-up lockout so a wedged or reseated part can be retried without a
- * reboot.  The normal path still re-arms the lockout after
- * AW8624_RECOVER_MAX_ATTEMPTS rebuilds that do not restore standby.
- */
+/* Keep the old two-column ABI: permanent lockout is always disabled. */
 static ssize_t aw8624_recover_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct aw8624 *aw8624 = dev_get_drvdata(dev);
 
-	return snprintf(buf, PAGE_SIZE, "%u %u\n",
-			(unsigned int)READ_ONCE(aw8624->recover_disabled),
+	return snprintf(buf, PAGE_SIZE, "0 %u\n",
 			(unsigned int)atomic_read(&aw8624->recover_attempts));
 }
 
@@ -4289,7 +4313,7 @@ static ssize_t aw8624_recover_store(struct device *dev,
 		return -EINVAL;
 
 	atomic_set(&aw8624->recover_attempts, 0);
-	WRITE_ONCE(aw8624->recover_disabled, false);
+	aw8624->recover_after = jiffies;
 	return count;
 }
 
@@ -4397,75 +4421,60 @@ static void aw8624_recover_work(struct work_struct *work)
 {
 	struct aw8624 *aw8624 =
 	    container_of(work, struct aw8624, recover_work);
+	unsigned long flags;
+	unsigned int attempt;
 	int ret;
 
 	if (READ_ONCE(aw8624->suspended) || READ_ONCE(aw8624->shutting_down))
 		return;
-
-	/*
-	 * A retry queued just before the lockout was armed must not rebuild
-	 * the part again.  schedule_recovery() checks this too; checking here
-	 * closes the window between the two.  Do this before taking ownership,
-	 * otherwise the recovering flag would be left set.
-	 */
-	if (READ_ONCE(aw8624->recover_disabled))
-		return;
-
-	/* A rebuild already in flight owns the chip; drop the duplicate. */
 	if (atomic_xchg(&aw8624->recovering, 1))
 		return;
 
-	aw8624->recover_after =
-	    jiffies + msecs_to_jiffies(AW8624_RECOVER_INTERVAL_MS);
-
+	attempt = atomic_inc_return(&aw8624->recover_attempts);
+	aw8624->recover_after = jiffies + msecs_to_jiffies(
+		aw8624_recover_delay_ms(attempt));
 	dev_warn(aw8624->dev,
-		 "%s: haptic controller missed standby, rebuilding it\n",
-		 __func__);
+		 "%s: rebuilding haptic controller (attempt %u)\n",
+		 __func__, attempt);
 
-	/*
-	 * The IRQ is a threaded handler that reads and writes the same
-	 * registers, so park it for the duration of the rebuild.
-	 */
+	hrtimer_cancel(&aw8624->timer);
+	spin_lock_irqsave(&aw8624->input_dev->event_lock, flags);
+	WRITE_ONCE(aw8624->state, 0);
+	WRITE_ONCE(aw8624->play_generation, aw8624->play_generation + 1);
+	spin_unlock_irqrestore(&aw8624->input_dev->event_lock, flags);
+	atomic_set(&aw8624->exit_in_rtp_loop, 1);
+
 	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
 		disable_irq(gpio_to_irq(aw8624->irq_gpio));
-
-	/* Discard any half-uploaded RTP stream before resetting the part. */
 	mutex_lock(&aw8624->rtp_lock);
 	aw8624->rtp_init = 0;
 	aw8624->rtp_cnt = 0;
 	aw8624_haptic_set_rtp_aei(aw8624, false);
 	mutex_unlock(&aw8624->rtp_lock);
+	pm_relax(aw8624->dev);
 
-	aw8624_hw_reset(aw8624);
-	aw8624_haptic_softreset(aw8624);
-	aw8624_haptic_chip_init(aw8624);
-	ret = aw8624_ram_update(aw8624);
-	if (ret) {
-		dev_err(aw8624->dev, "%s: firmware reload failed: %d\n",
-			__func__, ret);
-	} else {
-		/*
-		 * A clean reload is not proof the part is back: standby is, and
-		 * aw8624_haptic_stop() resets the count when it sees it.  Guard
-		 * against an endless reset storm in the meantime - a wedged or
-		 * browned-out part that firmware cannot revive must not keep
-		 * rebuilding every five seconds.  That kept the CPU awake (no
-		 * deep sleep, device warm) and reset the chip out from under
-		 * every playback, which is what made haptics drop out.
-		 */
-		if (atomic_inc_return(&aw8624->recover_attempts) >=
-		    AW8624_RECOVER_MAX_ATTEMPTS) {
-			WRITE_ONCE(aw8624->recover_disabled, true);
-			dev_warn(aw8624->dev,
-				 "%s: giving up after %d rebuilds without standby\n",
-				 __func__,
-				 atomic_read(&aw8624->recover_attempts));
-		}
-	}
+	ret = aw8624_read_chipid(aw8624);
+	if (!ret)
+		ret = aw8624_haptic_chip_init(aw8624);
+	if (!ret)
+		ret = aw8624_ram_update(aw8624);
+	if (!ret && !wait_event_timeout(aw8624->firmware_wait,
+					READ_ONCE(aw8624->ram_init) ||
+					READ_ONCE(aw8624->shutting_down),
+					msecs_to_jiffies(
+					 AW8624_RECOVER_FIRMWARE_TIMEOUT_MS)))
+		ret = -ETIMEDOUT;
+	if (!ret && !READ_ONCE(aw8624->ram_init))
+		ret = -EIO;
+	if (ret)
+		dev_err(aw8624->dev, "%s: recovery failed: %d\n", __func__, ret);
+	else
+		atomic_set(&aw8624->recover_attempts, 0);
 
+	atomic_set(&aw8624->exit_in_rtp_loop, 0);
+	wake_up_interruptible(&aw8624->stop_wait_q);
 	if (aw8624->irq_requested && gpio_is_valid(aw8624->irq_gpio))
 		enable_irq(gpio_to_irq(aw8624->irq_gpio));
-
 	atomic_set(&aw8624->recovering, 0);
 }
 
