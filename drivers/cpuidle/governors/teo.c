@@ -275,7 +275,7 @@ end:
 static bool teo_state_ok(int i, struct cpuidle_driver *drv)
 {
 	return !tick_nohz_tick_stopped() ||
-		drv->states[i].target_residency >= TICK_USEC;
+		!(drv->states[i].flags & CPUIDLE_FLAG_POLLING);
 }
 
 /**
