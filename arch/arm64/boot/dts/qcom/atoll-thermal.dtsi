@@ -1138,37 +1138,37 @@
 		wake-capable-sensor;
 		trips {
 			skin_modem_trip0: modem-trip0 {
-				temperature = <46000>;
+				temperature = <40000>;
 				hysteresis = <4000>;
 				type = "passive";
 			};
 
 			skin_gold_trip: gold-trip {
-				temperature = <47000>;
+				temperature = <41000>;
 				hysteresis = <0>;
 				type = "passive";
 			};
 
 			skin_modem_trip1_hvx_gpu: modem-trip1-hvx-gpu {
-				temperature = <48000>;
+				temperature = <42000>;
 				hysteresis = <4000>;
 				type = "passive";
 			};
 
 			skin_modem_trip2: modem-trip2 {
-				temperature = <50000>;
+				temperature = <44000>;
 				hysteresis = <4000>;
 				type = "passive";
 			};
 
 			skin_silver_trip: silver-trip {
-				temperature = <50000>;
+				temperature = <44000>;
 				hysteresis = <0>;
 				type = "passive";
 			};
 
 			skin_modem_trip3: modem-trip3 {
-				temperature = <58000>;
+				temperature = <50000>;
 				hysteresis = <4000>;
 				type = "passive";
 			};
