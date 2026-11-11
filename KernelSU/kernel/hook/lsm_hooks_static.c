@@ -38,7 +38,7 @@ static int ksu_inode_rename(struct inode *old_dir, struct dentry *old_dentry, st
 	return security_inode_rename(old_dir, old_dentry, new_dir, new_dentry, flags);
 }
 
-// setuid
+#if 0 // setuid
 extern int security_task_fix_setuid(struct cred *new, const struct cred *old, int flags);
 static int ksu_task_fix_setuid(struct cred *new, const struct cred *old, int flags)
 {
@@ -48,6 +48,35 @@ static int ksu_task_fix_setuid(struct cred *new, const struct cred *old, int fla
 
 	return security_task_fix_setuid(new, old, flags);
 }
+#endif
+
+#define __AARCH64_setresuid 147
+static void *aarch64_setresuid __read_mostly = nullptr;
+asmlinkage long hook_aarch64_setresuid(const struct pt_regs *regs)
+{
+	extern long __arm64_sys_setresuid(const struct pt_regs *regs);
+	const struct cred old = *current_cred();
+
+	long ret = __arm64_sys_setresuid(regs);
+	if (!ret)
+		ksu_handle_setresuid_cred(current_cred(), &old);
+	return ret;
+}
+
+#ifdef CONFIG_COMPAT
+#define __ARMEABI_setresuid 208
+static void *armeabi_setresuid __read_mostly = nullptr;
+asmlinkage long hook_armeabi_setresuid(const struct pt_regs *regs)
+{
+	extern long __arm64_sys_setresuid(const struct pt_regs *regs);
+	const struct cred old = *current_cred();
+
+	long ret = __arm64_sys_setresuid(regs);
+	if (!ret)
+		ksu_handle_setresuid_cred(current_cred(), &old);
+	return ret;
+}
+#endif
 
 // bprm
 extern int security_bprm_check(struct linux_binprm *bprm);
@@ -85,7 +114,7 @@ static int ksu_setprocattr(int lsmid, const char *name, void *value, size_t size
 	return security_setprocattr(lsmid, name, value, size);
 }
 
-static void __init ksu_core_init(void)
+static void __init ksu_lsm_hook_init(void)
 {
 	int ret;
 	uintptr_t target_callsite;
@@ -109,12 +138,18 @@ static void __init ksu_core_init(void)
 
 rename_hook_done:
 
+#if 0
 	target_callsite = kallsyms_lookup_retry("__sys_setresuid");
 	if (!target_callsite)
 		target_callsite = kallsyms_lookup_retry("__arm64_sys_setresuid");
 	symbol_addr = kallsyms_lookup_retry("security_task_fix_setuid");
 	ret = arm64_bl_patch(target_callsite, ksu_get_ksym_size(target_callsite, 256 * sizeof(uint32_t)), symbol_addr, (uintptr_t)&ksu_task_fix_setuid);
 	pr_info("lsm_hijack: security_task_fix_setuid: ret %d \n", ret);
+#endif
+	replace_syscall((void *)&aarch64_setresuid, __AARCH64_setresuid, (void *)hook_aarch64_setresuid, native_sct);
+#ifdef CONFIG_COMPAT
+	replace_syscall((void *)&armeabi_setresuid, __ARMEABI_setresuid, (void *)hook_armeabi_setresuid, compat_sct);
+#endif
 
 #ifdef CONFIG_KSU_FEATURE_SULOG
 	symbol_addr = kallsyms_lookup_retry("security_bprm_check");
