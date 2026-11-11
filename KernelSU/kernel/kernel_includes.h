@@ -72,7 +72,6 @@
 #include <linux/kref.h>
 #include <linux/kthread.h>
 #include <linux/limits.h>
-#include <linux/linkage.h>
 #include <linux/list.h>
 #include <linux/lockdep.h>
 #include <linux/lsm_audit.h>
@@ -142,6 +141,12 @@
 #include <uapi/linux/input.h>
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
+#include <uapi/asm-generic/errno.h>
+#else
+#include <asm-generic/errno.h>
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
 #include <crypto/sha2.h>
 #else
@@ -157,7 +162,7 @@
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-#include <linux/eventpoll.h>
+#include <uapi/linux/eventpoll.h>
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
@@ -498,9 +503,6 @@ static inline void kfree_byref(void *buf) { kfree(*(void **)buf); }
 #define pr_devel(...)	do { } while (0)
 #define printk(...)	do { } while (0)
 #endif // CONFIG_KSU_NOPRINTK && !CONFIG_KSU_DEBUG
-
-// no ratelimit
-#define pr_warn_ratelimited pr_warn
 
 /**
  * disallow usage of old string functions removed on newer linux kernels
