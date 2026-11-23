@@ -256,6 +256,14 @@ static void devfreq_boost_input_event(struct input_handle *handle,
 	struct df_boost_drv *d = handle->handler->private;
 	int i;
 
+	/* Boost at contact or key press. Motion reports must let the boost expire. */
+	if (type == EV_KEY) {
+		if (value != 1)
+			return;
+	} else if (type != EV_ABS || code != ABS_MT_TRACKING_ID || value < 0) {
+		return;
+	}
+
 	for (i = 0; i < DEVFREQ_MAX; i++)
 		__devfreq_boost_kick(&d->devices[i]);
 }
