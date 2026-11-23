@@ -3079,16 +3079,23 @@ static int aw8624_haptics_playback(struct input_dev *dev, int effect_id,
 	if (READ_ONCE(aw8624->suspended))
 		return 0;
 
-	/* Drain the previous timer before publishing the new playback state. */
+	/* Erasing an inactive slot also sends a stop for that slot. */
+	if (val <= 0 && effect_id != aw8624->active_ff_slot)
+		return 0;
+
 	hrtimer_cancel(&aw8624->timer);
-	/* The input FF slot number is not the uploaded waveform ID. */
-	uploaded = &aw8624->ff_effects[effect_id];
-	aw8624->effect_type = uploaded->effect_type;
-	aw8624->effect_id = uploaded->effect_id;
-	aw8624->duration = uploaded->duration;
-	aw8624->activate_mode = uploaded->activate_mode;
-	if (uploaded->effect_type == FF_PERIODIC)
-		aw8624->play.vmax_mv = uploaded->vmax_mv;
+	if (val > 0) {
+		uploaded = &aw8624->ff_effects[effect_id];
+		aw8624->active_ff_slot = effect_id;
+		aw8624->effect_type = uploaded->effect_type;
+		aw8624->effect_id = uploaded->effect_id;
+		aw8624->duration = uploaded->duration;
+		aw8624->activate_mode = uploaded->activate_mode;
+		if (uploaded->effect_type == FF_PERIODIC)
+			aw8624->play.vmax_mv = uploaded->vmax_mv;
+	} else {
+		aw8624->active_ff_slot = -1;
+	}
 	WRITE_ONCE(aw8624->state, val > 0);
 	aw8624->play_requested_at = ktime_get();
 	WRITE_ONCE(aw8624->play_generation, aw8624->play_generation + 1);
@@ -4371,6 +4378,7 @@ static void aw8624_block_new_effects(struct aw8624 *aw8624)
 	unsigned long flags;
 
 	spin_lock_irqsave(&aw8624->input_dev->event_lock, flags);
+	aw8624->active_ff_slot = -1;
 	WRITE_ONCE(aw8624->suspended, true);
 	WRITE_ONCE(aw8624->state, 0);
 	WRITE_ONCE(aw8624->play_generation, aw8624->play_generation + 1);
@@ -4664,6 +4672,7 @@ static int aw8624_i2c_probe(struct i2c_client *i2c,
 		effect_count_max = aw8624->effects_count + 1;
 	else
 		effect_count_max = FF_EFFECT_COUNT_MAX;
+	aw8624->active_ff_slot = -1;
 	aw8624->ff_effects = devm_kcalloc(&i2c->dev, effect_count_max,
 					 sizeof(*aw8624->ff_effects), GFP_KERNEL);
 	if (!aw8624->ff_effects) {
