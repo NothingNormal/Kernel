@@ -422,6 +422,7 @@ struct aw8624 {
 	struct qti_hap_config config;
 	struct qti_hap_play_info play;
 	struct aw8624_ff_effect *ff_effects;
+	int active_ff_slot;
 	struct qti_hap_effect *predefined;
 	struct qti_hap_effect constant;
 	struct regulator *vdd_supply;

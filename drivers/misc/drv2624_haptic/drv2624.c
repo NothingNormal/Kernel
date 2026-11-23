@@ -63,14 +63,15 @@ static int drv2624_recover(struct drv2624_data *pDRV2624);
 static unsigned char *rtp_data;
 static void drv2624_set_mode_reg(struct drv2624_data *pDRV2624, char WorkMode);
 
-static void get_command_str(struct drv2624_data *pDRV2624)
+static void get_command_str(struct drv2624_data *pDRV2624, unsigned int generation)
 {
 	char command = 0;
 	int nResult;
 	int pop_result = 1;
 	int data;
 	dev_dbg(pDRV2624->dev, "%s: enter\n", __func__);
-	while (pDRV2624->mnVibratorPlaying == YES) {
+	while (pDRV2624->mnVibratorPlaying == YES &&
+	       READ_ONCE(pDRV2624->request_generation) == generation) {
 		pop_result = pop_running_effect_command(&command, &data);
 		if (pop_result < 0)
 			break;
@@ -89,7 +90,9 @@ static void get_command_str(struct drv2624_data *pDRV2624)
 			}
 		} else if (command == 'd') {
 			//nResult = drv2624_reg_write(pDRV2624, DRV2624_REG_RTP_INPUT, data);
-			usleep_range(data*1000, data*1000+50);
+			wait_event_hrtimeout(pDRV2624->request_wait,
+				READ_ONCE(pDRV2624->request_generation) != generation,
+				ms_to_ktime(data));
 		} else {
 			dev_err(pDRV2624->dev, "%s command error\n", __func__);
 			break;
@@ -930,7 +933,7 @@ static ssize_t drv2624_vibrator_store(struct device *dev,
 	nResult = drv2624_set_go_bit(pDRV2624, GO);
 	if (nResult < 0)
 		goto end;
-	if (pDRV2624->play.length != 0) {
+	if (nResult >= 0 && pDRV2624->play.length > 0) {
 		hrtimer_start(&pDRV2624->haptics_timer,
 			      ns_to_ktime((u64) val * NSEC_PER_MSEC),
 			      HRTIMER_MODE_REL);
@@ -1089,52 +1092,17 @@ static void drv2624_set_mode_reg(struct drv2624_data *pDRV2624, char WorkMode)
 	}
 }
 
-static int drv2624_set_waveform(struct drv2624_data *pDRV2624, struct drv2624_waveform_sequencer
-				*pSequencer)
+/* A zero in the second slot terminates a one-shot RAM waveform. */
+static int drv2624_select_waveform(struct drv2624_data *chip, u8 effect)
 {
-	int nResult = 0;
-	int i = 0;
-	unsigned char loop[2] = { 0 };
-	unsigned char effects[DRV2624_SEQUENCER_SIZE] = { 0 };
-	unsigned char len = 0;
-	dev_dbg(pDRV2624->dev, "%s:enter\n", __func__);
-	for (i = 0; i < DRV2624_SEQUENCER_SIZE; i++) {
-		if (pSequencer->msWaveform[i].mnEffect != 0) {
-			len++;
-			if (i < 4)
-				loop[0] |= (pSequencer->msWaveform[i].mnLoop << (2 * i));
-			else
-				loop[1] |= (pSequencer->msWaveform[i].mnLoop << (2 * (i - 4)));
-			effects[i] = pSequencer->msWaveform[i].mnEffect;
-		} else
-			break;
-	}
-	dev_dbg(pDRV2624->dev, "%s:len =%d, effects[0] = %d\n", __func__, len,
-		effects[0]);
-	if (len == 1) {
-		nResult =
-		    drv2624_reg_write(pDRV2624, DRV2624_REG_SEQUENCER_1, /*0 */
-				      effects[0]);
-		drv2624_reg_write(pDRV2624, DRV2624_REG_SEQ_LOOP_1, loop[0]);
-		nResult = drv2624_reg_write(pDRV2624, 0x10, /*0 */ 0);
-	} else
-		nResult =
-		    drv2624_bulk_write(pDRV2624, DRV2624_REG_SEQUENCER_1,
-				       effects, len);
-	if (nResult < 0) {
-		dev_err(pDRV2624->dev, "sequence error\n");
-		goto end;
-	}
-	if (len > 1) {
-		if ((len - 1) <= 4)
-			drv2624_reg_write(pDRV2624, DRV2624_REG_SEQ_LOOP_1,
-					  loop[0]);
+	u8 sequence[] = { effect, 0 };
+	int ret;
 
-		else
-			drv2624_bulk_write(pDRV2624, DRV2624_REG_SEQ_LOOP_1,
-					   loop, 2);
-	}
-end:	return nResult;
+	ret = drv2624_bulk_write(chip, DRV2624_REG_SEQUENCER_1,
+				 sequence, sizeof(sequence));
+	if (ret < 0)
+		return ret;
+	return drv2624_reg_write(chip, DRV2624_REG_SEQ_LOOP_1, 0);
 }
 
 static int fw_chksum(const struct firmware *fw)
@@ -1506,232 +1474,79 @@ err:	if (p_kBuf != NULL)
 	return len;
 }
 
-static void upload_periodic_work_routine(struct work_struct *work)
-{
-	struct drv2624_data *pDRV2624 =
-	    container_of(work, struct drv2624_data, upload_periodic_work);
-	int nResult = 0;
-	dev_dbg(pDRV2624->dev, "%s:enter\n", __func__);
-	mutex_lock(&pDRV2624->lock);
-	//nResult = drv2624_stop(pDRV2624);
-	if (nResult < 0) {
-		return;
-	}
-	if ((pDRV2624->mnEffectType == FF_PERIODIC) &&
-	    (pDRV2624->mnWorkMode == DRV2624_RAM_MODE)) {
-		nResult =
-		    drv2624_set_waveform(pDRV2624,
-					 &pDRV2624->msWaveformSequencer);
-		if (nResult < 0) {
-			dev_err(pDRV2624->dev,
-				"Configurate predefined effect %d failed, nResult=%d\n",
-				pDRV2624->msWaveformSequencer.msWaveform[0].mnEffect, nResult);
-			goto End;
-		}
-	} else if ((pDRV2624->mnEffectType == FF_PERIODIC) &&
-		   (pDRV2624->mnWorkMode == DRV2624_NEW_RTP_MODE)) {
-		//nResult = set_running_effect_id(22);
-		if (nResult < 0) {
-			dev_err(pDRV2624->dev, "%s:set effect_id failed\n",
-				__func__);
-			goto End;
-		}
-
-	} else {
-		dev_err(pDRV2624->dev, "%s: effect_type(%d) not supported!\n",
-			__func__, pDRV2624->mnEffectType);
-	}
-
-	dev_dbg(pDRV2624->dev,
-		"Configurate predefined effect success, effect=%d\n",
-		pDRV2624->msWaveformSequencer.msWaveform[0].mnEffect);
-End:
-	mutex_unlock(&pDRV2624->lock);
-}
-
 static int drv2624_haptics_upload_effect(struct input_dev *dev,
-					 struct ff_effect *effect,
-					 struct ff_effect *old)
+					struct ff_effect *effect,
+					struct ff_effect *old)
 {
-	struct drv2624_data *pDRV2624 = input_get_drvdata(dev);
-	struct drv2624_constant_playinfo *play = &pDRV2624->play;
-	struct drv2624_constant_playinfo previous_play;
-	struct drv2624_waveform_sequencer previous_sequence;
+	struct drv2624_data *chip = input_get_drvdata(dev);
+	struct drv2624_ff_effect uploaded = { };
 	u16 data[CUSTOM_DATA_LEN];
-	int nResult = 0, previous_type, previous_mode;
-	ktime_t rem;
-	s64 time_us;
-	uint time_ms = 0;
-	dev_dbg(pDRV2624->dev, "%s enter function \n", __func__);
-	mutex_lock(&pDRV2624->lock);
-	previous_play = *play;
-	previous_sequence = pDRV2624->msWaveformSequencer;
-	previous_type = pDRV2624->mnEffectType;
-	previous_mode = pDRV2624->mnWorkMode;
-	/* waiting last vibration to end */
-	if (hrtimer_active(&pDRV2624->haptics_timer)) {
-		rem = hrtimer_get_remaining(&pDRV2624->haptics_timer);
-		time_us = ktime_to_us(rem);
-		dev_info(pDRV2624->dev,
-			 "%s: waiting for playing finished: %lld us\n",
-			 __func__, time_us);
-		if (time_us > 0)
-			usleep_range(time_us, time_us + 100);
-	}
-	pDRV2624->mnEffectType = effect->type;
-	dev_dbg(pDRV2624->dev, "%s: mnEffectType: %d\n", __func__,
-		pDRV2624->mnEffectType);
-	switch (pDRV2624->mnEffectType) {
+	int id;
+	unsigned int duration;
+	int ret = 0;
+
+	if (effect->id < 0 || effect->id >= EFFECT_MAX_NUM)
+		return -EINVAL;
+
+	mutex_lock(&chip->lock);
+	switch (effect->type) {
 	case FF_CONSTANT:
-		play->length = effect->replay.length;
-		play->rtp_input = effect->u.constant.level;
-		pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
-	/***1-5-1**/
-		play->effect_id = 127;
-		dev_err(pDRV2624->dev, "%s: length(%d), level(%d)\n",
-			__func__, play->length, play->rtp_input);
+		uploaded.mode = DRV2624_RTP_MODE;
+		uploaded.play.length = effect->replay.length;
+		uploaded.play.rtp_input = effect->u.constant.level;
+		uploaded.play.effect_id = 127;
 		break;
 	case FF_PERIODIC:
-
 		if (effect->u.periodic.waveform != FF_CUSTOM) {
-			dev_err(pDRV2624->dev,
-				"Only accept custom waveforms\n");
-			nResult = -EINVAL;
-			break;
+			ret = -EINVAL;
+			goto out;
 		}
-		if (copy_from_user
-		    (data, effect->u.periodic.custom_data,
-		     sizeof(u16) * CUSTOM_DATA_LEN)) {
-			nResult = -EFAULT;
-			break;
+		if (copy_from_user(data, effect->u.periodic.custom_data, sizeof(data))) {
+			ret = -EFAULT;
+			goto out;
 		}
-		/**1-5-2**/
-		play->effect_id = data[CUSTOM_DATA_EFFECT_IDX] + 1;
-		play->magnitude = effect->u.periodic.magnitude;
-		dev_dbg(pDRV2624->dev, "%s: effect_id = %d, fw_effCount = %d\n",
-			__func__, play->effect_id,
-			pDRV2624->fw_header.fw_effCount);
-		if (play->effect_id > 0
-		    && play->effect_id <= pDRV2624->fw_header.fw_effCount) {
-			pDRV2624->mnWorkMode = DRV2624_RAM_MODE;
-			dev_dbg(pDRV2624->dev,
-				"%s: effect_id = %d, magnitude = %d\n",
-				__func__, play->effect_id, play->magnitude);
-			if ((play->effect_id < 0)
-			    || (play->effect_id >
-				pDRV2624->fw_header.fw_effCount)) {
-				dev_err(pDRV2624->dev,
-					"%s: overflow effect_id = %d, max_effect_id = %d\n",
-					__func__, play->effect_id,
-					pDRV2624->fw_header.fw_effCount);
-				nResult = -EINVAL;
-				break;
-			}
-			dev_dbg(pDRV2624->dev,
-				"%s upload to use effect,fw_effCount = %d\n",
-				__func__, pDRV2624->fw_header.fw_effCount);
-			memset(&pDRV2624->msWaveformSequencer, 0,
-			       sizeof(struct drv2624_waveform_sequencer));
-		/** +1 **/
-			pDRV2624->msWaveformSequencer.msWaveform[0].mnEffect =
-			    data[CUSTOM_DATA_EFFECT_IDX] + 1;
-			pDRV2624->msWaveformSequencer.msWaveform[0].mnLoop = 0;
-			pDRV2624->msWaveformSequencer.msWaveform[1].mnEffect =
-			    0;
-			pDRV2624->msWaveformSequencer.msWaveform[1].mnLoop = 0;
-		/** +1 **/
-			dev_dbg(pDRV2624->dev, "upload to use effect %d\n",
-				data[CUSTOM_DATA_EFFECT_IDX] + 1);
-		/**1-5-2**/
-			time_ms = pDRV2624->mnEffectTimems[data[CUSTOM_DATA_EFFECT_IDX]];
-			if (!time_ms)
-				time_ms = 25;
 
-			dev_dbg(pDRV2624->dev, "effect playing time_ms %d\n",
-				time_ms);
-			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] =
-			    time_ms / MSEC_PER_SEC;
-			dev_dbg(pDRV2624->dev, " ram data[1] time_ms =%d\n",
-				data[CUSTOM_DATA_TIMEOUT_SEC_IDX]);
-			data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] =
-			    time_ms % MSEC_PER_SEC;
-			dev_dbg(pDRV2624->dev, " ram data[2] time_ms =%d\n",
-				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX]);
+		id = data[CUSTOM_DATA_EFFECT_IDX];
+		uploaded.play.effect_id = id + 1;
+		uploaded.play.magnitude = effect->u.periodic.magnitude;
+		if (id < chip->fw_header.fw_effCount &&
+		    id < ARRAY_SIZE(chip->mnEffectTimems)) {
+			uploaded.mode = DRV2624_RAM_MODE;
+			duration = chip->mnEffectTimems[id] ?: 25;
+		} else if (id < 126) {
+			int rtp_ms = rtp_get_effect_duration(id);
 
-			/*
-			 * Copy the custom data contains the play length back to
-			 * userspace so that the userspace client can wait and
-			 * send stop playing command after it's done.
-			 */
-			if (copy_to_user
-			    (effect->u.periodic.custom_data, data,
-			     sizeof(u16) * CUSTOM_DATA_LEN)) {
-				pr_info("%s copy to user failed \n", __func__);
-				nResult = -EFAULT;
-				break;
+			if (rtp_ms < 0) {
+				uploaded.mode = DRV2624_RTP_MODE;
+				uploaded.play.effect_id = 127;
+				uploaded.play.length = 25;
+				duration = 25;
+			} else {
+				uploaded.mode = DRV2624_NEW_RTP_MODE;
+				duration = rtp_ms;
 			}
-			schedule_work(&pDRV2624->upload_periodic_work);
-			break;
-		} else if (play->effect_id > pDRV2624->fw_header.fw_effCount
-			   && play->effect_id < 127) {
-			nResult = rtp_get_effect_duration(play->effect_id - 1);
-			if (nResult < 0) {
-				/* ponytail: 25 ms constant click; use RTP when firmware exists. */
-				time_ms = 25;
-				data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = 0;
-				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = time_ms;
-				if (copy_to_user(effect->u.periodic.custom_data, data,
-						 sizeof(data))) {
-					nResult = -EFAULT;
-					break;
-				}
-				play->length = time_ms;
-				play->effect_id = 127;
-				pDRV2624->mnEffectType = FF_CONSTANT;
-				pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
-				nResult = 0;
-				break;
-			}
-			time_ms = nResult;
-			nResult = 0;
-			data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = time_ms / MSEC_PER_SEC;	//300 / 1000;
-			dev_dbg(pDRV2624->dev, " rtp data[1] time_ms =%d\n",
-				data[CUSTOM_DATA_TIMEOUT_SEC_IDX]);
-			data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = time_ms % MSEC_PER_SEC;	//300;
-			dev_dbg(pDRV2624->dev, " rtp data[2] time_ms =%d\n",
-				data[CUSTOM_DATA_TIMEOUT_MSEC_IDX]);
-			if (copy_to_user
-			    (effect->u.periodic.custom_data, data,
-			     sizeof(u16) * CUSTOM_DATA_LEN)) {
-				pr_info("%s copy to user failed \n", __func__);
-				nResult = -EFAULT;
-				break;
-			}
-			/* Do not reset the active stream if the user copy failed. */
-			set_running_effect_id(play->effect_id - 1);
-			nResult = 0;
-			pDRV2624->mnWorkMode = DRV2624_NEW_RTP_MODE;
-			schedule_work(&pDRV2624->upload_periodic_work);
-			break;
+		} else {
+			ret = -EINVAL;
+			goto out;
 		}
-		nResult = -EINVAL;
+		data[CUSTOM_DATA_TIMEOUT_SEC_IDX] = duration / MSEC_PER_SEC;
+		data[CUSTOM_DATA_TIMEOUT_MSEC_IDX] = duration % MSEC_PER_SEC;
+		if (copy_to_user(effect->u.periodic.custom_data, data, sizeof(data))) {
+			ret = -EFAULT;
+			goto out;
+		}
 		break;
 	default:
-		dev_err(pDRV2624->dev, "Unsupported effect type: %d\n",
-			effect->type);
-		nResult = -EINVAL;
-		break;
+		ret = -EINVAL;
+		goto out;
 	}
-	if (nResult < 0) {
-		/* An unsuccessful upload must not publish a partial effect. */
-		*play = previous_play;
-		pDRV2624->msWaveformSequencer = previous_sequence;
-		pDRV2624->mnEffectType = previous_type;
-		pDRV2624->mnWorkMode = previous_mode;
-	}
-	mutex_unlock(&pDRV2624->lock);
-	dev_info(pDRV2624->dev, "%s exit \n", __func__);
-	return nResult;
+
+	spin_lock_irq(&dev->event_lock);
+	chip->ff_effects[effect->id] = uploaded;
+	spin_unlock_irq(&dev->event_lock);
+out:
+	mutex_unlock(&chip->lock);
+	return ret;
 }
 
 static void config_effect_playing(struct drv2624_data *pDRV2624)
@@ -1759,29 +1574,48 @@ static void haptics_playback_work_routine(struct work_struct *work)
 	int nResult = 0;
 	struct drv2624_data *pDRV2624 =
 	    container_of(work, struct drv2624_data, haptics_playback_work);
-	mutex_lock(&pDRV2624->lock);
+	struct drv2624_ff_effect requested;
+	unsigned int generation;
+	int slot;
 
-	/* An effect may have been erased while this work was pending. */
-	if (!pDRV2624->mnEffectType)
+	mutex_lock(&pDRV2624->lock);
+	spin_lock_irq(&pDRV2624->input_dev->event_lock);
+	requested = pDRV2624->requested_effect;
+	slot = pDRV2624->requested_slot;
+	generation = pDRV2624->request_generation;
+	spin_unlock_irq(&pDRV2624->input_dev->event_lock);
+	/* A requeued worker may already have consumed the latest request. */
+	if (pDRV2624->handled_generation == generation)
 		goto end;
+	pDRV2624->handled_generation = generation;
+
 	nResult = drv2624_stop(pDRV2624);
 	if (nResult < 0) {
 		dev_err(pDRV2624->dev, "%s: stop failed!\n", __func__);
 		goto end;
 	}
+	if (slot < 0)
+		goto end;
+	pDRV2624->play = requested.play;
 	dev_dbg(pDRV2624->dev, "%s:pDRV2624->mnWorkMode = %d\n", __func__,
 		pDRV2624->mnWorkMode);
 	//config special effect playing request
 	config_effect_playing(pDRV2624);
-	switch (pDRV2624->mnWorkMode) {
+	switch (requested.mode) {
 	case DRV2624_RAM_MODE:
 		dev_dbg(pDRV2624->dev, "%s:DRV2624_RAM_MODE enter\n", __func__);
+		nResult = drv2624_select_waveform(pDRV2624, requested.play.effect_id);
+		if (nResult < 0)
+			goto end;
 		nResult = drv2624_playEffect(pDRV2624);
 		if ((nResult >= 0) && pDRV2624->mbIRQUsed) {
 			drv2624_enableIRQ(pDRV2624, NO);
 		}
 		break;
 	case DRV2624_NEW_RTP_MODE:
+		nResult = set_running_effect_id(requested.play.effect_id - 1);
+		if (nResult < 0)
+			goto end;
 		pDRV2624->play.length = 0;
 		pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
 		nResult = drv2624_change_mode(pDRV2624, DRV2624_RTP_MODE);
@@ -1799,7 +1633,7 @@ static void haptics_playback_work_routine(struct work_struct *work)
 		pDRV2624->mnVibratorPlaying = YES;
 		/* Erase can now stop the running stream while its delays execute. */
 		mutex_unlock(&pDRV2624->lock);
-		get_command_str(pDRV2624);
+		get_command_str(pDRV2624, generation);
 		goto exit;
 	case DRV2624_RTP_MODE:
 		dev_dbg(pDRV2624->dev, "%s enter effect.length(%d) \n",
@@ -1830,7 +1664,7 @@ static void haptics_playback_work_routine(struct work_struct *work)
 			pDRV2624->mnWorkMode);
 		break;
 	}
-	if (pDRV2624->play.length != 0) {
+	if (nResult >= 0 && pDRV2624->play.length > 0) {
 		hrtimer_start(&pDRV2624->haptics_timer,
 			      ns_to_ktime((u64) pDRV2624->play.length *
 					  NSEC_PER_MSEC), HRTIMER_MODE_REL);
@@ -1847,50 +1681,37 @@ exit: 	dev_dbg(pDRV2624->dev, "%s: exit\n", __func__);
 static int drv2624_haptics_playback(struct input_dev *dev, int effect_id,
 				    int val)
 {
-	struct drv2624_data *pDRV2624 = input_get_drvdata(dev);
-	int nResult = 0;
-	dev_dbg(pDRV2624->dev, "%s: effect_id(%d) val(%d)\n",
-		__func__, effect_id, val);
-	dev_dbg(pDRV2624->dev, "%s: mnEffectType(%d) WorkMode(%d)\n",
-		__func__, pDRV2624->mnEffectType, pDRV2624->mnWorkMode);
-	if (val <= 0) {
-		dev_dbg(pDRV2624->dev, "%s: return as value <= 0 \n", __func__);
+	struct drv2624_data *chip = input_get_drvdata(dev);
+
+	if (effect_id < 0 || effect_id >= EFFECT_MAX_NUM)
+		return -EINVAL;
+	if (val <= 0 && effect_id != chip->requested_slot)
 		return 0;
-	}
-	if ((pDRV2624->mnEffectType == FF_CONSTANT)
-	    && (pDRV2624->mnWorkMode == DRV2624_RTP_MODE)) {
-		pDRV2624->mnWorkMode = DRV2624_RTP_MODE;
-		if (hrtimer_active(&pDRV2624->haptics_timer))
-			hrtimer_cancel(&pDRV2624->haptics_timer);
-		schedule_work(&pDRV2624->haptics_playback_work);
-	} else if ((pDRV2624->mnEffectType == FF_PERIODIC) &&
-		   (pDRV2624->mnWorkMode == DRV2624_RAM_MODE)) {
-		schedule_work(&pDRV2624->haptics_playback_work);
-	} else if ((pDRV2624->mnEffectType == FF_PERIODIC) &&
-		   (pDRV2624->mnWorkMode == DRV2624_NEW_RTP_MODE)) {
-		schedule_work(&pDRV2624->haptics_playback_work);
+
+	/* The input core holds event_lock across this callback. */
+	if (val > 0) {
+		chip->requested_effect = chip->ff_effects[effect_id];
+		chip->requested_slot = effect_id;
 	} else {
-		dev_err(pDRV2624->dev, "%s: effect_type(%d) not supported!\n",
-			__func__, pDRV2624->mnEffectType);
+		chip->requested_slot = -1;
 	}
-	return nResult;
+	WRITE_ONCE(chip->request_generation, chip->request_generation + 1);
+	wake_up(&chip->request_wait);
+	schedule_work(&chip->haptics_playback_work);
+	return 0;
 }
 
 static int drv2624_haptics_erase(struct input_dev *dev, int effect_id)
 {
-	struct drv2624_data *pDRV2624 = input_get_drvdata(dev);
-	struct drv2624_constant_playinfo *play = &pDRV2624->play;
-	int nResult = 0;
-	dev_dbg(pDRV2624->dev, "%s enter\n", __func__);
-	mutex_lock(&pDRV2624->lock);
-	play->length = 0;
-	pDRV2624->mnEffectType = 0;
-	nResult = drv2624_stop(pDRV2624);
-	if (nResult < 0)
-		dev_err(pDRV2624->dev, "failed to stop vibrator: %d\n",
-			nResult);
-	mutex_unlock(&pDRV2624->lock);
-	return nResult;
+	struct drv2624_data *chip = input_get_drvdata(dev);
+
+	if (effect_id < 0 || effect_id >= EFFECT_MAX_NUM)
+		return -EINVAL;
+	/* The input core already stopped this slot before invoking erase. */
+	spin_lock_irq(&dev->event_lock);
+	memset(&chip->ff_effects[effect_id], 0, sizeof(chip->ff_effects[effect_id]));
+	spin_unlock_irq(&dev->event_lock);
+	return 0;
 }
 
 /* NOTE: gain range: 0 ~ 0x7f*/
@@ -1967,8 +1788,8 @@ static int Haptics_init(struct drv2624_data *pDRV2624)
 	pDRV2624->stop_timer.function = vibrator_rtp_stop_timer;
 #endif
 	INIT_WORK(&pDRV2624->vibrator_work, vibrator_work_routine);
-	INIT_WORK(&pDRV2624->upload_periodic_work,
-		  upload_periodic_work_routine);
+	pDRV2624->requested_slot = -1;
+	init_waitqueue_head(&pDRV2624->request_wait);
 	INIT_WORK(&pDRV2624->haptics_playback_work,
 		  haptics_playback_work_routine);
 #ifndef DELAY_BOOT_CALIB
