@@ -1,4 +1,9 @@
 &thermal_zones {
+	/* Use the skin cooling maps inherited from the Atoll base tree. */
+	quiet-therm-step {
+		status = "okay";
+	};
+
 	nvm-therm-usr {
 		polling-delay = <5000>;
 	};
