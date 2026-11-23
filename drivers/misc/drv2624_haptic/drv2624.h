@@ -282,6 +282,11 @@ enum haptics_custom_effect_param { CUSTOM_DATA_EFFECT_IDX,
 	CUSTOM_DATA_TIMEOUT_SEC_IDX, CUSTOM_DATA_TIMEOUT_MSEC_IDX,
 	CUSTOM_DATA_LEN,
 };
+struct drv2624_ff_effect {
+	struct drv2624_constant_playinfo play;
+	drv2624_mode_t mode;
+};
+
 struct drv2624_data {
 	struct input_dev *input_dev;
 	struct i2c_client *client;
@@ -296,7 +301,12 @@ struct drv2624_data {
 	bool mbIRQEnabled;
 	bool mbIRQUsed;
 	struct drv2624_wave_setting msWaveformSetting;
-	struct drv2624_waveform_sequencer msWaveformSequencer;
+	struct drv2624_ff_effect ff_effects[EFFECT_MAX_NUM];
+	struct drv2624_ff_effect requested_effect;
+	int requested_slot;
+	unsigned int request_generation;
+	unsigned int handled_generation;
+	wait_queue_head_t request_wait;
 	unsigned char mnFileCmd;
 	volatile int mnVibratorPlaying;
 	volatile char mnWorkMode;
@@ -311,7 +321,6 @@ struct drv2624_data {
 	struct drv2624_fw_header fw_header;
 	unsigned char mRAMLSB;
 	unsigned char mRAMMSB;
-	int mnEffectType;
 	unsigned char mnFwRam[DRV2624_RAM_SIZE];
 	unsigned int mnEffectTimems[EFFECT_MAX_NUM];
 	struct drv2624_constant_playinfo play;
@@ -321,7 +330,6 @@ struct drv2624_data {
 	struct timed_output_dev to_dev;
 
 #endif				/*  */
-	struct work_struct upload_periodic_work;
 	struct work_struct haptics_playback_work;
 	//struct workqueue_struct *cali_write_workqueue;
 	//struct delayed_work cali_write_work;
