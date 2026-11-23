@@ -132,6 +132,7 @@ struct aw8624 {
 	pthread_mutex_t lock, rtp_lock;
 	struct input_dev *input_dev;
 	struct aw8624_ff_effect *ff_effects;
+	int active_ff_slot;
 	struct predefined *predefined;
 	struct {
 		int effect_id_boundary, effect_max, gain_flag;
@@ -441,6 +442,7 @@ static void setup(void)
 	input.drvdata = &a;
 	input.ff = &ff;
 	a.ff_effects = slots;
+	a.active_ff_slot = -1;
 	a.predefined = pre;
 	a.effects_count = 11;
 	a.info.effect_id_boundary = 10;
@@ -650,7 +652,9 @@ static void test_gain_and_slots(void)
 	/* DT per-effect scaling still applies to the bounded strong level. */
 	assert(wavseq == 11 && written_gain == 64 && start_count == 1);
 	play(7, 0);
-	assert(a.state == 0 && a.exit_in_rtp_loop == 1);
+	assert(a.state == 1 && a.effect_id == 10 && !a.exit_in_rtp_loop);
+	play(1, 0);
+	assert(!a.state);
 	a.exit_in_rtp_loop = 0;
 	assert(aw8624_haptics_erase(&input, 7) == 0 && slots[7].effect_type == 0);
 	aw8624_haptics_set_gain(&input, 0x7fff);
