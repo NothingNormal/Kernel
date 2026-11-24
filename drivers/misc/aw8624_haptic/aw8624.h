@@ -386,6 +386,7 @@ struct aw8624 {
 
 	unsigned char rtp_init;
 	unsigned char ram_init;
+	bool alternate_tick;
 
 	unsigned int f0;
 	unsigned int cont_f0;

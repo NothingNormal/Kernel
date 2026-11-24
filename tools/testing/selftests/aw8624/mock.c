@@ -154,6 +154,7 @@ struct aw8624 {
 	u32 play_generation;
 	ktime_t play_requested_at;
 	u16 ff_gain;
+	bool alternate_tick;
 	u8 level, applied_gain, rtp_init, ram_init;
 	bool suspended, shutting_down;
 	unsigned long recover_after;
@@ -681,6 +682,12 @@ static void test_ram_gain(void)
 		aw8624_haptic_play_ram(&a, 0, magnitudes[i]);
 		assert(written_gain == expected[i]);
 	}
+	a.alternate_tick = true;
+	aw8624_haptic_play_ram(&a, 2, AW8624_LIGHT_MAGNITUDE);
+	assert(wavseq == 9);
+	a.alternate_tick = false;
+	aw8624_haptic_play_ram(&a, 2, AW8624_LIGHT_MAGNITUDE);
+	assert(wavseq == 3);
 	pre[0].level = 64;
 	a.ff_gain = 0x7fff;
 	aw8624_haptic_play_ram(&a, 0, AW8624_STRONG_MAGNITUDE);

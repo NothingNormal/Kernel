@@ -405,6 +405,38 @@ static int aw8624_rtp_update(struct aw8624 *aw8624)
 		aw8624_rtp_name[aw8624->rtp_file_num], aw8624_rtp_loaded);
 }
 
+/* Miatoll RAM uses four-byte, inclusive start/end descriptors after byte 0. */
+static bool aw8624_use_alternate_tick(const u8 *ram, unsigned int size,
+				      unsigned int base)
+{
+	unsigned int first, table_size, start, end, tick;
+	unsigned int primary = 1 + 4 * 2, alternate = 1 + 4 * 8;
+
+	if (size < alternate + 4)
+		return false;
+	first = (ram[1] << 8) | ram[2];
+	if (first < base)
+		return false;
+	table_size = first - base;
+	if (table_size < alternate + 4 || table_size >= size ||
+	    (table_size - 1) % 4)
+		return false;
+
+	tick = (ram[primary] << 8) | ram[primary + 1];
+	end = (ram[primary + 2] << 8) | ram[primary + 3];
+	if (tick != end || tick < first || tick - base >= size || ram[tick - base])
+		return false;
+
+	start = (ram[alternate] << 8) | ram[alternate + 1];
+	end = (ram[alternate + 2] << 8) | ram[alternate + 3];
+	if (start < first || end <= start || end - base >= size)
+		return false;
+	while (start <= end)
+		if (ram[start++ - base])
+			return true;
+	return false;
+}
+
 static bool aw8624_container_update(struct aw8624 *aw8624,
 				    struct aw8624_container *aw8624_cont)
 {
@@ -461,6 +493,9 @@ static bool aw8624_container_update(struct aw8624 *aw8624,
 	aw8624_i2c_write(aw8624, AW8624_REG_RAMADDRL,
 			 aw8624_cont->data[1 + shift]);
 	shift = aw8624->ram.ram_shift;
+	aw8624->alternate_tick = aw8624_use_alternate_tick(
+		aw8624_cont->data + shift, aw8624_cont->len - shift,
+		aw8624->ram.base_addr);
 	for (i = shift; i < aw8624_cont->len; i++) {
 		aw8624_i2c_write(aw8624, AW8624_REG_RAMDATA,
 				 aw8624_cont->data[i]);
@@ -1273,7 +1308,9 @@ static int16_t aw8624_haptic_effect_strength(struct aw8624 *aw8624,
 static void aw8624_haptic_play_ram(struct aw8624 *aw8624, int effect_id,
 				  u16 magnitude)
 {
-	aw8624_haptic_set_wav_seq(aw8624, 0x00, effect_id + 1);
+	int wave_id = effect_id == 2 && aw8624->alternate_tick ? 8 : effect_id;
+
+	aw8624_haptic_set_wav_seq(aw8624, 0x00, wave_id + 1);
 	aw8624_haptic_set_wav_seq(aw8624, 0x01, 0x00);
 	aw8624_haptic_set_wav_loop(aw8624, 0x00, 0x00);
 	aw8624_haptic_play_mode(aw8624, AW8624_HAPTIC_RAM_MODE);

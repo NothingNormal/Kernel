@@ -77,6 +77,7 @@ struct aw8624 {
 	} ram;
 	unsigned int firmware_pending, rtp_file_num;
 	int ram_work, play_mode, ram_init, rtp_init;
+	bool alternate_tick;
 	bool shutting_down, suspended;
 	void *dev;
 };
@@ -176,6 +177,7 @@ static int aw8624_i2c_write(struct aw8624 *a, int r, int v)
 /* EXTRACT aw8624_request_firmware */
 /* EXTRACT aw8624_rtp_loaded */
 /* EXTRACT aw8624_rtp_update */
+/* EXTRACT aw8624_use_alternate_tick */
 /* EXTRACT aw8624_container_update */
 /* EXTRACT aw8624_ram_loaded */
 /* EXTRACT aw8624_ram_update */
