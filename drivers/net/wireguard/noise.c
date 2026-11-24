@@ -756,7 +756,9 @@ wg_noise_handshake_consume_response(struct message_handshake_response *src,
 	/* It's important to check that the state is still the same, while we
 	 * have an exclusive lock.
 	 */
-	if (handshake->state != state) {
+	if (handshake->state != state ||
+	    crypto_memneq(handshake->ephemeral_private, ephemeral_private,
+			  NOISE_PUBLIC_KEY_LEN)) {
 		up_write(&handshake->lock);
 		goto fail;
 	}
