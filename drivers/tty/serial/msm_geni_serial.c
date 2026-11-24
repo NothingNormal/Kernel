@@ -3216,11 +3216,11 @@ static int msm_geni_serial_probe(struct platform_device *pdev)
 
 	is_console = (drv->cons ? true : false);
 	dev_port = get_port_from_line(line, is_console);
-	if (IS_ERR_OR_NULL(dev_port)) {
+	if (IS_ERR(dev_port)) {
 		ret = PTR_ERR(dev_port);
 		dev_err(&pdev->dev, "Invalid line %d(%d)\n",
 					line, ret);
-		goto exit_geni_serial_probe;
+		return ret;
 	}
 
 	uport = &dev_port->uport;
