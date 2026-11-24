@@ -63,6 +63,10 @@ static void test_slots(void)
 
 	effect.u.periodic.waveform = FF_CUSTOM;
 	effect.u.periodic.custom_data = data;
+	chip.fw_header.fw_effCount = 11;
+	chip.mnEffectTimems[8] = 29;
+	assert(!drv2624_haptics_upload_effect(&dev, &effect, NULL));
+	assert(chip.ff_effects[1].play.effect_id == 9 && data[2] == 29);
 	chip.mnEffectTimems[2] = 40;
 	assert(!drv2624_haptics_upload_effect(&dev, &effect, NULL));
 	assert(data[1] == 0 && data[2] == 40);

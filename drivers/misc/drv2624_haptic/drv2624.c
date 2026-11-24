@@ -1511,6 +1511,12 @@ static int drv2624_haptics_upload_effect(struct input_dev *dev,
 		uploaded.play.magnitude = effect->u.periodic.magnitude;
 		if (id < chip->fw_header.fw_effCount &&
 		    id < ARRAY_SIZE(chip->mnEffectTimems)) {
+			/* The stock primary TICK has no timed samples. */
+			if (id == 2 && !chip->mnEffectTimems[id] &&
+			    chip->fw_header.fw_effCount > 8 && chip->mnEffectTimems[8]) {
+				id = 8;
+				uploaded.play.effect_id = id + 1;
+			}
 			uploaded.mode = DRV2624_RAM_MODE;
 			duration = chip->mnEffectTimems[id] ?: 25;
 		} else if (id < 126) {
