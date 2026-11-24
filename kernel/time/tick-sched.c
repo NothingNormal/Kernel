@@ -691,6 +691,7 @@ static ktime_t tick_nohz_next_event(struct tick_sched *ts, int cpu)
 {
 	u64 basemono, next_tick, next_tmr, next_rcu, delta, expires;
 	unsigned long seq, basejiff;
+	int tick_cpu;
 
 	/* Read jiffies and the time when jiffies were updated last */
 	do {
@@ -754,10 +755,12 @@ static ktime_t tick_nohz_next_event(struct tick_sched *ts, int cpu)
 	 * the sleep time to the timekeeping max_deferment value.
 	 * Otherwise we can sleep as long as we want.
 	 */
-	delta = timekeeping_max_deferment();
-	if (cpu != tick_do_timer_cpu &&
-	    (tick_do_timer_cpu != TICK_DO_TIMER_NONE || !ts->do_timer_last))
+	tick_cpu = READ_ONCE(tick_do_timer_cpu);
+	if (cpu != tick_cpu &&
+	    (tick_cpu != TICK_DO_TIMER_NONE || !ts->do_timer_last))
 		delta = KTIME_MAX;
+	else
+		delta = timekeeping_max_deferment();
 
 #ifdef CONFIG_NO_HZ_FULL
 	/* Limit the tick delta to the maximum scheduler deferment */
