@@ -1163,14 +1163,11 @@ static struct qseecom_registered_listener_list *__qseecom_find_svc(
 	list_for_each_entry(entry,
 			&qseecom.registered_listener_list_head, list) {
 		if (entry->svc.listener_id == listener_id)
-			break;
-	}
-	if ((entry != NULL) && (entry->svc.listener_id != listener_id)) {
-		pr_debug("Service id: %u is not found\n", listener_id);
-		return NULL;
+			return entry;
 	}
 
-	return entry;
+	pr_debug("Service id: %u is not found\n", listener_id);
+	return NULL;
 }
 
 static int qseecom_dmabuf_cache_operations(struct dma_buf *dmabuf,
