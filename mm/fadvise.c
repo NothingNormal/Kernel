@@ -48,7 +48,7 @@ SYSCALL_DEFINE4(fadvise64_64, int, fd, loff_t, offset, loff_t, len, int, advice)
 	}
 
 	mapping = f.file->f_mapping;
-	if (!mapping || len < 0) {
+	if (!mapping || len < 0 || offset < 0) {
 		ret = -EINVAL;
 		goto out;
 	}
