@@ -42,16 +42,6 @@
 #include "objsec.h"
 #include "conditional.h"
 
-#ifdef CONFIG_KSU_SUSFS
-/* 4.14: status_page/status_lock live in selinux_state.ss (struct selinux_ss), not in struct selinux_state */
-#include "ss/services.h"
-
-extern struct page *fake_status;
-extern struct static_key_false fake_status_initialize_key;
-extern bool ksu_selinux_hide_enabled __read_mostly;
-extern void initialize_fake_status(void);
-#endif // #ifdef CONFIG_KSU_SUSFS
-
 enum sel_inos {
 	SEL_ROOT_INO = 2,
 	SEL_LOAD,	/* load policy */
@@ -240,29 +230,6 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-#ifdef CONFIG_KSU_SUSFS
-static int my_sel_open_handle_status(struct inode *inode, struct file *filp)
-{
-	void *data;
-	int ret;
-
-	if (likely(current_uid().val >= 10000 && ksu_selinux_hide_enabled)) {
-		mutex_lock(&selinux_state.ss->status_lock);
-		data = fake_status;
-		mutex_unlock(&selinux_state.ss->status_lock);
-		if (data) {
-			filp->private_data = data;
-			return 0;
-		}
-	}
-
-	ret = sel_open_handle_status(inode, filp);
-	if (static_branch_unlikely(&fake_status_initialize_key) && !ret && !fake_status)
-		initialize_fake_status();
-	return ret;
-}
-#endif // #ifdef CONFIG_KSU_SUSFS
-
 static ssize_t sel_read_handle_status(struct file *filp, char __user *buf,
 				      size_t count, loff_t *ppos)
 {
@@ -299,11 +266,7 @@ static int sel_mmap_handle_status(struct file *filp,
 
 /* not static: BakaSU looks it up when KALLSYMS_ALL is off */
 const struct file_operations sel_handle_status_ops = {
-#ifdef CONFIG_KSU_SUSFS
-	.open		= my_sel_open_handle_status,
-#else
 	.open		= sel_open_handle_status,
-#endif // #ifdef CONFIG_KSU_SUSFS
 	.read		= sel_read_handle_status,
 	.mmap		= sel_mmap_handle_status,
 	.llseek		= generic_file_llseek,
