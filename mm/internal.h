@@ -582,4 +582,9 @@ static inline bool lmk_kill_possible(void)
 	return false;
 }
 #endif
+static inline bool vma_has_recency(struct vm_area_struct *vma)
+{
+	return !(vma->vm_flags & (VM_SEQ_READ | VM_RAND_READ));
+}
+
 #endif	/* __MM_INTERNAL_H */
