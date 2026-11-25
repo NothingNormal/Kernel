@@ -436,7 +436,13 @@ LZ4_decompress_generic(
             }
             /* match starting within external dictionary */
             if ((dict==usingExtDict) && (match < lowPrefix)) {
+                size_t const inDict = (size_t)(lowPrefix - match);
                 assert(dictEnd != NULL);
+                if (ml + 16 <= inDict) {
+                    LZ4_wildCopy16(op, dictEnd - inDict, op + ml);
+                    op += ml;
+                    continue;
+                }
                 op = LZ4_copyExtDictMatch(op, match, ml, lowPrefix, dictEnd);
                 continue;
             }

@@ -265,6 +265,16 @@ static FORCE_INLINE void LZ4_wildCopy32(void *dstPtr, const void *srcPtr,
 	} while (d < e);
 }
 
+/* The caller guarantees 16 bytes of headroom in both buffers. */
+static FORCE_INLINE void LZ4_wildCopy16(BYTE *dst, const BYTE *src, BYTE *end)
+{
+	do {
+		LZ4_memcpy(dst, src, 16);
+		dst += 16;
+		src += 16;
+	} while (dst < end);
+}
+
 /* LZ4_memcpy_using_offset_base() :
  * copy a match of length >= MINMATCH (srcPtr + offset == dstPtr, overlap allowed),
  * can overwrite up to 12 bytes beyond dstEnd */
