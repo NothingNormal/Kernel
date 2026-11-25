@@ -175,6 +175,12 @@ fi
 if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_REF^{commit}" 2>/dev/null)" ]; then
     git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out BakaSU $KSU_REF (shallow clone? rm -rf KernelSU)"; exit 1; }
 fi
+# Older SUSFS headers omit the optional UID-filter command.
+dispatch=KernelSU/kernel/supercall/dispatch.c
+if grep -q 'case CMD_SUSFS_SET_SUS_PATH_UID_FILTER:' "$dispatch" &&
+   ! grep -q '^#ifdef CMD_SUSFS_SET_SUS_PATH_UID_FILTER$' "$dispatch"; then
+    git -C KernelSU apply ../scripts/bakasu-susfs-api.patch || exit 1
+fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2
     echo "       Check this tree out on a filesystem with symlink support." >&2
