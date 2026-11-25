@@ -3160,6 +3160,9 @@ static int should_skip_vma(unsigned long start, unsigned long end, struct mm_wal
 	struct vm_area_struct *vma = walk->vma;
 	struct mm_walk_args *args = walk->private;
 
+	if (!vma_has_recency(vma))
+		return true;
+
 	if (is_vm_hugetlb_page(vma) || (vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) ||
 	    !(vma->vm_flags & (VM_READ | VM_EXEC | VM_WRITE)))
 		return true;
