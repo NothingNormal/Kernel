@@ -48,11 +48,8 @@
 
 extern struct page *fake_status;
 extern struct static_key_false fake_status_initialize_key;
-extern bool ksu_selinux_hide_running __read_mostly;
 extern bool ksu_selinux_hide_enabled __read_mostly;
 extern void initialize_fake_status(void);
-extern ssize_t my_write_context(struct file *file, char *buf, size_t size);
-extern ssize_t my_write_access(struct file *file, char *buf, size_t size);
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 enum sel_inos {
@@ -682,14 +679,6 @@ out:
 	return length;
 }
 
-#ifdef CONFIG_KSU_SUSFS
-static ssize_t handle_sel_write_context(struct file *file, char *buf, size_t size)
-{
-	if ((likely(current_uid().val >= 10000 && ksu_selinux_hide_running)))
-		return my_write_context(file, buf, size);
-	return sel_write_context(file, buf, size);
-}
-#endif // #ifdef CONFIG_KSU_SUSFS
 
 static ssize_t sel_read_checkreqprot(struct file *filp, char __user *buf,
 				     size_t count, loff_t *ppos)
@@ -831,27 +820,15 @@ static ssize_t sel_write_create(struct file *file, char *buf, size_t size);
 static ssize_t sel_write_relabel(struct file *file, char *buf, size_t size);
 static ssize_t sel_write_user(struct file *file, char *buf, size_t size);
 static ssize_t sel_write_member(struct file *file, char *buf, size_t size);
-#ifdef CONFIG_KSU_SUSFS
-static ssize_t handle_sel_write_access(struct file *file, char *buf, size_t size);
-static ssize_t handle_sel_write_context(struct file *file, char *buf, size_t size);
-#endif // #ifdef CONFIG_KSU_SUSFS
 
 /* not static: BakaSU looks it up when KALLSYMS_ALL is off */
 ssize_t (*write_op[])(struct file *, char *, size_t) = {
-#ifdef CONFIG_KSU_SUSFS
-	[SEL_ACCESS] = handle_sel_write_access,
-#else
 	[SEL_ACCESS] = sel_write_access,
-#endif // #ifdef CONFIG_KSU_SUSFS
 	[SEL_CREATE] = sel_write_create,
 	[SEL_RELABEL] = sel_write_relabel,
 	[SEL_USER] = sel_write_user,
 	[SEL_MEMBER] = sel_write_member,
-#ifdef CONFIG_KSU_SUSFS
-	[SEL_CONTEXT] = handle_sel_write_context,
-#else
 	[SEL_CONTEXT] = sel_write_context,
-#endif // #ifdef CONFIG_KSU_SUSFS
 };
 
 static ssize_t selinux_transaction_write(struct file *file, const char __user *buf, size_t size, loff_t *pos)
@@ -939,14 +916,6 @@ out:
 	return length;
 }
 
-#ifdef CONFIG_KSU_SUSFS
-static ssize_t handle_sel_write_access(struct file *file, char *buf, size_t size)
-{
-	if ((likely(current_uid().val >= 10000 && ksu_selinux_hide_running)))
-		return my_write_access(file, buf, size);
-	return sel_write_access(file, buf, size);
-}
-#endif // #ifdef CONFIG_KSU_SUSFS
 
 static ssize_t sel_write_create(struct file *file, char *buf, size_t size)
 {

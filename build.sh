@@ -181,6 +181,11 @@ if grep -q 'case CMD_SUSFS_SET_SUS_PATH_UID_FILTER:' "$dispatch" &&
    ! grep -q '^#ifdef CMD_SUSFS_SET_SUS_PATH_UID_FILTER$' "$dispatch"; then
     git -C KernelSU apply ../scripts/bakasu-susfs-api.patch || exit 1
 fi
+tracker=KernelSU/kernel/manager/throne_tracker.c
+if grep -q 'susfs_parse_sus_path_app_strings();' "$tracker" &&
+   ! grep -q 'defined(CMD_SUSFS_SET_SUS_PATH_UID_FILTER)' "$tracker"; then
+    git -C KernelSU apply ../scripts/bakasu-susfs-tracker.patch || exit 1
+fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2
     echo "       Check this tree out on a filesystem with symlink support." >&2
