@@ -4472,6 +4472,7 @@ int smblib_get_prop_typec_power_role(struct smb_charger *chg,
 		   ctrl);
 
 	if (ctrl & TYPEC_DISABLE_CMD_BIT) {
+		chg->power_role = POWER_SUPPLY_TYPEC_PR_NONE;
 		val->intval = POWER_SUPPLY_TYPEC_PR_NONE;
 		return rc;
 	}
@@ -5138,6 +5139,24 @@ int smblib_set_prop_typec_power_role(struct smb_charger *chg,
 		return 0;
 	}
 
+	switch (val->intval) {
+	case POWER_SUPPLY_TYPEC_PR_NONE:
+		power_role = TYPEC_DISABLE_CMD_BIT;
+		break;
+	case POWER_SUPPLY_TYPEC_PR_DUAL:
+		power_role = chg->typec_try_mode;
+		break;
+	case POWER_SUPPLY_TYPEC_PR_SINK:
+		power_role = EN_SNK_ONLY_BIT;
+		break;
+	case POWER_SUPPLY_TYPEC_PR_SOURCE:
+		power_role = EN_SRC_ONLY_BIT;
+		break;
+	default:
+		smblib_err(chg, "power role %d not supported\n", val->intval);
+		return -EINVAL;
+	}
+
 	typec_mode = smblib_get_prop_typec_mode(chg);
 	if (typec_mode >= POWER_SUPPLY_TYPEC_SINK &&
 			typec_mode <= POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER)
@@ -5174,24 +5193,6 @@ int smblib_set_prop_typec_power_role(struct smb_charger *chg,
 
 	chg->pr_lock_in_progress = is_pr_lock;
 	spin_unlock(&chg->typec_pr_lock);
-
-	switch (val->intval) {
-	case POWER_SUPPLY_TYPEC_PR_NONE:
-		power_role = TYPEC_DISABLE_CMD_BIT;
-		break;
-	case POWER_SUPPLY_TYPEC_PR_DUAL:
-		power_role = chg->typec_try_mode;
-		break;
-	case POWER_SUPPLY_TYPEC_PR_SINK:
-		power_role = EN_SNK_ONLY_BIT;
-		break;
-	case POWER_SUPPLY_TYPEC_PR_SOURCE:
-		power_role = EN_SRC_ONLY_BIT;
-		break;
-	default:
-		smblib_err(chg, "power role %d not supported\n", val->intval);
-		return -EINVAL;
-	}
 
 	rc = smblib_masked_write(chg, TYPE_C_MODE_CFG_REG,
 				TYPEC_POWER_ROLE_CMD_MASK | TYPEC_TRY_MODE_MASK,
