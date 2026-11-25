@@ -30,6 +30,7 @@ struct victim_info {
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	unsigned long size;
+	unsigned long anon;
 };
 
 static struct victim_info victims[MAX_VICTIMS] __cacheline_aligned_in_smp;
@@ -46,7 +47,7 @@ static int victim_cmp(const void *lhs_ptr, const void *rhs_ptr)
 	const struct victim_info *lhs = (typeof(lhs))lhs_ptr;
 	const struct victim_info *rhs = (typeof(rhs))rhs_ptr;
 
-	return rhs->size - lhs->size;
+	return (lhs->size < rhs->size) - (lhs->size > rhs->size);
 }
 
 static void victim_swap(void *lhs_ptr, void *rhs_ptr, int size)
@@ -57,15 +58,12 @@ static void victim_swap(void *lhs_ptr, void *rhs_ptr, int size)
 	swap(*lhs, *rhs);
 }
 
-static unsigned long get_total_mm_pages(struct mm_struct *mm)
+static int victim_anon_cmp(const void *a, const void *b)
 {
-	unsigned long pages = 0;
-	int i;
+	const struct victim_info *lhs = a;
+	const struct victim_info *rhs = b;
 
-	for (i = 0; i < NR_MM_COUNTERS; i++)
-		pages += get_mm_counter(mm, i);
-
-	return pages;
+	return (lhs->anon < rhs->anon) - (lhs->anon > rhs->anon);
 }
 
 static unsigned long find_victims(int *vindex)
@@ -120,15 +118,24 @@ static unsigned long find_victims(int *vindex)
 		old_vindex = *vindex;
 		do {
 			struct task_struct *vtsk;
+			unsigned long anon, size;
 
 			vtsk = find_lock_task_mm(tsk);
 			if (!vtsk)
 				continue;
 
+			anon = get_mm_counter(vtsk->mm, MM_ANONPAGES);
+			size = anon + get_mm_counter(vtsk->mm, MM_SWAPENTS);
+			if (!size || READ_ONCE(vtsk->mm->core_state)) {
+				task_unlock(vtsk);
+				continue;
+			}
+
 			/* Store this potential victim away for later */
 			victims[*vindex].tsk = vtsk;
 			victims[*vindex].mm = vtsk->mm;
-			victims[*vindex].size = get_total_mm_pages(vtsk->mm);
+			victims[*vindex].size = size;
+			victims[*vindex].anon = anon;
 
 			/* Count the number of pages that have been found */
 			pages_found += victims[*vindex].size;
@@ -221,6 +228,12 @@ static void scan_and_kill(void)
 		nr_to_kill = nr_found;
 	}
 
+	if (!nr_to_kill)
+		return;
+
+	/* Signal the victims with the most resident anonymous pages first. */
+	sort(victims, nr_to_kill, sizeof(*victims), victim_anon_cmp, victim_swap);
+
 	/* Store the final number of victims for simple_lmk_mm_freed() */
 	write_lock(&mm_free_lock);
 	nr_victims = nr_to_kill;
@@ -254,15 +267,14 @@ static void scan_and_kill(void)
 		rcu_read_lock();
 		for_each_thread(vtsk, t)
 			set_tsk_thread_flag(t, TIF_MEMDIE);
-		for_each_thread(vtsk, t)
+		for_each_thread(vtsk, t) {
 			sched_setscheduler_nocheck(t, SCHED_RR, &min_rt_prio);
+			__thaw_task(t);
+		}
 		rcu_read_unlock();
 
 		/* Allow the victim to run on any CPU. This won't schedule. */
 		set_cpus_allowed_ptr(vtsk, cpu_all_mask);
-
-		/* Signals can't wake frozen tasks; only a thaw operation can */
-		__thaw_task(vtsk);
 
 		/* Finally release the victim's task lock acquired earlier */
 		task_unlock(vtsk);
