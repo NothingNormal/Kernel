@@ -165,22 +165,6 @@ index 551b2286..9b839d0e 100644
  #include <linux/printk.h>
  
  #ifdef pr_fmt
-diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
-index 7d73cafa..03edc8e1 100644
---- a/kernel/runtime/ksud_integration.c
-+++ b/kernel/runtime/ksud_integration.c
-@@ -43,10 +43,10 @@
- #include "policy/feature.h"
- #include "selinux/selinux.h"
- #include "manager/throne_tracker.h"
-+#include "preinit/preinit.h"
- #if defined(CONFIG_KSU_TRACEPOINT_HOOK) || defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
- #include "hook/syscall_hook.h"
- #include "hook/syscall_event_bridge.h"
--#include "preinit/preinit.h"
- #endif
- 
- // clang-format off
 diff --git a/kernel/policy/su_request.c b/kernel/policy/su_request.c
 --- a/kernel/policy/su_request.c
 +++ b/kernel/policy/su_request.c

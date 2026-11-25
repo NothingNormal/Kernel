@@ -159,16 +159,28 @@ rm -rf AnyKernel
 # errors out when ../.git is missing, so a plain copy or a shallow clone will
 # not do: --filter=blob:none keeps the full commit history without the blobs.
 # ---------------------------------------------------------------------------
-KSU_REPO="${KSU_REPO:-https://github.com/samakshkambxj/OriginSU}"
-KSU_REF="${KSU_REF:-d25f48fbc0ea56a0aafd1f71965f8d38a3aeff00}"
+KSU_REPO="${KSU_REPO:-https://github.com/KazeSU/KazeSU}"
+KSU_REF="${KSU_REF:-62ec6a9dec4876ac99d7c482dd86a6d9fb95c50f}"
 if [ ! -e KernelSU/.git ]; then
     rm -rf KernelSU
     git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }
+fi
+if ! git -C KernelSU rev-parse --verify --quiet "$KSU_REF^{commit}" >/dev/null; then
+    git -C KernelSU fetch --no-tags "$KSU_REPO" "$KSU_REF" || exit 1
 fi
 # CI checks out its own OriginSU pin before calling this script. Re-align to
 # $KSU_REF here so both entry points compile the same driver; otherwise the
 # build silently uses the workflow pin and disagrees with the local default.
 if [ "$(git -C KernelSU rev-parse HEAD)" != "$(git -C KernelSU rev-parse "$KSU_REF^{commit}" 2>/dev/null)" ]; then
+    # Older builds applied a local preinit include fix that is now upstream.
+    # Drop only that exact generated edit before switching revisions.
+    runtime=kernel/runtime/ksud_integration.c
+    git -C KernelSU update-index --no-assume-unchanged -- "$runtime" || exit 1
+    if [ "$(git -C KernelSU rev-parse "HEAD:$runtime")" = e88cfc830617c022f3d4c739f6766402cf6275b9 ] &&
+       [ "$(git -C KernelSU hash-object "$runtime")" = 508955488b552b41c0f5edac6dc795f2b68229ad ] &&
+       git -C KernelSU diff --cached --quiet HEAD -- "$runtime"; then
+        git -C KernelSU checkout-index -f -- "$runtime" || exit 1
+    fi
     git -C KernelSU checkout -q "$KSU_REF" || { echo " Failed to check out OriginSU $KSU_REF (shallow clone? rm -rf KernelSU)"; exit 1; }
 fi
 # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
@@ -179,7 +191,7 @@ if [ -f scripts/originsu-4.14-susfs.patch ]; then
     fi
     git -C KernelSU update-index --assume-unchanged \
         kernel/Kbuild kernel/include/klog.h \
-        kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
+        kernel/feature/selinux_hide.c 2>/dev/null || true
 fi
 if [ ! -e drivers/kernelsu/Kbuild ]; then
     echo "ERROR: drivers/kernelsu is not a usable symlink to ../KernelSU/kernel." >&2

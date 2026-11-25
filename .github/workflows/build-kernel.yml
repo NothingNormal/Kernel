@@ -4,7 +4,7 @@
 #   * OriginSU + SUSFS v2.3.0 + NoMount v2.2.0 are built in -> artifact, job and zip names say
 #     OriginSU, matching build.sh (Sixfaced-V5-OriginSU-*.zip)
 #     OriginSU is NOT vendored: drivers/kernelsu is a symlink to
-#     ../KernelSU/kernel, and the driver is cloned here from samakshkambxj/OriginSU.
+#     ../KernelSU/kernel, and the driver is cloned here from KazeSU/KazeSU.
 #
 # bakasu branch only: builds on this branch additionally publish
 # Sixfaced-miatoll-BakaSU.zip as a NEW asset on the "latest" release.
@@ -47,7 +47,7 @@ permissions:
 
 env:
   NEUTRON_TAG: ${{ github.event.inputs.neutron_tag || '06092026' }}
-  KSU_REF: d25f48fbc0ea56a0aafd1f71965f8d38a3aeff00
+  KSU_REF: 62ec6a9dec4876ac99d7c482dd86a6d9fb95c50f
   NEUTRON_DIR: /home/runner/neutron-clang
   CCACHE_MAXSIZE: 4G
   CCACHE_COMPRESSLEVEL: 1
@@ -202,7 +202,7 @@ jobs:
           # source is not vendored. Full history (blobless) is required:
           # OriginSU computes KSU_VERSION as 30000 + commit count + 700 and its
           # Kbuild errors out when KernelSU/.git is missing.
-          git clone --filter=blob:none https://github.com/samakshkambxj/OriginSU KernelSU
+          git clone --filter=blob:none https://github.com/KazeSU/KazeSU KernelSU
           git -C KernelSU checkout -q "$KSU_REF"
           # 4.14 compat: patch OriginSU for SUSFS inline hooks and Linux 4.14
           if [ -f scripts/originsu-4.14-susfs.patch ]; then
@@ -210,7 +210,7 @@ jobs:
             git -C KernelSU apply ../scripts/originsu-4.14-susfs.patch
             git -C KernelSU update-index --assume-unchanged \
               kernel/Kbuild kernel/include/klog.h \
-              kernel/runtime/ksud_integration.c kernel/feature/selinux_hide.c 2>/dev/null || true
+              kernel/feature/selinux_hide.c 2>/dev/null || true
           fi
           echo "OriginSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
           echo "KSU_COMMIT=$(git -C KernelSU log -1 --format=%h)" >> "$GITHUB_ENV"
