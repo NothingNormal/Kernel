@@ -202,7 +202,7 @@ jobs:
           # BakaSU computes KSU_VERSION as 30000 + commit count + 700 and its
           # Kbuild errors out when KernelSU/.git is missing.
           git clone --filter=blob:none https://github.com/Baka-SU/BakaSU KernelSU
-          git -C KernelSU checkout -q 548d1dda
+          git -C KernelSU checkout -q 57b2db6076f439cfd489f14576444e8f0f2f0a25
           echo "BakaSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
           echo "KSU_COMMIT=$(git -C KernelSU log -1 --format=%h)" >> "$GITHUB_ENV"
           test -e drivers/kernelsu/Kbuild || {

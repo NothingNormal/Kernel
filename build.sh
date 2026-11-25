@@ -161,10 +161,13 @@ rm -rf AnyKernel
 # not do: --filter=blob:none keeps the full commit history without the blobs.
 # ---------------------------------------------------------------------------
 KSU_REPO="${KSU_REPO:-https://github.com/Baka-SU/BakaSU}"
-KSU_REF="${KSU_REF:-548d1dda060ca198823d8808804d01f5209ef4a9}"
+KSU_REF="${KSU_REF:-57b2db6076f439cfd489f14576444e8f0f2f0a25}"
 if [ ! -e KernelSU/.git ]; then
     rm -rf KernelSU
     git clone --filter=blob:none "$KSU_REPO" KernelSU || { echo " Failed to clone $KSU_REPO"; exit 1; }
+fi
+if ! git -C KernelSU rev-parse --verify --quiet "$KSU_REF^{commit}" >/dev/null; then
+    git -C KernelSU fetch --no-tags "$KSU_REPO" "$KSU_REF" || exit 1
 fi
 # CI checks out its own BakaSU pin before calling this script. Re-align to
 # $KSU_REF here so both entry points compile the same driver; otherwise the
