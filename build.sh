@@ -161,14 +161,14 @@ export PATH="${TOOLCHAIN_BIN}:$PATH"
 KGZIP_BIN=gzip
 command -v pigz >/dev/null 2>&1 && KGZIP_BIN=pigz
 # slight overcommit: clang jobs stall on I/O; +2 keeps the vCPUs saturated
-make -j$(( $(nproc --all) + 2 )) O=out \
+make -j$(( $(nproc) + 2 )) O=out \
                       KGZIP=${KGZIP_BIN} \
                       ARCH=arm64 \
                       LLVM=1 \
                       LLVM_IAS=1 \
                       CC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
                       HOSTCC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
-                      HOSTCXX="${TOOLCHAIN_BIN}/clang++" \
+                      HOSTCXX="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang++" \
                       CLANG_TRIPLE=aarch64-linux-gnu- \
                       CROSS_COMPILE=aarch64-linux-gnu- \
                       LD="${TOOLCHAIN_BIN}/ld.lld" \
@@ -199,7 +199,7 @@ echo -e " Kernel Compile Successful"
 cp -a AnyKernel3 AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
-zip -r9 Sixfaced-V5-KSUN-miatoll-${TANGGAL}.zip *
+zip -r -n .gz Sixfaced-V5-KSUN-miatoll-${TANGGAL}.zip *
 cd ../
 fi
 }
