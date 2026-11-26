@@ -80,6 +80,9 @@ SCHED_FEAT(RT_PUSH_IPI, true)
 
 SCHED_FEAT(RT_RUNTIME_SHARE, false)
 SCHED_FEAT(LB_MIN, false)
+/* Cambyses v0.7.2 (Masahito Suzuki), adapted for the WALT balancer. */
+SCHED_FEAT(LB_ROTATE_BLOCK, true)
+SCHED_FEAT(LB_CONCEDE_CHEAPEST, true)
 SCHED_FEAT(ATTACH_AGE_LOAD, true)
 
 SCHED_FEAT(WA_IDLE, true)
