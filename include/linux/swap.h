@@ -384,6 +384,10 @@ extern void kswapd_stop(int nid);
 #include <linux/blk_types.h> /* for bio_end_io_t */
 
 /* linux/mm/page_io.c */
+#define KCOMPRESS_FIFO_SIZE 256
+extern int vm_kcompressd;
+void kcompressd_start(pg_data_t *pgdat);
+void kcompressd_stop(pg_data_t *pgdat);
 extern int swap_readpage(struct page *page, bool do_poll);
 extern int swap_writepage(struct page *page, struct writeback_control *wbc);
 extern void end_swap_bio_write(struct bio *bio);
@@ -542,6 +546,9 @@ static inline struct page *swapin_readahead(swp_entry_t swp, gfp_t gfp_mask,
 {
 	return NULL;
 }
+
+static inline void kcompressd_start(pg_data_t *pgdat) { }
+static inline void kcompressd_stop(pg_data_t *pgdat) { }
 
 static inline int swap_writepage(struct page *p, struct writeback_control *wbc)
 {

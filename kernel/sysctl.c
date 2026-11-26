@@ -1611,7 +1611,22 @@ static int proc_swappiness_handler(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+#ifdef CONFIG_SWAP
+static int kcompress_fifo_max = KCOMPRESS_FIFO_SIZE;
+#endif
+
 static struct ctl_table vm_table[] = {
+#ifdef CONFIG_SWAP
+	{
+		.procname = "kcompressd",
+		.data = &vm_kcompressd,
+		.maxlen = sizeof(vm_kcompressd),
+		.mode = 0644,
+		.proc_handler = proc_dointvec_minmax,
+		.extra1 = &zero,
+		.extra2 = &kcompress_fifo_max,
+	},
+#endif
 	{
 		.procname	= "overcommit_memory",
 		.data		= &sysctl_overcommit_memory,
