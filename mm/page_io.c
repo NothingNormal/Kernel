@@ -25,6 +25,9 @@
 #include <linux/psi.h>
 #include <linux/uio.h>
 #include <linux/sched/task.h>
+#include <linux/kfifo.h>
+#include <linux/kthread.h>
+#include <linux/slab.h>
 #include <asm/pgtable.h>
 
 static struct bio *get_swap_bio(gfp_t gfp_flags,
@@ -190,6 +193,95 @@ bad_bmap:
 	goto out;
 }
 
+/* kcompressd-unofficial v0.5, adapted to the 4.14 swap write path.
+ * Only the node's kswapd produces entries and only its worker consumes
+ * them. A queued page stays locked until its write has been submitted.
+ */
+int vm_kcompressd __read_mostly = 24;
+
+struct kcompress_queue {
+	DECLARE_KFIFO(pages, struct page *, KCOMPRESS_FIFO_SIZE);
+	wait_queue_head_t wait;
+	struct task_struct *worker;
+};
+
+static int kcompressd(void *arg)
+{
+	struct kcompress_queue *q = arg;
+	struct page *page;
+
+	current->flags |= PF_MEMALLOC | PF_SWAPWRITE;
+	for (;;) {
+		wait_event(q->wait, !kfifo_is_empty(&q->pages) ||
+				    kthread_should_stop());
+		while (kfifo_get(&q->pages, &page)) {
+			struct writeback_control wbc = {
+				.sync_mode = WB_SYNC_NONE,
+				.nr_to_write = SWAP_CLUSTER_MAX,
+				.range_end = LLONG_MAX,
+				.for_reclaim = 1,
+			};
+
+			__swap_writepage(page, &wbc, end_swap_bio_write);
+			put_page(page);
+			cond_resched();
+		}
+		if (kthread_should_stop())
+			break;
+	}
+	return 0;
+}
+
+void kcompressd_start(pg_data_t *pgdat)
+{
+	struct kcompress_queue *q = kzalloc_node(sizeof(*q), GFP_KERNEL,
+						 pgdat->node_id);
+
+	if (!q)
+		return;
+	INIT_KFIFO(q->pages);
+	init_waitqueue_head(&q->wait);
+	q->worker = kthread_run(kcompressd, q, "kcompressd%d", pgdat->node_id);
+	if (IS_ERR(q->worker)) {
+		kfree(q);
+		return;
+	}
+	pgdat->kcompress = q;
+}
+
+void kcompressd_stop(pg_data_t *pgdat)
+{
+	struct kcompress_queue *q = pgdat->kcompress;
+
+	if (q) {
+		kthread_stop(q->worker);
+		pgdat->kcompress = NULL;
+		kfree(q);
+	}
+}
+
+static bool kcompressd_store(struct page *page, struct writeback_control *wbc)
+{
+	pg_data_t *pgdat = page_pgdat(page);
+	struct kcompress_queue *q;
+	unsigned int limit = READ_ONCE(vm_kcompressd);
+
+	if (!limit || !wbc->for_reclaim || wbc->sync_mode != WB_SYNC_NONE ||
+	    current != READ_ONCE(pgdat->kswapd) || !PageAnon(page) ||
+	    !(READ_ONCE(page_swap_info(page)->flags) & SWP_SYNCHRONOUS_IO))
+		return false;
+	q = pgdat->kcompress;
+	if (!q || kfifo_len(&q->pages) >= limit)
+		return false;
+	get_page(page);
+	if (!kfifo_put(&q->pages, page)) {
+		put_page(page);
+		return false;
+	}
+	wake_up(&q->wait);
+	return true;
+}
+
 /*
  * We may have stale swap cache pages in memory: notice
  * them here and get rid of the unnecessary final write.
@@ -208,6 +300,8 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 		end_page_writeback(page);
 		goto out;
 	}
+	if (kcompressd_store(page, wbc))
+		return 0;
 	ret = __swap_writepage(page, wbc, end_swap_bio_write);
 out:
 	return ret;

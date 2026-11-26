@@ -69,6 +69,8 @@ struct nqx_dev {
 	bool			nfc_ven_enabled;
 	/* NFC_IRQ state */
 	bool			irq_enabled;
+	bool			read_stopped;
+	atomic_t		read_generation;
 	/* NFC_IRQ wake-up state */
 	bool			irq_wake_up;
 	spinlock_t		irq_enabled_lock;
@@ -171,6 +173,7 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 	unsigned char *tmp = NULL;
 	int ret;
 	int irq_gpio_val = 0;
+	int generation;
 
 	if (!nqx_dev) {
 		ret = -ENODEV;
@@ -183,7 +186,15 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 	dev_dbg(&nqx_dev->client->dev, "%s : reading %zu bytes.\n",
 			__func__, count);
 
-	mutex_lock(&nqx_dev->read_mutex);
+	generation = atomic_read(&nqx_dev->read_generation);
+	ret = mutex_lock_interruptible(&nqx_dev->read_mutex);
+	if (ret)
+		return ret;
+	if (READ_ONCE(nqx_dev->read_stopped) ||
+	    generation != atomic_read(&nqx_dev->read_generation)) {
+		ret = -EINTR;
+		goto err;
+	}
 
 	irq_gpio_val = gpio_get_value(nqx_dev->irq_gpio);
 	if (irq_gpio_val == 0) {
@@ -198,9 +209,12 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 			nqx_enable_irq(nqx_dev);
 			if (!gpio_get_value(nqx_dev->irq_gpio)) {
 				ret = wait_event_interruptible(nqx_dev->read_wq,
-					!READ_ONCE(nqx_dev->irq_enabled));
+					!READ_ONCE(nqx_dev->irq_enabled) ||
+					generation != atomic_read(&nqx_dev->read_generation));
 			}
 			nqx_disable_irq(nqx_dev);
+			if (generation != atomic_read(&nqx_dev->read_generation))
+				ret = -EINTR;
 			if (ret)
 				goto err;
 
@@ -510,6 +524,7 @@ static int nfc_open(struct inode *inode, struct file *filp)
 	mutex_lock(&nqx_dev->dev_ref_mutex);
 
 	if (nqx_dev->dev_ref_count == 0) {
+		WRITE_ONCE(nqx_dev->read_stopped, false);
 		nqx_enable_irq(nqx_dev);
 
 		if (gpio_is_valid(nqx_dev->firm_gpio)) {
@@ -720,6 +735,12 @@ unsigned int nfc_ioctl_nfcc_info(struct file *filp, unsigned long arg)
 	return r;
 }
 
+/* SNxxx encodes each GPIO in two bits: low, high, or unavailable (2). */
+static u32 nqx_gpio_status(int gpio)
+{
+	return gpio_is_valid(gpio) ? !!gpio_get_value_cansleep(gpio) : 2;
+}
+
 static long nfc_ioctl(struct file *pfile, unsigned int cmd,
 			unsigned long arg)
 {
@@ -748,7 +769,21 @@ static long nfc_ioctl(struct file *pfile, unsigned int cmd,
 			r = nqx_ese_pwr(nqx_dev, 3);
 		break;
 	case SET_RX_BLOCK:
+		if (arg > 1)
+			return -EINVAL;
+		WRITE_ONCE(nqx_dev->read_stopped, !arg);
+		if (!arg) {
+			atomic_inc(&nqx_dev->read_generation);
+			wake_up_all(&nqx_dev->read_wq);
+		}
 		break;
+	case NFC_GET_GPIO_STATUS: {
+		u32 status = nqx_gpio_status(nqx_dev->irq_gpio) |
+			(nqx_gpio_status(nqx_dev->en_gpio) << 2) |
+			(nqx_gpio_status(nqx_dev->firm_gpio) << 4);
+
+		return put_user(status, (u32 __user *)arg);
+	}
 	case SET_EMULATOR_TEST_POINT:
 		break;
 	case NFCC_INITIAL_CORE_RESET_NTF:
@@ -763,6 +798,16 @@ static long nfc_ioctl(struct file *pfile, unsigned int cmd,
 	return r;
 }
 
+#ifdef CONFIG_COMPAT
+static long nfc_compat_ioctl(struct file *file, unsigned int cmd,
+			     unsigned long arg)
+{
+	if (cmd == NFC_GET_GPIO_STATUS)
+		arg = (unsigned long)compat_ptr(arg);
+	return nfc_ioctl(file, cmd, arg);
+}
+#endif
+
 static const struct file_operations nfc_dev_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_llseek,
@@ -772,7 +817,7 @@ static const struct file_operations nfc_dev_fops = {
 	.release = nfc_close,
 	.unlocked_ioctl = nfc_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl = nfc_ioctl
+	.compat_ioctl = nfc_compat_ioctl
 #endif
 };
 

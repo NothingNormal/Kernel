@@ -794,6 +794,9 @@ typedef struct pglist_data {
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
+#ifdef CONFIG_SWAP
+	struct kcompress_queue *kcompress;
+#endif
 	int kswapd_order;
 	enum zone_type kswapd_classzone_idx;
 
