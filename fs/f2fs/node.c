@@ -2934,7 +2934,7 @@ int f2fs_flush_nat_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct f2fs_journal *journal = curseg->journal;
 	struct nat_entry_set *setvec[SETVEC_SIZE];
 	struct nat_entry_set *set, *tmp;
-	unsigned int found;
+	unsigned int found, entry_count = 0;
 	nid_t set_idx = 0;
 	LIST_HEAD(sets);
 	int err = 0;
@@ -2967,6 +2967,15 @@ int f2fs_flush_nat_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 		for (idx = 0; idx < found; idx++)
 			__adjust_nat_entry_set(setvec[idx], &sets,
 						MAX_NAT_JENTRIES(journal));
+	}
+
+	/* Read ahead only the NAT blocks that will not fit in the journal. */
+	list_for_each_entry(set, &sets, set_list) {
+		entry_count += set->entry_cnt;
+		if (!enabled_nat_bits(sbi, cpc) &&
+		    __has_cursum_space(journal, entry_count, NAT_JOURNAL))
+			continue;
+		f2fs_ra_meta_pages(sbi, set->set, 1, META_NAT, true);
 	}
 
 	/* flush dirty nats in nat entry set */

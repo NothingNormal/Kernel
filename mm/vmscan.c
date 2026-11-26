@@ -5112,18 +5112,10 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	memcpy(targets, nr, sizeof(nr));
 
 	/*
-	 * Global reclaiming within direct reclaim at DEF_PRIORITY is a normal
-	 * event that can occur when there is little memory pressure e.g.
-	 * multiple streaming readers/writers. Hence, we do not abort scanning
-	 * when the requested number of pages are reclaimed when scanning at
-	 * DEF_PRIORITY on the assumption that the fact we are direct
-	 * reclaiming implies that kswapd is not keeping up and it is best to
-	 * do a batch of work at once. For memcg reclaim one check is made to
-	 * abort proportional reclaim if either the file or anon lru has already
-	 * dropped to zero at the first pass.
+	 * Stop direct reclaim once the allocation target has been met.
+	 * Background reclaim can still balance the anon and file scans.
 	 */
-	scan_adjusted = (global_reclaim(sc) && !current_is_kswapd() &&
-			 sc->priority == DEF_PRIORITY);
+	scan_adjusted = false;
 
 	blk_start_plug(&plug);
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
@@ -5142,6 +5134,9 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		}
 
 		cond_resched();
+
+		if (!current_is_kswapd() && nr_reclaimed >= nr_to_reclaim)
+			break;
 
 		if (nr_reclaimed < nr_to_reclaim || scan_adjusted)
 			continue;

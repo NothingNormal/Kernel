@@ -56,12 +56,14 @@ static void zcomp_strm_free(struct zcomp_strm *zstrm)
 static int zcomp_strm_init(struct zcomp_strm *zstrm, struct zcomp *comp)
 {
 	zstrm->tfm = crypto_alloc_comp(comp->name, 0, 0);
+	if (IS_ERR(zstrm->tfm))
+		return PTR_ERR(zstrm->tfm);
 	/*
 	 * allocate 2 pages. 1 for compressed data, plus 1 extra for the
 	 * case when compressed size is larger than the original one
 	 */
 	zstrm->buffer = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 1);
-	if (IS_ERR_OR_NULL(zstrm->tfm) || !zstrm->buffer) {
+	if (!zstrm->buffer) {
 		zcomp_strm_free(zstrm);
 		return -ENOMEM;
 	}

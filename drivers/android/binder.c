@@ -3411,7 +3411,7 @@ static void binder_transaction(struct binder_proc *proc,
 		t->from = thread;
 	else
 		t->from = NULL;
-	t->sender_euid = task_euid(proc->tsk);
+	t->sender_euid = current_euid();
 	t->to_proc = target_proc;
 	t->to_thread = target_thread;
 	t->code = tr->code;
@@ -5572,7 +5572,7 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct binder_proc *proc = filp->private_data;
 	const char *failure_string;
 
-	if (proc->tsk != current->group_leader)
+	if (!same_thread_group(proc->tsk, current))
 		return -EINVAL;
 
 	if ((vma->vm_end - vma->vm_start) > SZ_4M)

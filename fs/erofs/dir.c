@@ -3,6 +3,7 @@
  * Copyright (C) 2017-2018 HUAWEI, Inc.
  *             https://www.huawei.com/
  */
+#include <linux/sizes.h>
 #include "internal.h"
 
 static const unsigned char erofs_filetype_table[EROFS_FT_MAX] = {
@@ -93,6 +94,12 @@ static int erofs_readdir(struct file *f, struct dir_context *ctx)
 		struct erofs_dirent *de;
 		unsigned int nameoff, maxsize;
 
+		/* Prefetch up to 16 KiB when crossing a readahead window. */
+		pgoff_t pages = min_t(pgoff_t, DIV_ROUND_UP(dirsize, PAGE_SIZE) - i,
+				      DIV_ROUND_UP(SZ_16K, PAGE_SIZE));
+
+		if (pages > 1 && !ra_has_index(&f->f_ra, i))
+			page_cache_sync_readahead(mapping, &f->f_ra, f, i, pages);
 		dentry_page = read_mapping_page(mapping, i, NULL);
 		if (dentry_page == ERR_PTR(-ENOMEM)) {
 			err = -ENOMEM;

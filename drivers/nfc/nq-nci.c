@@ -51,6 +51,7 @@ MODULE_DEVICE_TABLE(of, msm_match_table);
 struct nqx_dev {
 	wait_queue_head_t	read_wq;
 	struct	mutex		read_mutex;
+	struct mutex		write_mutex;
 	struct	mutex		dev_ref_mutex;
 	struct	i2c_client	*client;
 	dev_t			devno;
@@ -159,7 +160,7 @@ static int is_data_available_for_read(struct nqx_dev *nqx_dev)
 
 	nqx_enable_irq(nqx_dev);
 	ret = wait_event_interruptible_timeout(nqx_dev->read_wq,
-		!nqx_dev->irq_enabled, msecs_to_jiffies(MAX_IRQ_WAIT_TIME));
+		!READ_ONCE(nqx_dev->irq_enabled), msecs_to_jiffies(MAX_IRQ_WAIT_TIME));
 	return ret;
 }
 
@@ -194,17 +195,14 @@ static ssize_t nfc_read(struct file *filp, char __user *buf,
 		}
 		while (1) {
 			ret = 0;
-			if (!nqx_dev->irq_enabled) {
-				nqx_dev->irq_enabled = true;
-				enable_irq(nqx_dev->client->irq);
-			}
+			nqx_enable_irq(nqx_dev);
 			if (!gpio_get_value(nqx_dev->irq_gpio)) {
 				ret = wait_event_interruptible(nqx_dev->read_wq,
-					!nqx_dev->irq_enabled);
+					!READ_ONCE(nqx_dev->irq_enabled));
 			}
+			nqx_disable_irq(nqx_dev);
 			if (ret)
 				goto err;
-			nqx_disable_irq(nqx_dev);
 
 			if (gpio_get_value(nqx_dev->irq_gpio))
 				break;
@@ -282,6 +280,7 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 		goto out;
 	}
 
+	mutex_lock(&nqx_dev->write_mutex);
 	retry_cnt = 0;
 	while (retry_cnt < MAX_RETRY_COUNT &&
 			(ret = i2c_master_send(nqx_dev->client, tmp, count)) != count) {
@@ -305,6 +304,7 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 #endif
 	usleep_range(1000, 1100);
 out_free:
+	mutex_unlock(&nqx_dev->write_mutex);
 	kfree(tmp);
 out:
 	return ret;
@@ -326,6 +326,7 @@ static int nqx_standby_write(struct nqx_dev *nqx_dev,
 	int ret = -EINVAL;
 	int retry_cnt;
 
+	mutex_lock(&nqx_dev->write_mutex);
 	for (retry_cnt = 1; retry_cnt <= MAX_RETRY_COUNT; retry_cnt++) {
 		ret = i2c_master_send(nqx_dev->client, buf, len);
 		if (ret < 0) {
@@ -336,6 +337,7 @@ static int nqx_standby_write(struct nqx_dev *nqx_dev,
 		} else if (ret == len)
 			break;
 	}
+	mutex_unlock(&nqx_dev->write_mutex);
 	return ret;
 }
 
@@ -681,33 +683,6 @@ int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 	return r;
 }
 
-#ifdef CONFIG_COMPAT
-static long nfc_compat_ioctl(struct file *pfile, unsigned int cmd,
-				unsigned long arg)
-{
-	long r = 0;
-
-	arg = (compat_u64)arg;
-	switch (cmd) {
-	case NFC_SET_PWR:
-		nfc_ioctl_power_states(pfile, arg);
-		break;
-	case ESE_SET_PWR:
-		nqx_ese_pwr(pfile->private_data, arg);
-		break;
-	case ESE_GET_PWR:
-		nqx_ese_pwr(pfile->private_data, 3);
-		break;
-	case SET_RX_BLOCK:
-		break;
-	case SET_EMULATOR_TEST_POINT:
-		break;
-	default:
-		r = -ENOTTY;
-	}
-	return r;
-}
-#endif
 
 /*
  * nfc_ioctl_core_reset_ntf()
@@ -797,7 +772,7 @@ static const struct file_operations nfc_dev_fops = {
 	.release = nfc_close,
 	.unlocked_ioctl = nfc_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl = nfc_compat_ioctl
+	.compat_ioctl = nfc_ioctl
 #endif
 };
 
@@ -1405,6 +1380,7 @@ static int nqx_probe(struct i2c_client *client,
 	/* init mutex and queues */
 	init_waitqueue_head(&nqx_dev->read_wq);
 	mutex_init(&nqx_dev->read_mutex);
+	mutex_init(&nqx_dev->write_mutex);
 	mutex_init(&nqx_dev->dev_ref_mutex);
 	spin_lock_init(&nqx_dev->irq_enabled_lock);
 
@@ -1417,6 +1393,7 @@ static int nqx_probe(struct i2c_client *client,
 
 	nqx_dev->nqx_class = class_create(THIS_MODULE, CLASS_NAME);
 	if (IS_ERR(nqx_dev->nqx_class)) {
+		r = PTR_ERR(nqx_dev->nqx_class);
 		dev_err(&client->dev,
 			"%s: failed to register device class\n", __func__);
 		goto err_class_create;
@@ -1432,6 +1409,7 @@ static int nqx_probe(struct i2c_client *client,
 	nqx_dev->nqx_device = device_create(nqx_dev->nqx_class, NULL,
 					nqx_dev->devno, nqx_dev, DEVICE_NAME);
 	if (IS_ERR(nqx_dev->nqx_device)) {
+		r = PTR_ERR(nqx_dev->nqx_device);
 		dev_err(&client->dev,
 			"%s: failed to create the device\n", __func__);
 		goto err_device_create;
@@ -1507,6 +1485,7 @@ err_cdev_add:
 err_class_create:
 	unregister_chrdev_region(nqx_dev->devno, DEV_COUNT);
 err_char_dev_register:
+	mutex_destroy(&nqx_dev->write_mutex);
 	mutex_destroy(&nqx_dev->read_mutex);
 err_clkreq_gpio:
 	gpio_free(platform_data->clkreq_gpio);
@@ -1553,6 +1532,7 @@ static int nqx_remove(struct i2c_client *client)
 	device_destroy(nqx_dev->nqx_class, nqx_dev->devno);
 	class_destroy(nqx_dev->nqx_class);
 	unregister_chrdev_region(nqx_dev->devno, DEV_COUNT);
+	mutex_destroy(&nqx_dev->write_mutex);
 	mutex_destroy(&nqx_dev->read_mutex);
 	mutex_destroy(&nqx_dev->dev_ref_mutex);
 	gpio_free(nqx_dev->clkreq_gpio);
