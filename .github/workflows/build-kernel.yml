@@ -1,23 +1,3 @@
-# Sixfaced Kernel CI — miatoll (SM6250), arm64, 4.14
-#
-# Adapted for this fork:
-#   * BakaSU + SUSFS v2.3.0 are built in -> artifact, job and zip names say
-#     BakaSU, matching build.sh (Sixfaced-V5-BakaSU-*.zip)
-#     BakaSU is NOT vendored: drivers/kernelsu is a symlink to
-#     ../KernelSU/kernel, and the driver is cloned here from Baka-SU/BakaSU.
-#
-# bakasu branch only: builds on this branch additionally publish
-# Sixfaced-miatoll-BakaSU.zip as a NEW asset on the "latest" release.
-# The KSU and KSUN publishing path is untouched; BakaSU is only uploaded
-# when both of those assets are already present, and the upload can never
-# clobber them because its file name is distinct.
-#   * toolchain is Neutron Clang -> cached between runs and verified for
-#     Polly support *before* a multi-hour build starts, because
-#     CONFIG_LLVM_POLLY=y makes kbuild pass ~14 -mllvm -polly* flags
-#   * ccache is restored AND saved even when the build fails, so failed
-#     iterations still make progress
-#   * artifact upload fails loudly if the zip is missing instead of
-#     silently "warning"
 name: Sixfaced Kernel CI
 
 on:
@@ -29,8 +9,8 @@ on:
         required: false
         default: "06092026"
   push:
-    branches-ignore:
-      - build-logs
+    branches:
+      - bakasu
     # doc-only pushes cannot change the resulting Image.gz
     paths-ignore:
       - "**.md"
@@ -92,13 +72,17 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            clang lld llvm zip ccache pigz zstd bc bison flex \
-            libssl-dev libelf-dev lz4 lzop
-          echo "--- fallback toolchain (only used if Neutron is unreachable) ---"
-          clang --version | head -1
-          ld.lld --version | head -1
+          deps=(zip ccache pigz zstd bc bison flex libssl-dev libelf-dev lz4 lzop)
+          missing=()
+          for pkg in "${deps[@]}"; do
+            if [[ "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)" != "install ok installed" ]]; then
+              missing+=("$pkg")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
 
       - name: Restore Neutron Clang
         id: neutron-cache
@@ -136,44 +120,6 @@ jobs:
           done
           "$CLANG" --version | head -2
           echo "$NEUTRON_DIR/bin" >> "$GITHUB_PATH"
-
-      - name: Verify Polly support (fail fast)
-        run: |
-          set -euo pipefail
-          # CONFIG_LLVM_POLLY=y, so kbuild passes exactly these flags; an LLVM
-          # without Polly (or with renamed pass options) fails here in seconds
-          # instead of 20+ minutes into the build.
-          POLLY_FLAGS="
-            -mllvm -polly
-            -mllvm -polly-ast-use-context
-            -mllvm -polly-detect-keep-going
-            -mllvm -polly-invariant-load-hoisting
-            -mllvm -polly-vectorizer=stripmine
-            -mllvm -polly-loopfusion-greedy=1
-            -mllvm -polly-reschedule=1
-            -mllvm -polly-postopts=1
-            -mllvm -polly-scheduling=dynamic
-            -mllvm -polly-scheduling-chunksize=1
-            -mllvm -polly-run-dce"
-          printf 'int probe(int a, int b) { return a * b + 1; }\n' > /tmp/polly-probe.c
-          # shellcheck disable=SC2086
-          if ! "$NEUTRON_DIR/bin/clang" -target aarch64-linux-gnu -O2 $POLLY_FLAGS \
-                 -c /tmp/polly-probe.c -o /tmp/polly-probe.o 2>/tmp/polly-probe.err; then
-            echo "::error::This Neutron build does not accept the Polly flags required by CONFIG_LLVM_POLLY"
-            sed -n '1,40p' /tmp/polly-probe.err
-            {
-              echo "## Polly probe failed"
-              echo
-              echo '```'
-              sed -n '1,40p' /tmp/polly-probe.err
-              echo '```'
-              echo
-              echo "Fix: bump \`neutron_tag\` (workflow_dispatch input) or set"
-              echo "\`CONFIG_LLVM_POLLY\` off in \`vendor/xiaomi/miatoll_defconfig\`."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          echo "Polly flag set accepted"
 
       - name: Save Neutron Clang
         if: steps.neutron-cache.outputs.cache-hit != 'true'
@@ -483,53 +429,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      # Publish straight onto the tag named "latest", the release the project
-      # links people to. Only the KSUN asset is replaced: the file is copied to
-      # a stable name first, so `gh release upload --clobber` overwrites that one
-      # asset and leaves the release title, notes, tag and any other asset
-      # (e.g. the KSU variant) untouched.
-      - name: Publish zip to the 'latest' release
-        if: success() && github.ref != 'refs/heads/bakasu'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          SRC=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
-          OUT="$RUNNER_TEMP/Sixfaced-miatoll-KSUN.zip"
-          cp "$SRC" "$OUT"
-          ls -lh "$SRC" "$OUT"
-          # the release must already exist - do NOT create or edit it here
-          gh release view latest --json tagName -q '.tagName'
-          gh release upload latest "$OUT" --clobber
-          gh release view latest --json assets \
-            -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
-
-      # bakasu branch only. Adds a third, independently named asset to the same
-      # release. It runs only after verifying that both existing root-solution
-      # zips are already on the release, and --clobber can only replace an
-      # asset whose name matches, so KSU and KSUN are never touched.
       - name: Publish BakaSU zip to the 'latest' release
         if: success() && github.ref == 'refs/heads/bakasu'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -eu
-          mapfile -t ASSETS < <(gh release view latest --json assets -q '.assets[].name')
-          printf 'existing assets:\n'
-          printf '  %s\n' "${ASSETS[@]}"
-          for want in Sixfaced-miatoll-KSU.zip Sixfaced-miatoll-KSUN.zip; do
-            if printf '%s\n' "${ASSETS[@]}" | grep -qx "$want"; then
-              echo "  ok   $want is present"
-            else
-              echo "::error::latest release is missing $want; refusing to add BakaSU"
-              exit 1
-            fi
-          done
-          SRC=$(ls -1 AnyKernel/Sixfaced-*.zip | head -1)
-          OUT="$RUNNER_TEMP/Sixfaced-miatoll-BakaSU.zip"
-          cp "$SRC" "$OUT"
-          ls -lh "$SRC" "$OUT"
-          gh release upload latest "$OUT" --clobber
-          gh release view latest --json assets \
-            -q '.assets[] | .name + "  " + (.size|tostring) + " bytes"'
-
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(AnyKernel/Sixfaced-*-BakaSU-miatoll-*.zip)
+          [[ ${#zips[@]} -eq 1 ]] || { echo "::error::Expected one BakaSU ZIP"; exit 1; }
+          asset="$RUNNER_TEMP/Sixfaced-miatoll-BakaSU.zip"
+          cp "${zips[0]}" "$asset"
+          gh release upload latest "$asset" --clobber

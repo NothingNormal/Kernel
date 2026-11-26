@@ -194,7 +194,7 @@ fi
 echo "BakaSU: $(git -C KernelSU log -1 --format='%h %s') ($(git -C KernelSU rev-list --count HEAD) commits)"
 
 make O=out ARCH=arm64 vendor/xiaomi/miatoll_defconfig || { echo " Failed to generate .config"; exit 1; }
-make O=out ARCH=arm64 headers_install INSTALL_HDR_PATH="$(pwd)/out/usr" || { echo " Failed to install headers"; exit 1; }
+make -j"$(nproc)" O=out ARCH=arm64 headers_install INSTALL_HDR_PATH="$(pwd)/out/usr" || { echo " Failed to install headers"; exit 1; }
 # keep the caller PATH: only the toolchain dir needs to win, and hardcoding
 # /usr/bin:/bin ahead of $PATH silently hid a caller-supplied tool dir
 # (found during a stubbed dry run of this script)
@@ -203,14 +203,14 @@ export PATH="${TOOLCHAIN_BIN}:$PATH"
 KGZIP_BIN=gzip
 command -v pigz >/dev/null 2>&1 && KGZIP_BIN=pigz
 # slight overcommit: clang jobs stall on I/O; +2 keeps the vCPUs saturated
-make -j$(( $(nproc --all) + 2 )) O=out \
+make -j$(( $(nproc) + 2 )) O=out \
                       KGZIP=${KGZIP_BIN} \
                       ARCH=arm64 \
                       LLVM=1 \
                       LLVM_IAS=1 \
                       CC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
                       HOSTCC="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang" \
-                      HOSTCXX="${TOOLCHAIN_BIN}/clang++" \
+                      HOSTCXX="${CCACHE_BIN}${TOOLCHAIN_BIN}/clang++" \
                       CLANG_TRIPLE=aarch64-linux-gnu- \
                       CROSS_COMPILE=aarch64-linux-gnu- \
                       LD="${TOOLCHAIN_BIN}/ld.lld" \
@@ -241,7 +241,7 @@ echo -e " Kernel Compile Successful"
 cp -a AnyKernel3 AnyKernel
 cp out/arch/arm64/boot/Image.gz AnyKernel
 cd AnyKernel
-zip -r9 Sixfaced-V5-BakaSU-miatoll-${TANGGAL}.zip *
+zip -r -n .gz Sixfaced-V5-BakaSU-miatoll-${TANGGAL}.zip *
 cd ../
 fi
 }
