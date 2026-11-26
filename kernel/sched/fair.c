@@ -9251,6 +9251,8 @@ enum group_type {
 #define LBF_NEED_BREAK	0x02
 #define LBF_DST_PINNED  0x04
 #define LBF_SOME_PINNED	0x08
+#define LBF_MOVED 0x20
+#define LBF_DST_REDIRECTED 0x40
 #define LBF_IGNORE_BIG_TASKS 0x100
 #define LBF_IGNORE_PREFERRED_CLUSTER_TASKS 0x200
 
@@ -9553,7 +9555,12 @@ static const unsigned int sched_nr_migrate_break = 32;
 static int detach_tasks(struct lb_env *env)
 {
 	struct list_head *tasks = &env->src_rq->cfs_tasks;
-	struct task_struct *p;
+	struct task_struct *p, *cheapest;
+	struct list_head *cursor;
+	unsigned long cheapest_load;
+	bool rotate = sched_feat(LB_ROTATE_BLOCK);
+	bool concede = sched_feat(LB_CONCEDE_CHEAPEST) &&
+		       env->idle != CPU_NOT_IDLE && !(env->flags & LBF_DST_REDIRECTED);
 	unsigned long load = 0;
 	int detached = 0;
 	int orig_loop = env->loop;
@@ -9573,7 +9580,10 @@ static int detach_tasks(struct lb_env *env)
 	}
 
 redo:
-	while (!list_empty(tasks)) {
+	cheapest = NULL;
+	cheapest_load = ULONG_MAX;
+	cursor = tasks->prev;
+	while (cursor != tasks) {
 		/*
 		 * We don't want to steal all, otherwise we may be treated likewise,
 		 * which could at worst lead to a livelock crash.
@@ -9581,7 +9591,7 @@ redo:
 		if (env->idle != CPU_NOT_IDLE && env->src_rq->nr_running <= 1)
 			break;
 
-		p = list_last_entry(tasks, struct task_struct, se.group_node);
+		p = list_entry(cursor, struct task_struct, se.group_node);
 
 		env->loop++;
 		/* We've more or less seen every task there is, call it quits */
@@ -9599,6 +9609,7 @@ redo:
 			break;
 		}
 
+		cursor = cursor->prev;
 		if (!can_migrate_task(p, env))
 			goto next;
 
@@ -9623,14 +9634,21 @@ redo:
 		 * there is situation to ignore big task, it is needed
 		 * to skip the task load bigger than 2*imbalance.
 		 */
-		if (((cpu_rq(env->src_cpu)->nr_running > 2) ||
-			(env->flags & LBF_IGNORE_BIG_TASKS)) &&
-			((load / 2) > env->imbalance))
+		if (concede && load > env->imbalance) {
+			if (load - env->imbalance < env->imbalance && load < cheapest_load) {
+				cheapest = p;
+				cheapest_load = load;
+			}
+			goto next;
+		}
+		if (!concede && ((cpu_rq(env->src_cpu)->nr_running > 2) ||
+		    (env->flags & LBF_IGNORE_BIG_TASKS)) && load / 2 > env->imbalance)
 			goto next;
 
 		detach_task(p, env);
 		list_add(&p->se.group_node, &env->tasks);
 
+		env->flags |= LBF_MOVED;
 		detached++;
 		env->imbalance -= load;
 
@@ -9658,8 +9676,20 @@ next:
 				env->src_grp_type, p->pid, load, task_util(p),
 				cpumask_bits(&p->cpus_allowed)[0]);
 #endif
-		list_move(&p->se.group_node, tasks);
+		if (!rotate)
+			list_move(&p->se.group_node, tasks);
 	}
+
+	if (cheapest && !(env->flags & LBF_MOVED)) {
+		detach_task(cheapest, env);
+		list_add(&cheapest->se.group_node, &env->tasks);
+		env->imbalance -= cheapest_load;
+		env->flags |= LBF_MOVED;
+		detached++;
+	}
+	/* Place the list head after the last unexamined task. */
+	if (rotate && cursor != tasks && cursor->next != tasks)
+		list_move(tasks, cursor);
 
 	if (env->flags & (LBF_IGNORE_BIG_TASKS |
 			LBF_IGNORE_PREFERRED_CLUSTER_TASKS) && !detached) {
@@ -11350,6 +11380,7 @@ more_balance:
 			env.dst_rq	 = cpu_rq(env.new_dst_cpu);
 			env.dst_cpu	 = env.new_dst_cpu;
 			env.flags	&= ~LBF_DST_PINNED;
+			env.flags	|= LBF_DST_REDIRECTED;
 			env.loop	 = 0;
 			env.loop_break	 = sched_nr_migrate_break;
 
