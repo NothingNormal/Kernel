@@ -42,7 +42,7 @@
 
 /* No dynamic allocation in the kernel: levels >= 10 use the workspace that
  * follows the caller-provided extended state. */
-#define LZ4HC_HEAPMODE 0
+
 
 /* Forward declarations for the HC API implemented below. */
 typedef enum { noDictCtx, usingDictCtxHc } dictCtx_directive;
@@ -2172,21 +2172,10 @@ static int LZ4HC_compress_optimal ( LZ4HC_CCtx_internal* ctx,
         return LZ4HC_compress_optimal_internal(ctx, source, dst, srcSizePtr, dstCapacity,
                     nbSearches, nbSearchesSeq, targetLength, limit, dict, favorDecSpeed, opt);
     }
-  { /* plain state */
-#if defined(LZ4HC_HEAPMODE) && LZ4HC_HEAPMODE==1
-    LZ4HC_optimal_t* const opt = (LZ4HC_optimal_t*)ALLOC(sizeof(LZ4HC_optimal_t) * (LZ4_OPT_NUM + TRAILING_LITERALS));
-    int result;
-    if (opt == NULL) return 0;
-    result = LZ4HC_compress_optimal_internal(ctx, source, dst, srcSizePtr, dstCapacity,
-                    nbSearches, nbSearchesSeq, targetLength, limit, dict, favorDecSpeed, opt);
-    FREEMEM(opt);
-    return result;
-#else
-    LZ4HC_optimal_t opt[LZ4_OPT_NUM + TRAILING_LITERALS];   /* ~64 KB, which can be a bit large for some stacks... */
-    return LZ4HC_compress_optimal_internal(ctx, source, dst, srcSizePtr, dstCapacity,
-                    nbSearches, nbSearchesSeq, targetLength, limit, dict, favorDecSpeed, opt);
-#endif
-  }
+    /* Plain streams have no optimal-parser scratch space. Use the
+     * allocation-free level 9 parser instead of a 64 KiB stack frame. */
+    return LZ4HC_compress_hashChain(ctx, source, dst, srcSizePtr, dstCapacity,
+                                    k_clTable[9].nbSearches, limit, dict);
 }
 EXPORT_SYMBOL(LZ4_compress_HC);
 EXPORT_SYMBOL(LZ4_loadDictHC);
