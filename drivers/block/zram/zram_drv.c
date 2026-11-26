@@ -71,7 +71,8 @@ static void zram_slot_lock(struct zram *zram, u32 index)
 
 static void zram_slot_unlock(struct zram *zram, u32 index)
 {
-	bit_spin_unlock(ZRAM_LOCK, &zram->table[index].flags);
+	/* The slot lock protects every other bit of this word. */
+	__bit_spin_unlock(ZRAM_LOCK, &zram->table[index].flags);
 }
 
 static inline bool init_done(struct zram *zram)
